@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>管理ダッシュボード - 協力隊サポート</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 min-h-screen">
+
+<div class="flex min-h-screen">
+
+  <!-- Sidebar -->
+  <aside class="w-64 bg-slate-900 text-slate-100 flex flex-col">
+    <div class="px-5 py-5 border-b border-slate-800">
+      <div class="text-xs text-slate-400">兵庫県</div>
+      <div class="font-bold">協力隊サポート</div>
+    </div>
+    <nav class="flex-1 py-4 text-sm">
+      <div class="px-5 py-2 text-xs text-slate-500 uppercase">ビュー</div>
+      <a class="block px-5 py-2 bg-slate-800 text-white">📊 県全体ダッシュボード</a>
+      <a class="block px-5 py-2 text-slate-300 hover:bg-slate-800">👥 隊員一覧</a>
+      <a class="block px-5 py-2 text-slate-300 hover:bg-slate-800">📝 月次レポート</a>
+      <a class="block px-5 py-2 text-slate-300 hover:bg-slate-800">🏷️ 活動タグ分析</a>
+      <div class="px-5 py-2 mt-4 text-xs text-slate-500 uppercase">市町村</div>
+      <a class="block px-5 py-1.5 text-slate-300 hover:bg-slate-800 text-xs">丹波篠山市 (3名)</a>
+      <a class="block px-5 py-1.5 text-slate-300 hover:bg-slate-800 text-xs">養父市 (2名)</a>
+      <a class="block px-5 py-1.5 text-slate-300 hover:bg-slate-800 text-xs">朝来市 (4名)</a>
+      <a class="block px-5 py-1.5 text-slate-300 hover:bg-slate-800 text-xs">豊岡市 (5名)</a>
+      <a class="block px-5 py-1.5 text-slate-500 text-xs">...他24市町村</a>
+    </nav>
+    <div class="px-5 py-4 border-t border-slate-800 text-xs text-slate-400">
+      ログイン中: 県庁地域振興課
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="flex-1 overflow-y-auto">
+    <header class="px-8 py-5 bg-white border-b border-slate-200 flex justify-between items-center">
+      <div>
+        <h1 class="text-xl font-bold">県全体ダッシュボード</h1>
+        <div class="text-xs text-slate-500">2026年4月 / 最終更新: 10分前</div>
+      </div>
+      <div class="flex gap-2">
+        <button class="px-4 py-2 border border-slate-300 rounded-lg text-sm">CSV出力</button>
+        <button class="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm">月次レポート一括ダウンロード</button>
+      </div>
+    </header>
+
+    <div class="p-8 space-y-6">
+
+      <!-- KPI cards -->
+      <div class="grid grid-cols-4 gap-4">
+        <div class="p-5 bg-white rounded-xl shadow-sm">
+          <div class="text-xs text-slate-500">県内隊員数</div>
+          <div class="text-3xl font-bold mt-1">87 <span class="text-sm text-slate-400 font-normal">人</span></div>
+          <div class="text-xs text-emerald-600 mt-1">↑ 前月比 +3</div>
+        </div>
+        <div class="p-5 bg-white rounded-xl shadow-sm">
+          <div class="text-xs text-slate-500">今月の日報提出率</div>
+          <div class="text-3xl font-bold mt-1">78<span class="text-sm font-normal">%</span></div>
+          <div class="text-xs text-emerald-600 mt-1">↑ 前月比 +12pt</div>
+        </div>
+        <div class="p-5 bg-white rounded-xl shadow-sm">
+          <div class="text-xs text-slate-500">月次報告書提出済</div>
+          <div class="text-3xl font-bold mt-1">62 <span class="text-sm text-slate-400 font-normal">/ 87</span></div>
+          <div class="text-xs text-slate-500 mt-1">25名未提出</div>
+        </div>
+        <div class="p-5 bg-white rounded-xl shadow-sm">
+          <div class="text-xs text-slate-500">平均作成時間削減</div>
+          <div class="text-3xl font-bold mt-1 text-emerald-600">-68<span class="text-sm font-normal">%</span></div>
+          <div class="text-xs text-slate-500 mt-1">2.5h → 48分</div>
+        </div>
+      </div>
+
+      <!-- Activity distribution + Members table -->
+      <div class="grid grid-cols-3 gap-4">
+
+        <div class="col-span-1 p-5 bg-white rounded-xl shadow-sm">
+          <h2 class="font-semibold mb-4">活動カテゴリ分布(県内)</h2>
+          <div class="space-y-2 text-sm">
+            <div>
+              <div class="flex justify-between"><span>移住促進</span><span class="font-semibold">32%</span></div>
+              <div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-emerald-500" style="width: 32%"></div></div>
+            </div>
+            <div>
+              <div class="flex justify-between"><span>農業・一次産業</span><span class="font-semibold">24%</span></div>
+              <div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-emerald-500" style="width: 24%"></div></div>
+            </div>
+            <div>
+              <div class="flex justify-between"><span>観光・インバウンド</span><span class="font-semibold">18%</span></div>
+              <div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-emerald-500" style="width: 18%"></div></div>
+            </div>
+            <div>
+              <div class="flex justify-between"><span>教育・子育て</span><span class="font-semibold">12%</span></div>
+              <div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-emerald-500" style="width: 12%"></div></div>
+            </div>
+            <div>
+              <div class="flex justify-between"><span>その他</span><span class="font-semibold">14%</span></div>
+              <div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-emerald-500" style="width: 14%"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-span-2 p-5 bg-white rounded-xl shadow-sm">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="font-semibold">隊員一覧(抜粋)</h2>
+            <input class="px-3 py-1 border border-slate-200 rounded text-xs" placeholder="隊員名・市町村で検索...">
+          </div>
+          <table class="w-full text-sm">
+            <thead class="text-left text-xs text-slate-500 border-b border-slate-200">
+              <tr>
+                <th class="pb-2">名前</th>
+                <th class="pb-2">市町村</th>
+                <th class="pb-2">着任</th>
+                <th class="pb-2">最終日報</th>
+                <th class="pb-2">今月レポート</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr class="hover:bg-slate-50">
+                <td class="py-2.5">田中 あかり</td>
+                <td class="py-2.5 text-slate-600">丹波篠山市</td>
+                <td class="py-2.5 text-slate-600">2025/04</td>
+                <td class="py-2.5 text-slate-600">4/18</td>
+                <td class="py-2.5"><span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-xs">提出済</span></td>
+              </tr>
+              <tr class="hover:bg-slate-50">
+                <td class="py-2.5">山本 健一</td>
+                <td class="py-2.5 text-slate-600">養父市</td>
+                <td class="py-2.5 text-slate-600">2024/10</td>
+                <td class="py-2.5 text-slate-600">4/17</td>
+                <td class="py-2.5"><span class="px-2 py-0.5 bg-amber-100 text-amber-800 rounded text-xs">ドラフト中</span></td>
+              </tr>
+              <tr class="hover:bg-slate-50">
+                <td class="py-2.5">佐藤 美咲</td>
+                <td class="py-2.5 text-slate-600">朝来市</td>
+                <td class="py-2.5 text-slate-600">2025/07</td>
+                <td class="py-2.5 text-slate-600">4/15</td>
+                <td class="py-2.5"><span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-xs">提出済</span></td>
+              </tr>
+              <tr class="hover:bg-slate-50">
+                <td class="py-2.5">鈴木 悠人</td>
+                <td class="py-2.5 text-slate-600">豊岡市</td>
+                <td class="py-2.5 text-slate-600">2023/04</td>
+                <td class="py-2.5 text-slate-600">4/05</td>
+                <td class="py-2.5"><span class="px-2 py-0.5 bg-rose-100 text-rose-800 rounded text-xs">未着手</span></td>
+              </tr>
+              <tr class="hover:bg-slate-50">
+                <td class="py-2.5">木村 桜</td>
+                <td class="py-2.5 text-slate-600">丹波篠山市</td>
+                <td class="py-2.5 text-slate-600">2024/04</td>
+                <td class="py-2.5 text-slate-600">4/18</td>
+                <td class="py-2.5"><span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-xs">提出済</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="mt-3 text-xs text-slate-500">5 / 87 件を表示</div>
+        </div>
+
+      </div>
+
+      <!-- Insights -->
+      <div class="p-5 bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-200 rounded-xl">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-lg">✨</span>
+          <span class="font-semibold text-violet-900">AIインサイト(県全体)</span>
+        </div>
+        <ul class="text-sm text-violet-900 space-y-1 list-disc pl-5">
+          <li>今月は「空き家」関連活動が前月比+40%。丹波篠山市・養父市で集中発生</li>
+          <li>「販路開拓」に取り組む隊員が増加。近隣市町村で連携余地あり</li>
+          <li>未提出25名のうち15名は着任1年以内。オンボーディング支援検討を推奨</li>
+        </ul>
+      </div>
+
+    </div>
+  </main>
+
+</div>
+
+<a href="./index.html" class="fixed top-4 right-4 px-3 py-2 bg-white rounded-lg shadow text-xs">← モック一覧</a>
+</body>
+</html>
