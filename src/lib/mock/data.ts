@@ -278,14 +278,14 @@ export const tagOptions: string[] = [
 export type NavLink = {
   href: Route;
   label: string;
-  icon: "home" | "log" | "report" | "bell" | "chat" | "settings" | "dashboard" | "users" | "megaphone";
+  icon: "home" | "log" | "report" | "bell" | "chat" | "settings" | "dashboard" | "users" | "megaphone" | "phone" | "cases" | "assistant";
 };
 
 export const memberNav: NavLink[] = [
   { href: "/me", label: "ホーム", icon: "home" },
   { href: "/me/logs", label: "日報", icon: "log" },
   { href: "/me/reports", label: "レポート", icon: "report" },
-  { href: "/me/chat", label: "連絡", icon: "chat" },
+  { href: "/me/chat", label: "連絡", icon: "phone" },
 ];
 
 export function formatJstDate(iso: string) {
@@ -311,3 +311,253 @@ export function statusBadge(status: MockMember["currentMonthStatus"]) {
       return { label: "未着手", className: "bg-rose-100 text-rose-800" };
   }
 }
+
+// ================== 担当課ハブ(Issue #11) ==================
+export type MockContact = {
+  id: string;
+  name: string;
+  department: string;
+  role: string;
+  phone: string;
+  email: string;
+  avatarColor: string;
+  initials: string;
+};
+
+export const mockContacts: MockContact[] = [
+  {
+    id: "staff1",
+    name: "山田 総務課長",
+    department: "総務課",
+    role: "主担当 / 活動費・勤務管理",
+    phone: "079-123-4567",
+    email: "yamada@example.lg.jp",
+    avatarColor: "bg-slate-200 text-slate-700",
+    initials: "山",
+  },
+  {
+    id: "staff2",
+    name: "佐藤 係長",
+    department: "農林振興課",
+    role: "活動連携 / 事業調整",
+    phone: "079-123-4568",
+    email: "sato@example.lg.jp",
+    avatarColor: "bg-teal-200 text-teal-900",
+    initials: "佐",
+  },
+  {
+    id: "staff3",
+    name: "鈴木 主事",
+    department: "企画防災課",
+    role: "広報・イベント連携",
+    phone: "079-123-4569",
+    email: "suzuki@example.lg.jp",
+    avatarColor: "bg-indigo-200 text-indigo-900",
+    initials: "鈴",
+  },
+];
+
+// ================== 活動費(Issue #16) ==================
+export type MockBudget = {
+  fiscalYear: string;
+  totalBudget: number;
+  used: number;
+  categories: { name: string; budget: number; used: number }[];
+};
+
+export const mockBudget: MockBudget = {
+  fiscalYear: "2026",
+  totalBudget: 2_000_000,
+  used: 456_000,
+  categories: [
+    { name: "研修費", budget: 200_000, used: 85_000 },
+    { name: "旅費・交通費", budget: 500_000, used: 152_000 },
+    { name: "事務経費", budget: 300_000, used: 78_000 },
+    { name: "事業費", budget: 1_000_000, used: 141_000 },
+  ],
+};
+
+// ================== 事例DB(Issue #6) ==================
+export type MockCase = {
+  id: string;
+  title: string;
+  summary: string;
+  region: string;
+  authorAnon: string;
+  period: string;
+  tags: string[];
+  outcome: string;
+  body: string;
+};
+
+export const mockCases: MockCase[] = [
+  {
+    id: "c1",
+    title: "地域猫活動を協力隊業務化した交渉の記録",
+    summary: "「直接業務化」で却下 → 「住民活動の支援」として再提案で承認を得た事例。",
+    region: "兵庫県南部",
+    authorAnon: "Iさん(任期2年目)",
+    period: "2024年",
+    tags: ["行政交渉", "住民活動支援", "地域猫"],
+    outcome: "月 4 時間の業務として認定、カフェ併設の拠点整備へ",
+    body: "最初の提案は『協力隊として地域猫保護活動をやりたい』と伝えたが、『公の業務としては認められない』と却下。その後、地域住民(高齢者)で猫の世話をしている方がいるのを知り、『その住民活動の支援』として再提案。業務として週 1 時間 × 月 4 回が認められた。",
+  },
+  {
+    id: "c2",
+    title: "島の特産品を都市部レストランと直接取引",
+    summary: "高級スーパーや展示会を活用して、生産者 12 軒と首都圏 2 店舗の契約を仲介。",
+    region: "兵庫県南部",
+    authorAnon: "Oさん(任期3年目)",
+    period: "2023-2025年",
+    tags: ["販路開拓", "農業", "展示会"],
+    outcome: "年商 800 万円規模の取引、生産者の平均単価 1.4 倍",
+    body: "ハイエース 1 台で幕張メッセの展示会に出展。試食 500 食を配布、名刺交換 120 件。そのうち 2 件が月次注文につながった。ロスを減らすため、直売所・レストランでの余剰消費ルートも確保。",
+  },
+  {
+    id: "c3",
+    title: "空き家バンクへの登録交渉(高齢所有者向け)",
+    summary: "司法書士と連携し、登記・相続の相談窓口を同時提供することで登録数を倍増。",
+    region: "兵庫県中部",
+    authorAnon: "Aさん(任期1年目)",
+    period: "2025年",
+    tags: ["空き家バンク", "移住促進", "行政連携"],
+    outcome: "半年で登録 15 件(前年比 +200%)",
+    body: "空き家所有者の高齢化に合わせ、単なる登録依頼ではなく『相続・登記の専門家同席』をセットにした。所有者の心理的ハードルが下がり、登録率が大幅に向上。",
+  },
+  {
+    id: "c4",
+    title: "SNS 発信を専属隊員に切り出して本業負担軽減",
+    summary: "週 1 以上の投稿ノルマを、SNS 特化の 2 年目隊員に集約し、プレイヤーは現場活動に集中。",
+    region: "兵庫県南部",
+    authorAnon: "Iさん(任期2年目)",
+    period: "2024年",
+    tags: ["広報・情報発信", "役割分担", "運用改善"],
+    outcome: "フォロワー 3 倍・プレイヤー稼働時間 +30%",
+    body: "プレイヤーが発信業務も兼ねると両方が中途半端になる。2 年目加入の隊員に SNS 専業で任せ、現場隊員は写真素材だけ提供する運用に。結果として発信の質と現場活動の密度が両立。",
+  },
+  {
+    id: "c5",
+    title: "第3セクター勤務中の労務トラブル回避",
+    summary: "業務委託のはずが実態は社員的な働き方に。社労士相談を早期に実施し契約見直しへ。",
+    region: "兵庫県西部",
+    authorAnon: "Kさん(任期3年目)",
+    period: "2023-2024年",
+    tags: ["労務", "業務委託", "契約見直し"],
+    outcome: "労働時間の可視化、契約条項の明文化",
+    body: "出発・帰着時間が固定されシフトが組まれる実態。社労士への相談で『偽装請負の恐れ』を指摘され、役場に労務改善を要請。最終的に裁量の確保と時間管理の分離を実現。",
+  },
+  {
+    id: "c6",
+    title: "北海道東川町モデルから学んだデザイン思考による地域ブランド",
+    summary: "研修参加で得た『写真の町』のブランディングを自地域向けに翻案。",
+    region: "北海道・兵庫",
+    authorAnon: "Sさん(任期1年目)",
+    period: "2025年",
+    tags: ["研修", "ブランディング", "移住促進"],
+    outcome: "地域 PR イベント 3 件企画・実施",
+    body: "東川町の『子育て × 写真 × デザイン』の一貫性に学び、自地域では『猫 × カフェ × 島』を軸にした情報発信へ。単発イベントではなく継続したブランドストーリーを重視。",
+  },
+  {
+    id: "c7",
+    title: "コミュニティカフェの改修計画と資金調達",
+    summary: "補助金と自己資金の組み合わせで、任期中に物件改修を完了。",
+    region: "兵庫県南部",
+    authorAnon: "Sさん(任期3年目)",
+    period: "2025-2026年",
+    tags: ["任期後", "起業", "補助金", "空き家"],
+    outcome: "物件改修完了・開店準備中",
+    body: "民泊規制エリアだったため、シェアカフェ + シェアキッチン機能にピボット。地域ファンド+中小企業庁の交付金+自己資金で改修。任期終了後もその地に住み続ける拠点に。",
+  },
+  {
+    id: "c8",
+    title: "78歳の養蜂家師匠への弟子入り(技術継承)",
+    summary: "無給で通い、1 年で独立できるレベルに。高齢生産者の技術を地域に残す試み。",
+    region: "兵庫県西部",
+    authorAnon: "Kさん(任期2年目)",
+    period: "2024年",
+    tags: ["技術継承", "農業", "第一次産業"],
+    outcome: "独立養蜂 2 群、師匠の技術をドキュメント化",
+    body: "師匠に『弟子にしてください』と直接頼み込み、週 2 日通い詰め。技術は口頭伝承だったため、作業を動画と文章で記録。地域財産として残す意識。",
+  },
+  {
+    id: "c9",
+    title: "市長提案で『観光特区(民泊特区)』構想を動かす",
+    summary: "現場からのボトムアップで首長案件に昇格させたプロセス。",
+    region: "兵庫県南部",
+    authorAnon: "Sさん(任期3年目)",
+    period: "2025年",
+    tags: ["行政交渉", "民泊", "特区", "首長"],
+    outcome: "特区検討会議の設置(現在進行中)",
+    body: "現場の需要(空き家 + 観光客)を数値化して市長秘書に提出。市長判断で検討会議が設置され、制度変更の俎上に乗った。小さな声を届ける筋道の実例。",
+  },
+  {
+    id: "c10",
+    title: "活動費の内訳を役場に聞いて可視化",
+    summary: "1 年目は内訳不明だったが、交渉で初めて 200 万円の配分を把握。",
+    region: "兵庫県南部",
+    authorAnon: "Sさん(任期2年目)",
+    period: "2024年",
+    tags: ["活動費", "行政交渉", "透明化"],
+    outcome: "隊員が予算を自主管理できる体制へ",
+    body: "他隊員の試作品作りに予算が回されそうになったことがきっかけ。役場に活動費の内訳を問い合わせ、研修費・事業費・事務経費の配分を把握。自分の事業計画と予算を紐付けて管理できるように。",
+  },
+];
+
+export const caseTags = [
+  "全て",
+  "行政交渉",
+  "移住促進",
+  "空き家バンク",
+  "農業",
+  "販路開拓",
+  "広報・情報発信",
+  "研修",
+  "任期後",
+  "労務",
+  "活動費",
+];
+
+// ================== AI 相談モード(Issue #4) ==================
+export type AssistantMode = {
+  id: string;
+  label: string;
+  description: string;
+  icon: string;
+  accentClass: string;
+  sampleQuestion: string;
+};
+
+export const assistantModes: AssistantMode[] = [
+  {
+    id: "strategy",
+    label: "戦略レビュー",
+    description: "事業計画が「地域のためになるか」AI が批判的に評価",
+    icon: "🎯",
+    accentClass: "from-violet-500 to-indigo-500",
+    sampleQuestion: "次の事業計画を戦略視点でレビューしてほしい: ...",
+  },
+  {
+    id: "proposal",
+    label: "提案準備",
+    description: "役場への提案を整理、却下リスクと別アプローチを提示",
+    icon: "🏛",
+    accentClass: "from-emerald-500 to-teal-500",
+    sampleQuestion: "役場に提案したいけど通らなそうな案がある",
+  },
+  {
+    id: "career",
+    label: "キャリア相談",
+    description: "任期後の道筋、起業・転職・残留を整理",
+    icon: "💼",
+    accentClass: "from-amber-500 to-orange-500",
+    sampleQuestion: "任期まであと 1 年半、どう動くべきか",
+  },
+  {
+    id: "worry",
+    label: "悩み相談",
+    description: "今の課題を整理、次の一歩を一緒に考える",
+    icon: "💭",
+    accentClass: "from-sky-500 to-cyan-500",
+    sampleQuestion: "最近活動の方向性に迷っている",
+  },
+];

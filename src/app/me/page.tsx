@@ -3,20 +3,33 @@ import type { Route } from "next";
 import { Card, CardBody } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/avatar";
-import { Flame, Pencil, Bell, FileText, MessageCircle, ChevronRight } from "lucide-react";
+import {
+  Flame,
+  Pencil,
+  Sparkles,
+  FolderSearch,
+  Phone,
+  Wallet,
+  FileText,
+  ChevronRight,
+} from "lucide-react";
 import {
   currentMember,
-  mockAnnouncements,
-  mockDailyLogs,
   mockMonthlyReport,
+  mockBudget,
+  mockContacts,
   statusBadge,
 } from "@/lib/mock/data";
 
+function formatJpy(n: number) {
+  return `¥${n.toLocaleString("ja-JP")}`;
+}
+
 export default function MemberHomePage() {
-  const unreadCount = mockAnnouncements.filter((a) => !a.read).length;
-  const todayLog = mockDailyLogs[0];
   const report = mockMonthlyReport;
-  const badge = statusBadge(currentMember.currentMonthStatus);
+  const reportBadge = statusBadge(currentMember.currentMonthStatus);
+  const budget = mockBudget;
+  const used = Math.round((budget.used / budget.totalBudget) * 100);
 
   return (
     <div className="flex flex-col gap-4 px-5 pb-6 pt-5">
@@ -35,14 +48,14 @@ export default function MemberHomePage() {
         </div>
       </header>
 
-      <div className="flex items-center gap-3 rounded-2xl bg-gradient-to-r from-emerald-100 to-emerald-50 px-4 py-3 text-sm">
+      <div className="flex items-center gap-3 rounded-2xl bg-gradient-to-r from-emerald-100 to-emerald-50 px-4 py-3">
         <Flame className="h-6 w-6 text-emerald-600" />
-        <div>
-          <div className="font-semibold text-emerald-900">
+        <div className="flex-1">
+          <div className="text-sm font-semibold text-emerald-900">
             12 日連続で記録中
           </div>
           <div className="text-xs text-emerald-700">
-            今月は {currentMember.thisMonthLogCount} / 30 日
+            今月 {currentMember.thisMonthLogCount} / 30 日
           </div>
         </div>
       </div>
@@ -52,13 +65,11 @@ export default function MemberHomePage() {
           <CardBody className="flex items-center justify-between">
             <div>
               <div className="text-xs uppercase tracking-wide text-emerald-100">
-                今日の日報
+                今日の一歩
               </div>
-              <div className="mt-1 text-base font-bold">
-                まだ記入していません
-              </div>
-              <div className="mt-1 text-xs text-emerald-100">
-                音声入力でも OK
+              <div className="mt-1 text-lg font-bold">日報を書く</div>
+              <div className="mt-0.5 text-xs text-emerald-100">
+                テキスト・音声・写真、どれでも OK
               </div>
             </div>
             <div className="rounded-full bg-white/20 p-3">
@@ -68,119 +79,147 @@ export default function MemberHomePage() {
         </Card>
       </Link>
 
-      <Link href={`/me/reports/${report.yearMonth}` as Route}>
-        <Card>
-          <CardBody className="flex items-center justify-between">
-            <div className="flex items-start gap-3">
-              <div className="rounded-xl bg-violet-100 p-2 text-violet-700">
-                <FileText className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="text-xs text-slate-500">
-                  {report.yearMonth} 月次報告
-                </div>
-                <div className="mt-0.5 font-semibold text-slate-900">
-                  AI ドラフト生成済
-                </div>
-                <div className="mt-0.5 text-xs text-slate-500">
-                  日報 {report.sourceLogCount} 件から作成
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
-              <Badge className={badge.className}>{badge.label}</Badge>
-              <ChevronRight className="h-4 w-4 text-slate-400" />
-            </div>
-          </CardBody>
-        </Card>
-      </Link>
-
-      <Link href="/me/announcements" className="block">
-        <Card>
-          <CardBody className="flex items-center justify-between">
-            <div className="flex items-start gap-3">
-              <div className="relative rounded-xl bg-amber-100 p-2 text-amber-700">
-                <Bell className="h-5 w-5" />
-                {unreadCount > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
-                    {unreadCount}
+      <section>
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          活動を広げる
+        </h2>
+        <div className="grid grid-cols-2 gap-3">
+          <Link href="/me/assistant" className="block">
+            <div className="rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-500 p-0.5 shadow-md">
+              <div className="flex h-full flex-col rounded-[calc(1rem-2px)] bg-white px-3 py-3">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="h-4 w-4 text-violet-500" />
+                  <span className="text-xs font-semibold text-violet-700">
+                    AI に相談
                   </span>
-                )}
-              </div>
-              <div>
-                <div className="font-semibold text-slate-900">お知らせ</div>
-                <div className="text-xs text-slate-500">
-                  {unreadCount > 0 ? `未読 ${unreadCount} 件` : "未読なし"}
                 </div>
+                <p className="mt-1 text-xs leading-snug text-slate-600">
+                  戦略レビュー / 提案準備 / キャリア / 悩み
+                </p>
               </div>
             </div>
-            <ChevronRight className="h-4 w-4 text-slate-400" />
-          </CardBody>
-        </Card>
-      </Link>
+          </Link>
 
-      <Link href="/me/chat" className="block">
-        <Card>
-          <CardBody className="flex items-center justify-between">
-            <div className="flex items-start gap-3">
-              <div className="rounded-xl bg-sky-100 p-2 text-sky-700">
-                <MessageCircle className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="font-semibold text-slate-900">
-                  役場担当とのチャット
+          <Link href="/me/cases" className="block">
+            <Card className="h-full">
+              <CardBody className="flex h-full flex-col py-3">
+                <div className="flex items-center gap-1.5">
+                  <FolderSearch className="h-4 w-4 text-slate-600" />
+                  <span className="text-xs font-semibold text-slate-800">
+                    事例を探す
+                  </span>
                 </div>
-                <div className="text-xs text-slate-500">
-                  新着メッセージ 1 件
-                </div>
-              </div>
-            </div>
-            <ChevronRight className="h-4 w-4 text-slate-400" />
-          </CardBody>
-        </Card>
-      </Link>
+                <p className="mt-1 text-xs leading-snug text-slate-600">
+                  全国の活動事例 / 役場提案の材料
+                </p>
+              </CardBody>
+            </Card>
+          </Link>
+        </div>
+      </section>
 
-      <section className="mt-2">
+      <section>
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          今月の状況
+        </h2>
+        <div className="grid grid-cols-1 gap-3">
+          <Link href={`/me/reports/${report.yearMonth}` as Route}>
+            <Card>
+              <CardBody className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-xl bg-violet-100 p-2 text-violet-700">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-500">
+                      {report.yearMonth} 月次報告
+                    </div>
+                    <div className="text-sm font-semibold text-slate-900">
+                      AI ドラフト生成済
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      日報 {report.sourceLogCount} 件から
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge className={reportBadge.className}>
+                    {reportBadge.label}
+                  </Badge>
+                  <ChevronRight className="h-4 w-4 text-slate-400" />
+                </div>
+              </CardBody>
+            </Card>
+          </Link>
+
+          <Card>
+            <CardBody>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-xl bg-teal-100 p-2 text-teal-700">
+                    <Wallet className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-slate-500">
+                      {budget.fiscalYear} 年度 活動費
+                    </div>
+                    <div className="text-sm font-semibold text-slate-900">
+                      残 {formatJpy(budget.totalBudget - budget.used)}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {formatJpy(budget.used)} / {formatJpy(budget.totalBudget)} 使用 ({used}%)
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-teal-500"
+                  style={{ width: `${used}%` }}
+                />
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+      </section>
+
+      <section>
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-700">
-            最近の日報
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            あなたの担当者
           </h2>
-          <Link
-            href="/me/logs"
-            className="text-xs font-medium text-brand-600"
-          >
+          <Link href="/me/chat" className="text-xs font-medium text-brand-600">
             すべて見る
           </Link>
         </div>
         <Card>
-          {mockDailyLogs.slice(0, 3).map((log, i) => (
-            <div
-              key={log.id}
-              className={i > 0 ? "border-t border-slate-100" : ""}
-            >
-              <CardBody className="flex items-center justify-between">
+          <div className="divide-y divide-slate-100">
+            {mockContacts.slice(0, 2).map((c) => (
+              <div
+                key={c.id}
+                className="flex items-center gap-3 px-5 py-3"
+              >
+                <Avatar
+                  initials={c.initials}
+                  className={`h-9 w-9 ${c.avatarColor}`}
+                />
                 <div className="min-w-0 flex-1">
-                  <div className="text-xs text-slate-500">
-                    {log.date} ({log.weekday})
+                  <div className="truncate text-sm font-medium text-slate-900">
+                    {c.name}
                   </div>
-                  <div className="mt-0.5 truncate text-sm font-medium text-slate-800">
-                    {log.bodyMd.split("\n")[0]}
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {log.tags.slice(0, 2).map((tag) => (
-                      <Badge
-                        key={tag}
-                        className="bg-slate-100 text-slate-600"
-                      >
-                        {tag}
-                      </Badge>
-                    ))}
+                  <div className="truncate text-xs text-slate-500">
+                    {c.department}
                   </div>
                 </div>
-                <ChevronRight className="ml-2 h-4 w-4 shrink-0 text-slate-400" />
-              </CardBody>
-            </div>
-          ))}
+                <a
+                  href={`tel:${c.phone}`}
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-600"
+                >
+                  <Phone className="h-3.5 w-3.5" />
+                </a>
+              </div>
+            ))}
+          </div>
         </Card>
       </section>
     </div>

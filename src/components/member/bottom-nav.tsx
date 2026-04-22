@@ -9,6 +9,7 @@ import {
   NotebookPen,
   FileText,
   MessageCircle,
+  Phone,
 } from "lucide-react";
 
 const iconMap = {
@@ -16,6 +17,7 @@ const iconMap = {
   log: NotebookPen,
   report: FileText,
   chat: MessageCircle,
+  phone: Phone,
 } as const;
 
 export function MemberBottomNav() {

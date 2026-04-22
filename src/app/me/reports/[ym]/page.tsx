@@ -102,6 +102,35 @@ export default async function ReportDetailPage({ params }: Props) {
           このドラフトは AI により自動生成されています。内容を確認のうえ、
           編集してから提出してください。
         </div>
+
+        <div className="mt-5">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            役場からのフィードバック(先月分の例)
+          </h3>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm">
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-slate-700">
+                山
+              </span>
+              <span className="font-medium">山田 総務課長</span>
+              <span>/ 2026 年 3 月分を承認</span>
+            </div>
+            <div className="mt-2 space-y-1 text-slate-800">
+              <p>
+                <strong>評価できる点</strong>: 空き家バンク登録 6 件は大きな成果。
+              </p>
+              <p>
+                <strong>改善提案</strong>: 販路開拓は関係課と連携の機会を増やせそう。
+              </p>
+              <p>
+                <strong>来月の期待</strong>: レストラン本契約、成功を祈っています。
+              </p>
+            </div>
+            <div className="mt-3 rounded-lg bg-emerald-50 px-3 py-1.5 text-xs text-emerald-900">
+              承認時に**コメント必須**。役場から声が返ってくる仕組みです。
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="space-y-2 border-t border-slate-200 bg-white px-5 py-3">
