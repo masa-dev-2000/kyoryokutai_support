@@ -5,6 +5,16 @@ import { mockMonthlyReport } from "@/lib/mock/data";
 
 type Props = { params: Promise<{ ym: string }> };
 
+export function generateStaticParams() {
+  return [
+    { ym: "2026-04" },
+    { ym: "2026-03" },
+    { ym: "2026-02" },
+    { ym: "2026-01" },
+    { ym: "2025-12" },
+  ];
+}
+
 function renderMarkdown(md: string) {
   const lines = md.split("\n");
   const nodes: React.ReactNode[] = [];
