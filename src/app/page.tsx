@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Smartphone, ArrowRight, Building2 } from "lucide-react";
+import { Smartphone, ArrowRight, Building2, LayoutDashboard } from "lucide-react";
 
 export default function HomePage() {
   return (
@@ -16,25 +16,47 @@ export default function HomePage() {
         </p>
       </header>
 
-      <section className="space-y-4">
+      <section className="grid gap-4 sm:grid-cols-2">
         <Link href="/me" className="block">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:shadow-md">
-            <div className="flex items-center gap-3">
+          <div className="h-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:shadow-md">
+            <div className="flex items-start gap-3">
               <div className="rounded-xl bg-brand-50 p-2.5 text-brand-600">
                 <Smartphone className="h-5 w-5" />
               </div>
               <div className="flex-1">
                 <div className="text-xs font-semibold text-brand-600">
-                  隊員用(スマホ前提)
+                  隊員用(スマホ画面)
                 </div>
                 <div className="mt-1 text-lg font-bold text-slate-900">
-                  アプリ画面のデモを見る
+                  隊員アプリを見る
                 </div>
                 <p className="mt-1 text-sm text-slate-600">
                   ホーム / 日報 / 月次レポート / 事例DB / AI 相談 / 連絡
                 </p>
               </div>
-              <ArrowRight className="h-5 w-5 text-slate-400" />
+              <ArrowRight className="h-5 w-5 shrink-0 text-slate-400" />
+            </div>
+          </div>
+        </Link>
+
+        <Link href="/admin" className="block">
+          <div className="h-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:shadow-md">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-slate-900 p-2.5 text-white">
+                <LayoutDashboard className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <div className="text-xs font-semibold text-slate-700">
+                  役場担当者用(PC 画面)
+                </div>
+                <div className="mt-1 text-lg font-bold text-slate-900">
+                  管理ダッシュボードを見る
+                </div>
+                <p className="mt-1 text-sm text-slate-600">
+                  隊員一覧 / 月次報告承認 / お知らせ配信 / 活動サマリー / 事例集
+                </p>
+              </div>
+              <ArrowRight className="h-5 w-5 shrink-0 text-slate-400" />
             </div>
           </div>
         </Link>
