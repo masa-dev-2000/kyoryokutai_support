@@ -3,7 +3,7 @@ import { Card, CardBody } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { mockContacts, mockAnnouncements, formatJstDate } from "@/lib/mock/data";
-import { Phone, Mail, Bell, ChevronRight } from "lucide-react";
+import { Users, Bell, ChevronRight } from "lucide-react";
 
 export default function ContactPage() {
   const unread = mockAnnouncements.filter((a) => !a.read);
@@ -19,7 +19,7 @@ export default function ContactPage() {
       <div className="flex-1 space-y-6 overflow-y-auto px-5 py-4">
         <section>
           <h2 className="mb-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            <Phone className="h-3.5 w-3.5" />
+            <Users className="h-3.5 w-3.5" />
             あなたの担当者 {mockContacts.length} 名
           </h2>
           <div className="space-y-2">
@@ -37,29 +37,17 @@ export default function ContactPage() {
                     <div className="text-xs text-slate-500">
                       {c.department} / {c.role}
                     </div>
-                  </div>
-                  <div className="flex gap-1.5">
-                    <a
-                      href={`tel:${c.phone}`}
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-600 text-white shadow-md shadow-brand-600/20"
-                      aria-label={`${c.name}に電話`}
-                    >
-                      <Phone className="h-4 w-4" />
-                    </a>
-                    <a
-                      href={`mailto:${c.email}`}
-                      className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-600"
-                      aria-label={`${c.name}にメール`}
-                    >
-                      <Mail className="h-4 w-4" />
-                    </a>
+                    <div className="mt-1 flex flex-wrap gap-x-3 text-[11px] text-slate-500">
+                      <span>{c.phone}</span>
+                      <span>{c.email}</span>
+                    </div>
                   </div>
                 </CardBody>
               </Card>
             ))}
           </div>
           <p className="mt-2 px-1 text-xs text-slate-500">
-            電話・メールは自動的に端末の標準アプリが起動します。
+            連絡は LINE・電話・対面など、いつもの手段で。
           </p>
         </section>
 

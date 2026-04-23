@@ -8,7 +8,6 @@ import {
   Pencil,
   Sparkles,
   FolderSearch,
-  Phone,
   Wallet,
   FileText,
   ChevronRight,
@@ -211,12 +210,7 @@ export default function MemberHomePage() {
                     {c.department}
                   </div>
                 </div>
-                <a
-                  href={`tel:${c.phone}`}
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-600"
-                >
-                  <Phone className="h-3.5 w-3.5" />
-                </a>
+                <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
               </div>
             ))}
           </div>
