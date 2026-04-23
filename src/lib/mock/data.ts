@@ -561,3 +561,178 @@ export const assistantModes: AssistantMode[] = [
     sampleQuestion: "最近活動の方向性に迷っている",
   },
 ];
+
+// ================== 活動プロジェクト(Issue #22) ==================
+export type MockProject = {
+  id: string;
+  name: string;
+  summary: string;
+  status: "active" | "completed" | "paused";
+  periodStart: string;
+  periodEnd: string;
+  progress: number;
+  tags: string[];
+  milestones: { label: string; done: boolean }[];
+  outcomes: string[];
+  linkedLogCount: number;
+};
+
+export const mockProjects: MockProject[] = [
+  {
+    id: "p1",
+    name: "空き家バンク登録促進プロジェクト",
+    summary: "篠山地区と大山地区で空き家所有者との登録交渉を進め、半年で登録数を倍増させる。",
+    status: "active",
+    periodStart: "2026-01-01",
+    periodEnd: "2026-06-30",
+    progress: 65,
+    tags: ["移住促進", "空き家バンク"],
+    milestones: [
+      { label: "エリア調査・所有者リスト化", done: true },
+      { label: "司法書士との連携体制", done: true },
+      { label: "登録 10 件達成", done: false },
+      { label: "移住案内キット制作", done: false },
+    ],
+    outcomes: ["登録 6 件(篠山 4・大山 2)", "移住確定 1 組(6 月予定)"],
+    linkedLogCount: 14,
+  },
+  {
+    id: "p2",
+    name: "山の芋 販路開拓プロジェクト",
+    summary: "生産者 12 軒と連携し、神戸市内レストラン・高級スーパーへの直接取引を開拓。",
+    status: "active",
+    periodStart: "2026-02-01",
+    periodEnd: "2026-08-31",
+    progress: 40,
+    tags: ["農業", "販路開拓"],
+    milestones: [
+      { label: "生産者ヒアリング 12 軒", done: true },
+      { label: "サンプル発送", done: true },
+      { label: "レストラン本契約 1 店舗", done: false },
+      { label: "生産者マップ完成", done: false },
+    ],
+    outcomes: ["仮決定 1 店舗", "生産者マップ初稿完成"],
+    linkedLogCount: 9,
+  },
+  {
+    id: "p3",
+    name: "移住相談オンライン窓口",
+    summary: "大阪・神戸圏の若年層向けに定期オンライン相談会を実施。",
+    status: "paused",
+    periodStart: "2025-10-01",
+    periodEnd: "2026-03-31",
+    progress: 80,
+    tags: ["移住促進", "相談対応"],
+    milestones: [
+      { label: "告知チラシ制作", done: true },
+      { label: "相談会 4 回開催", done: true },
+      { label: "移住 2 組確定", done: true },
+      { label: "Year 2 継続判断", done: false },
+    ],
+    outcomes: ["相談 4 回開催・14 組参加", "移住 2 組確定"],
+    linkedLogCount: 11,
+  },
+];
+
+// ================== 全国イベント情報(Issue #21) ==================
+export type MockEvent = {
+  id: string;
+  title: string;
+  host: string;
+  location: string;
+  region: string;
+  startDate: string;
+  endDate: string;
+  description: string;
+  tags: string[];
+  deadline: string;
+  isOnline: boolean;
+  joined?: boolean;
+};
+
+export const mockEvents: MockEvent[] = [
+  {
+    id: "e1",
+    title: "兵庫県 地域おこし協力隊 交流会(春)",
+    host: "兵庫県地域振興課",
+    location: "神戸ハーバーランド",
+    region: "兵庫県",
+    startDate: "2026-06-07",
+    endDate: "2026-06-07",
+    description: "県内協力隊員の活動共有と OB ネットワーキング。昼食付き。",
+    tags: ["交流会", "県内"],
+    deadline: "2026-05-25",
+    isOnline: false,
+    joined: true,
+  },
+  {
+    id: "e2",
+    title: "空き家活用・定住促進フォーラム 2026",
+    host: "総務省 / 全国移住者受入連絡協議会",
+    location: "東京 + オンライン",
+    region: "全国",
+    startDate: "2026-05-22",
+    endDate: "2026-05-22",
+    description: "全国の空き家バンク担当者・関連事業者が集まる事例共有・議論の場。",
+    tags: ["空き家バンク", "移住促進", "研修"],
+    deadline: "2026-05-15",
+    isOnline: true,
+  },
+  {
+    id: "e3",
+    title: "北海道東川町視察研修(写真の町モデル)",
+    host: "JOIN / 東川町",
+    location: "北海道東川町",
+    region: "北海道",
+    startDate: "2026-07-10",
+    endDate: "2026-07-12",
+    description: "デザイン × 定住促進の先進事例を 3 日間で学ぶ現地研修。",
+    tags: ["研修", "ブランディング"],
+    deadline: "2026-06-15",
+    isOnline: false,
+  },
+  {
+    id: "e4",
+    title: "中山間地域 販路開拓オンラインサミット",
+    host: "兵庫県農政課",
+    location: "オンライン",
+    region: "全国",
+    startDate: "2026-05-18",
+    endDate: "2026-05-18",
+    description: "農産物の直接販売・EC・レストラン契約の事例 5 件。",
+    tags: ["販路開拓", "農業", "研修"],
+    deadline: "2026-05-10",
+    isOnline: true,
+  },
+  {
+    id: "e5",
+    title: "協力隊 OB 起業家ミートアップ",
+    host: "OB 有志",
+    location: "大阪市内",
+    region: "近畿",
+    startDate: "2026-06-15",
+    endDate: "2026-06-15",
+    description: "任期後に起業した OB 8 名がトーク。事例紹介と個別相談タイム。",
+    tags: ["任期後", "起業", "OB"],
+    deadline: "2026-06-01",
+    isOnline: false,
+  },
+  {
+    id: "e6",
+    title: "地域 DX 勉強会(kintone vs 最新 SaaS)",
+    host: "総務省 地域社会DX推進室",
+    location: "オンライン",
+    region: "全国",
+    startDate: "2026-05-28",
+    endDate: "2026-05-28",
+    description: "自治体 DX の最前線。kintone 運用事例と新興 SaaS の比較。",
+    tags: ["研修", "行政連携"],
+    deadline: "2026-05-24",
+    isOnline: true,
+  },
+];
+
+export function formatPeriod(start: string, end: string) {
+  if (start === end) return start;
+  return `${start} 〜 ${end}`;
+}

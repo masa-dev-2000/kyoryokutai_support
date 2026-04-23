@@ -8,6 +8,7 @@ import {
   mockDailyLogs,
   mockMonthlyReport,
   mockBudget,
+  mockProjects,
   statusBadge,
 } from "@/lib/mock/data";
 import {
@@ -21,6 +22,7 @@ import {
   FileText,
   Mic,
   ImageIcon,
+  Target,
 } from "lucide-react";
 
 export function generateStaticParams() {
@@ -241,6 +243,53 @@ export default async function AdminMemberDetailPage({ params }: Props) {
                 </div>
               </div>
             </CardBody>
+          </Card>
+
+          {/* Projects */}
+          <Card>
+            <div className="border-b border-slate-100 px-5 py-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-900">
+                  活動プロジェクト({mockProjects.length} 件)
+                </h3>
+                <span className="text-xs text-slate-500">
+                  日報・月次と自動連携
+                </span>
+              </div>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {mockProjects.map((p) => (
+                <div key={p.id} className="px-5 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <Target className="h-3.5 w-3.5 text-emerald-600" />
+                        <span className="font-semibold text-slate-900">
+                          {p.name}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 line-clamp-1 text-xs text-slate-500">
+                        {p.summary}
+                      </p>
+                      <div className="mt-1 text-[11px] text-slate-500">
+                        {p.periodStart} 〜 {p.periodEnd} / 日報 {p.linkedLogCount} 件
+                      </div>
+                    </div>
+                    <div className="w-28 shrink-0">
+                      <div className="flex justify-end text-xs font-semibold text-emerald-700">
+                        {p.progress}%
+                      </div>
+                      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-emerald-500"
+                          style={{ width: `${p.progress}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </Card>
 
           {/* Daily log timeline */}

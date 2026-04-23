@@ -66,7 +66,7 @@ export default function HomePage() {
         <div className="flex items-center gap-2">
           <Building2 className="h-4 w-4 text-slate-600" />
           <h2 className="text-sm font-semibold text-slate-700">
-            役場の皆さまへ
+            役場・県の皆さまへ
           </h2>
         </div>
         <ul className="mt-3 space-y-2 text-sm text-slate-700">
@@ -79,7 +79,7 @@ export default function HomePage() {
           <li className="flex items-start gap-2">
             <span className="mt-0.5 text-brand-600">•</span>
             <span>
-              <strong>隊員の活動が見える化</strong>: 活動タグ・予算消化・月次進捗を一覧で把握。
+              <strong>隊員の活動が見える化</strong>: プロジェクト単位・タグ別・予算消化を俯瞰。議会報告 PDF も AI で生成。
             </span>
           </li>
           <li className="flex items-start gap-2">
@@ -91,7 +91,7 @@ export default function HomePage() {
           <li className="flex items-start gap-2">
             <span className="mt-0.5 text-brand-600">•</span>
             <span>
-              <strong>全国事例へのアクセス</strong>: 他自治体の取り組みを匿名化して参照できる。
+              <strong>全国事例・イベント情報にワンクリック</strong>: 他自治体の取り組みを匿名化参照、研修情報も集約。
             </span>
           </li>
           <li className="flex items-start gap-2">
@@ -101,6 +101,51 @@ export default function HomePage() {
             </span>
           </li>
         </ul>
+      </section>
+
+      <section className="mt-6 rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-indigo-50 p-6">
+        <div className="text-xs font-semibold uppercase tracking-wide text-violet-700">
+          既存リソースとの違い
+        </div>
+        <h2 className="mt-1 text-sm font-semibold text-violet-900">
+          静的な Excel / PDF 配布から、動的な SaaS へ
+        </h2>
+        <div className="mt-4 overflow-hidden rounded-xl bg-white">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-slate-50 text-left text-slate-600">
+                <th className="px-3 py-2 font-medium">観点</th>
+                <th className="px-3 py-2 font-medium">JOIN お役立ちツール</th>
+                <th className="px-3 py-2 font-medium text-brand-700">本サービス</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              <tr>
+                <td className="px-3 py-2 text-slate-500">形式</td>
+                <td className="px-3 py-2 text-slate-700">Excel / PDF 静的ファイル</td>
+                <td className="px-3 py-2 font-medium text-brand-700">Web SaaS</td>
+              </tr>
+              <tr>
+                <td className="px-3 py-2 text-slate-500">データ連携</td>
+                <td className="px-3 py-2 text-slate-700">なし</td>
+                <td className="px-3 py-2 font-medium text-brand-700">日報・月次・事例が連動</td>
+              </tr>
+              <tr>
+                <td className="px-3 py-2 text-slate-500">AI 活用</td>
+                <td className="px-3 py-2 text-slate-700">なし</td>
+                <td className="px-3 py-2 font-medium text-brand-700">月次生成 / 壁打ち / 事例検索</td>
+              </tr>
+              <tr>
+                <td className="px-3 py-2 text-slate-500">活用実態</td>
+                <td className="px-3 py-2 text-slate-700">ダウンロードして閉じる</td>
+                <td className="px-3 py-2 font-medium text-brand-700">毎日使われる</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-3 text-xs text-violet-800">
+          JOIN の知見を否定せず、動的 SaaS として補完します。
+        </p>
       </section>
 
       <footer className="mt-12 space-y-1 text-xs text-slate-500">

@@ -11,12 +11,16 @@ import {
   Wallet,
   FileText,
   ChevronRight,
+  Target,
+  CalendarDays,
 } from "lucide-react";
 import {
   currentMember,
   mockMonthlyReport,
   mockBudget,
   mockContacts,
+  mockProjects,
+  mockEvents,
   statusBadge,
 } from "@/lib/mock/data";
 
@@ -114,7 +118,116 @@ export default function MemberHomePage() {
               </CardBody>
             </Card>
           </Link>
+
+          <Link href="/me/projects" className="block">
+            <Card className="h-full">
+              <CardBody className="flex h-full flex-col py-3">
+                <div className="flex items-center gap-1.5">
+                  <Target className="h-4 w-4 text-emerald-600" />
+                  <span className="text-xs font-semibold text-slate-800">
+                    私のプロジェクト
+                  </span>
+                </div>
+                <p className="mt-1 text-xs leading-snug text-slate-600">
+                  活動をパッケージで可視化 / 進捗管理
+                </p>
+              </CardBody>
+            </Card>
+          </Link>
+
+          <Link href="/me/events" className="block">
+            <Card className="h-full">
+              <CardBody className="flex h-full flex-col py-3">
+                <div className="flex items-center gap-1.5">
+                  <CalendarDays className="h-4 w-4 text-sky-600" />
+                  <span className="text-xs font-semibold text-slate-800">
+                    全国イベント
+                  </span>
+                </div>
+                <p className="mt-1 text-xs leading-snug text-slate-600">
+                  研修 / 交流会 / 視察 を集約
+                </p>
+              </CardBody>
+            </Card>
+          </Link>
         </div>
+      </section>
+
+      <section>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            進行中のプロジェクト
+          </h2>
+          <Link href="/me/projects" className="text-xs font-medium text-brand-600">
+            すべて見る
+          </Link>
+        </div>
+        <Card>
+          <div className="divide-y divide-slate-100">
+            {mockProjects.slice(0, 2).map((p) => (
+              <div key={p.id} className="px-5 py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Target className="h-3.5 w-3.5 text-emerald-600" />
+                    <span className="text-sm font-semibold text-slate-900">
+                      {p.name}
+                    </span>
+                  </div>
+                  <span className="text-xs font-semibold text-emerald-700">
+                    {p.progress}%
+                  </span>
+                </div>
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-emerald-500"
+                    style={{ width: `${p.progress}%` }}
+                  />
+                </div>
+                <div className="mt-1 text-[11px] text-slate-500">
+                  日報 {p.linkedLogCount} 件紐付け / 〜{p.periodEnd}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </section>
+
+      <section>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            おすすめイベント
+          </h2>
+          <Link href="/me/events" className="text-xs font-medium text-brand-600">
+            すべて見る
+          </Link>
+        </div>
+        <Card>
+          <div className="divide-y divide-slate-100">
+            {mockEvents.slice(0, 2).map((e) => (
+              <div key={e.id} className="px-5 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-xl bg-sky-100 text-sky-900">
+                    <span className="text-[10px]">
+                      {e.startDate.slice(5, 7).replace(/^0/, "")}月
+                    </span>
+                    <span className="text-sm font-bold leading-tight">
+                      {e.startDate.slice(8, 10).replace(/^0/, "")}
+                    </span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold text-slate-900">
+                      {e.title}
+                    </div>
+                    <div className="truncate text-xs text-slate-500">
+                      {e.location} / 主催: {e.host}
+                    </div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
       </section>
 
       <section>
