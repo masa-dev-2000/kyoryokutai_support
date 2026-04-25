@@ -736,3 +736,85 @@ export function formatPeriod(start: string, end: string) {
   if (start === end) return start;
   return `${start} 〜 ${end}`;
 }
+
+// ================== Lab: 行動ベース記録(action-log) ==================
+export type MockAction = {
+  id: string;
+  timestamp: string;
+  type: "voice" | "post" | "stamp";
+  bodyMd: string;
+  tags: string[];
+  duration?: string;
+  hasFollowUp?: boolean;
+  aiCompleted?: boolean;
+};
+
+export const mockActions: MockAction[] = [
+  {
+    id: "ac1",
+    timestamp: "2026-04-23T16:42:00+09:00",
+    type: "voice",
+    bodyMd: "篠山地区の空き家所有者(田中さん 78歳)を訪問。登録に前向き。司法書士の同席を希望されたので来週改めて訪問予定。",
+    tags: ["空き家バンク", "移住促進"],
+    duration: "1m 18s",
+    aiCompleted: true,
+  },
+  {
+    id: "ac2",
+    timestamp: "2026-04-23T14:05:00+09:00",
+    type: "voice",
+    bodyMd: "山の芋生産者の岡田さん宅。今期収穫予定 800kg、神戸市内レストランへの試作品発送について承諾を得る。",
+    tags: ["農業", "販路開拓"],
+    duration: "0m 47s",
+    aiCompleted: true,
+  },
+  {
+    id: "ac3",
+    timestamp: "2026-04-23T11:30:00+09:00",
+    type: "post",
+    bodyMd: "市役所打合せ。来月の広報誌寄稿の件、原稿締切は 5/10 と確定。",
+    tags: ["行政連携", "広報・情報発信"],
+  },
+  {
+    id: "ac4",
+    timestamp: "2026-04-23T09:12:00+09:00",
+    type: "stamp",
+    bodyMd: "移動: 篠山地区 → 大山地区",
+    tags: ["移動"],
+    duration: "32 分",
+  },
+  {
+    id: "ac5",
+    timestamp: "2026-04-22T17:55:00+09:00",
+    type: "voice",
+    bodyMd: "移住相談オンライン(大阪在住 30 代夫婦)。家島の物件と暮らしについて 30 分。来月現地案内の予定を組む。",
+    tags: ["移住促進", "相談対応"],
+    duration: "2m 03s",
+    hasFollowUp: true,
+    aiCompleted: true,
+  },
+];
+
+export type AiQuestion = {
+  id: string;
+  question: string;
+  hint?: string;
+};
+
+export const sampleAiFollowUps: AiQuestion[] = [
+  {
+    id: "q1",
+    question: "誰と会いましたか?(任意)",
+    hint: "お名前 or 役職でも OK",
+  },
+  {
+    id: "q2",
+    question: "成果や決まったことはありますか?",
+    hint: "次のアクションがあれば一緒に",
+  },
+  {
+    id: "q3",
+    question: "関連するプロジェクトを紐付けますか?",
+    hint: "「空き家バンク登録促進」など",
+  },
+];

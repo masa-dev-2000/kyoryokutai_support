@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Smartphone, ArrowRight, Building2, LayoutDashboard } from "lucide-react";
+import { Smartphone, ArrowRight, Building2, LayoutDashboard, FlaskConical } from "lucide-react";
 
 export default function HomePage() {
   return (
@@ -146,6 +146,25 @@ export default function HomePage() {
         <p className="mt-3 text-xs text-violet-800">
           JOIN の知見を否定せず、動的 SaaS として補完します。
         </p>
+      </section>
+
+      <section className="mt-6">
+        <Link href="/lab" className="block">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 transition hover:bg-amber-100">
+            <div className="flex items-center gap-3">
+              <FlaskConical className="h-5 w-5 text-amber-700" />
+              <div className="flex-1">
+                <div className="text-xs font-semibold text-amber-700">
+                  実験中の機能
+                </div>
+                <div className="mt-0.5 text-sm font-bold text-amber-900">
+                  🧪 ラボ — 行動ベース記録(音声 + AI)など検証中
+                </div>
+              </div>
+              <ArrowRight className="h-4 w-4 text-amber-700" />
+            </div>
+          </div>
+        </Link>
       </section>
 
       <footer className="mt-12 space-y-1 text-xs text-slate-500">
