@@ -1,8 +1,10 @@
 import Link from "next/link";
 import type { Route } from "next";
-import { Card, CardBody } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { mockMembers, statusBadge } from "@/lib/mock/data";
 import {
   TrendingUp,
@@ -62,54 +64,51 @@ const categoryDistribution = [
 export default function AdminDashboardPage() {
   return (
     <div>
-      <header className="border-b border-slate-200 bg-white px-8 py-5">
+      <header className="border-b bg-card px-8 py-5">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-slate-900">
-              ダッシュボード
-            </h1>
-            <div className="text-xs text-slate-500">
+            <h1 className="text-xl font-bold">ダッシュボード</h1>
+            <div className="text-xs text-muted-foreground">
               2026 年 4 月 / 最終更新 10 分前
             </div>
           </div>
           <div className="flex gap-2">
-            <button className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-              <Download className="h-4 w-4" />
+            <Button variant="outline" size="sm">
+              <Download />
               CSV 出力
-            </button>
-            <button className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
-              <FileText className="h-4 w-4" />
+            </Button>
+            <Button size="sm">
+              <FileText />
               月次報告 一括 DL
-            </button>
+            </Button>
           </div>
         </div>
       </header>
 
       <div className="space-y-6 p-8">
-        {/* KPIs */}
         <div className="grid grid-cols-4 gap-4">
           {kpis.map((k) => {
             const Icon = k.icon;
             return (
               <Card key={k.label}>
-                <CardBody>
+                <CardContent>
                   <div className="flex items-center justify-between">
-                    <div className="text-xs font-medium text-slate-500">
+                    <div className="text-xs font-medium text-muted-foreground">
                       {k.label}
                     </div>
-                    <Icon className="h-4 w-4 text-slate-400" />
+                    <Icon className="h-4 w-4 text-muted-foreground" />
                   </div>
                   <div className="mt-1 flex items-baseline gap-1">
-                    <span className="text-3xl font-bold text-slate-900">
-                      {k.value}
+                    <span className="text-3xl font-bold">{k.value}</span>
+                    <span className="text-sm text-muted-foreground">
+                      {k.unit}
                     </span>
-                    <span className="text-sm text-slate-400">{k.unit}</span>
                   </div>
                   <div
                     className={
                       k.deltaPositive
                         ? "mt-1 flex items-center gap-0.5 text-xs font-medium text-emerald-600"
-                        : "mt-1 flex items-center gap-0.5 text-xs font-medium text-slate-500"
+                        : "mt-1 flex items-center gap-0.5 text-xs font-medium text-muted-foreground"
                     }
                   >
                     {k.deltaPositive ? (
@@ -119,28 +118,22 @@ export default function AdminDashboardPage() {
                     )}
                     {k.delta}
                   </div>
-                </CardBody>
+                </CardContent>
               </Card>
             );
           })}
         </div>
 
         <div className="grid grid-cols-3 gap-4">
-          {/* Members table */}
           <Card className="col-span-2">
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-              <h2 className="text-sm font-semibold text-slate-900">
-                担当隊員一覧
-              </h2>
-              <Link
-                href="/admin/members"
-                className="text-xs font-medium text-brand-600"
-              >
-                すべて見る →
-              </Link>
+            <div className="flex items-center justify-between border-b px-5 py-3">
+              <h2 className="text-sm font-semibold">担当隊員一覧</h2>
+              <Button variant="link" size="sm" asChild>
+                <Link href="/admin/members">すべて見る →</Link>
+              </Button>
             </div>
             <table className="w-full text-sm">
-              <thead className="border-b border-slate-100 text-left text-xs text-slate-500">
+              <thead className="border-b text-left text-xs text-muted-foreground">
                 <tr>
                   <th className="px-5 py-2 font-medium">隊員</th>
                   <th className="px-5 py-2 font-medium">着任</th>
@@ -149,11 +142,11 @@ export default function AdminDashboardPage() {
                   <th className="px-5 py-2"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y">
                 {mockMembers.map((m) => {
                   const b = statusBadge(m.currentMonthStatus);
                   return (
-                    <tr key={m.id} className="hover:bg-slate-50">
+                    <tr key={m.id} className="hover:bg-muted/40">
                       <td className="px-5 py-2.5">
                         <div className="flex items-center gap-2">
                           <Avatar
@@ -161,31 +154,30 @@ export default function AdminDashboardPage() {
                             className={`h-8 w-8 ${m.avatarColor}`}
                           />
                           <div>
-                            <div className="font-medium text-slate-900">
-                              {m.fullName}
-                            </div>
-                            <div className="text-[11px] text-slate-500">
+                            <div className="font-medium">{m.fullName}</div>
+                            <div className="text-[11px] text-muted-foreground">
                               {m.role}
                             </div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-5 py-2.5 text-slate-600">
+                      <td className="px-5 py-2.5 text-muted-foreground">
                         {m.assignedAt}
                       </td>
-                      <td className="px-5 py-2.5 text-slate-600">
+                      <td className="px-5 py-2.5 text-muted-foreground">
                         {m.lastLogDate}
                       </td>
                       <td className="px-5 py-2.5">
-                        <Badge className={b.className}>{b.label}</Badge>
+                        <Badge variant="secondary" className={b.className}>
+                          {b.label}
+                        </Badge>
                       </td>
                       <td className="px-5 py-2.5">
-                        <Link
-                          href={`/admin/members/${m.id}` as Route}
-                          className="text-xs font-medium text-brand-600"
-                        >
-                          詳細 →
-                        </Link>
+                        <Button variant="link" size="sm" asChild>
+                          <Link href={`/admin/members/${m.id}` as Route}>
+                            詳細 →
+                          </Link>
+                        </Button>
                       </td>
                     </tr>
                   );
@@ -194,40 +186,31 @@ export default function AdminDashboardPage() {
             </table>
           </Card>
 
-          {/* Category distribution */}
           <Card>
-            <div className="border-b border-slate-100 px-5 py-3">
-              <h2 className="text-sm font-semibold text-slate-900">
-                活動カテゴリ分布
-              </h2>
-              <div className="text-[11px] text-slate-500">今月の日報タグ</div>
+            <div className="border-b px-5 py-3">
+              <h2 className="text-sm font-semibold">活動カテゴリ分布</h2>
+              <div className="text-[11px] text-muted-foreground">
+                今月の日報タグ
+              </div>
             </div>
-            <CardBody>
+            <CardContent>
               <div className="space-y-3">
                 {categoryDistribution.map((c) => (
                   <div key={c.name}>
                     <div className="flex justify-between text-xs">
-                      <span className="text-slate-700">{c.name}</span>
-                      <span className="font-semibold text-slate-900">
-                        {c.pct}%
-                      </span>
+                      <span>{c.name}</span>
+                      <span className="font-semibold">{c.pct}%</span>
                     </div>
-                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                      <div
-                        className="h-full rounded-full bg-brand-500"
-                        style={{ width: `${c.pct}%` }}
-                      />
-                    </div>
+                    <Progress value={c.pct} className="mt-1 h-1.5" />
                   </div>
                 ))}
               </div>
-            </CardBody>
+            </CardContent>
           </Card>
         </div>
 
-        {/* AI Insights */}
         <Card className="border-violet-200 bg-gradient-to-r from-violet-50 to-indigo-50">
-          <CardBody>
+          <CardContent>
             <div className="flex items-start gap-3">
               <div className="rounded-xl bg-violet-100 p-2 text-violet-700">
                 <Sparkles className="h-5 w-5" />
@@ -247,16 +230,20 @@ export default function AdminDashboardPage() {
                     ・未提出 2 名(山本・鈴木)は日報頻度も低下傾向。**面談を推奨**。
                   </li>
                 </ul>
-                <Link
-                  href="/admin/analytics"
-                  className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-violet-700"
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="mt-2 px-0 text-violet-700"
+                  asChild
                 >
-                  詳しいサマリーを見る
-                  <ArrowRight className="h-3 w-3" />
-                </Link>
+                  <Link href="/admin/analytics">
+                    詳しいサマリーを見る
+                    <ArrowRight />
+                  </Link>
+                </Button>
               </div>
             </div>
-          </CardBody>
+          </CardContent>
         </Card>
       </div>
     </div>

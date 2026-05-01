@@ -3,51 +3,53 @@ import type { Route } from "next";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { mockMembers, statusBadge } from "@/lib/mock/data";
 import { Search, Filter, Plus, ChevronRight } from "lucide-react";
 
 export default function AdminMembersPage() {
   return (
     <div>
-      <header className="border-b border-slate-200 bg-white px-8 py-5">
+      <header className="border-b bg-card px-8 py-5">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-slate-900">隊員一覧</h1>
-            <div className="text-xs text-slate-500">
+            <h1 className="text-xl font-bold">隊員一覧</h1>
+            <div className="text-xs text-muted-foreground">
               {mockMembers.length} 名 / 丹波篠山市
             </div>
           </div>
           <div className="flex gap-2">
-            <button className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">
-              <Filter className="h-4 w-4" />
+            <Button variant="outline" size="sm">
+              <Filter />
               フィルタ
-            </button>
-            <button className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white">
-              <Plus className="h-4 w-4" />
+            </Button>
+            <Button size="sm">
+              <Plus />
               隊員を追加
-            </button>
+            </Button>
           </div>
         </div>
 
         <div className="mt-4 flex items-center gap-2">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
+          <div className="relative max-w-sm flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
               type="search"
               placeholder="名前・担当・活動分野で検索"
-              className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              className="h-9 pl-9"
             />
           </div>
           <div className="flex gap-1 text-xs">
-            <button className="rounded-full bg-slate-900 px-3 py-1 text-white">
+            <Button variant="default" size="sm" className="h-7 rounded-full px-3">
               すべて
-            </button>
-            <button className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">
+            </Button>
+            <Button variant="outline" size="sm" className="h-7 rounded-full px-3">
               未提出あり
-            </button>
-            <button className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">
+            </Button>
+            <Button variant="outline" size="sm" className="h-7 rounded-full px-3">
               活動低下
-            </button>
+            </Button>
           </div>
         </div>
       </header>
@@ -55,7 +57,7 @@ export default function AdminMembersPage() {
       <div className="p-8">
         <Card>
           <table className="w-full text-sm">
-            <thead className="border-b border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
+            <thead className="border-b bg-muted/50 text-left text-xs text-muted-foreground">
               <tr>
                 <th className="px-5 py-3 font-medium">隊員</th>
                 <th className="px-5 py-3 font-medium">着任 / 満了</th>
@@ -65,11 +67,11 @@ export default function AdminMembersPage() {
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y">
               {mockMembers.map((m) => {
                 const b = statusBadge(m.currentMonthStatus);
                 return (
-                  <tr key={m.id} className="group hover:bg-slate-50">
+                  <tr key={m.id} className="group hover:bg-muted/40">
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-3">
                         <Avatar
@@ -77,43 +79,45 @@ export default function AdminMembersPage() {
                           className={`h-10 w-10 ${m.avatarColor}`}
                         />
                         <div>
-                          <div className="font-medium text-slate-900">
-                            {m.fullName}
-                          </div>
-                          <div className="text-xs text-slate-500">
+                          <div className="font-medium">{m.fullName}</div>
+                          <div className="text-xs text-muted-foreground">
                             {m.role} / {m.municipality}
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-slate-600">
+                    <td className="px-5 py-3 text-muted-foreground">
                       <div>{m.assignedAt}</div>
-                      <div className="text-xs text-slate-400">
-                        〜 {m.termEndAt}
-                      </div>
+                      <div className="text-xs">〜 {m.termEndAt}</div>
                     </td>
                     <td className="px-5 py-3">
-                      <div className="text-slate-900 font-semibold">
+                      <div className="font-semibold">
                         {m.thisMonthLogCount}
                       </div>
-                      <div className="text-[11px] text-slate-500">
+                      <div className="text-[11px] text-muted-foreground">
                         / 22 日間
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-slate-600">
+                    <td className="px-5 py-3 text-muted-foreground">
                       {m.lastLogDate}
                     </td>
                     <td className="px-5 py-3">
-                      <Badge className={b.className}>{b.label}</Badge>
+                      <Badge variant="secondary" className={b.className}>
+                        {b.label}
+                      </Badge>
                     </td>
                     <td className="px-5 py-3">
-                      <Link
-                        href={`/admin/members/${m.id}` as Route}
-                        className="flex items-center gap-1 text-xs font-medium text-brand-600 opacity-0 transition group-hover:opacity-100"
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="opacity-0 transition group-hover:opacity-100"
+                        asChild
                       >
-                        詳細
-                        <ChevronRight className="h-3 w-3" />
-                      </Link>
+                        <Link href={`/admin/members/${m.id}` as Route}>
+                          詳細
+                          <ChevronRight />
+                        </Link>
+                      </Button>
                     </td>
                   </tr>
                 );
