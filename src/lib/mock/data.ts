@@ -818,3 +818,87 @@ export const sampleAiFollowUps: AiQuestion[] = [
     hint: "「空き家バンク登録促進」など",
   },
 ];
+
+// ================== Lab: 統合フロー(3タッチポイント) ==================
+
+// プロジェクト計画 AI 対話のステップ
+export type PlanStep = {
+  id: string;
+  question: string;
+  hint?: string;
+  example?: string;
+};
+
+export const planSteps: PlanStep[] = [
+  {
+    id: "what",
+    question: "何を達成したいですか?",
+    hint: "プロジェクトの目的を 1-2 行で",
+    example: "篠山地区の空き家を活用して移住者を 6 組増やしたい",
+  },
+  {
+    id: "why",
+    question: "なぜそれが大事ですか?",
+    hint: "地域への意義・自分の想い",
+    example: "高齢化が進み空き家が増加。新しい住民が地域の風景を残す鍵",
+  },
+  {
+    id: "period",
+    question: "いつまでに達成しますか?",
+    hint: "開始 〜 終了",
+    example: "2026 年 4 月 〜 9 月(半年)",
+  },
+  {
+    id: "kpi",
+    question: "成功をどう測りますか?(KPI)",
+    hint: "数字で測れる指標を 1-3 個",
+    example: "登録 10 件 / 内覧 20 件 / 移住確定 3 組",
+  },
+  {
+    id: "measure",
+    question: "効果測定はどう行いますか?",
+    hint: "誰が・いつ・何を見るか",
+    example: "月末に登録数と内覧数を集計、9 月末に移住確定数を確認",
+  },
+  {
+    id: "risk",
+    question: "想定されるリスクや障壁は?",
+    hint: "あらかじめ把握しておきたい点",
+    example: "高齢所有者の登録同意取得が困難、司法書士同席が必要",
+  },
+];
+
+// 夜の振り返りインタビュー質問
+export type ReviewQuestion = {
+  id: string;
+  question: string;
+  context?: string;
+  questionType: "open" | "yesno" | "rating";
+};
+
+export const reviewQuestions: ReviewQuestion[] = [
+  {
+    id: "highlight",
+    question: "今日、特筆すべき出来事はありましたか?",
+    context: "AI が 4 件のアクションを把握しています",
+    questionType: "open",
+  },
+  {
+    id: "project-progress",
+    question: "「空き家バンク登録促進プロジェクト」は進みましたか?",
+    context: "登録 6/10 件・内覧 18/20 件",
+    questionType: "open",
+  },
+  {
+    id: "trouble",
+    question: "困ったこと・うまくいかなかったことは?",
+    context: "気軽にどうぞ。AI が壁打ち相手になります",
+    questionType: "open",
+  },
+  {
+    id: "learning",
+    question: "今日の学びを 1 行で",
+    context: "事例として残す候補にもなります",
+    questionType: "open",
+  },
+];

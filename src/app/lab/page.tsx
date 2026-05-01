@@ -16,6 +16,16 @@ type LabExperiment = {
 
 const experiments: LabExperiment[] = [
   {
+    id: "integrated-flow",
+    title: "統合フロー(3 タッチポイント)",
+    href: "/lab/integrated-flow",
+    description:
+      "ユーザーは「計画 / 実行 / 振り返り」だけ。日報・月報・事例・進捗・成果は AI が自動で組み立てる。",
+    status: "active",
+    variants: 4,
+    tags: ["統合UX", "AI自動生成", "認知負荷ゼロ"],
+  },
+  {
     id: "action-log",
     title: "行動ベース記録",
     href: "/lab/action-log",
