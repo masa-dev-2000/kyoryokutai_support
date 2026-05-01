@@ -902,3 +902,177 @@ export const reviewQuestions: ReviewQuestion[] = [
     questionType: "open",
   },
 ];
+
+// 振り返りはアクションログを起点に AI が深掘りする会話型(改善版)
+export type ReviewTurn = {
+  id: string;
+  speaker: "ai" | "user";
+  body: string;
+  hint?: string;
+  // データソース(AIが参照しているアクション/プロジェクト等)
+  source?: {
+    label: string;
+    detail: string;
+  };
+  // ユーザーの回答例(モック表示用)
+  userExample?: string;
+  isFollowUp?: boolean;
+};
+
+export const reviewConversation: ReviewTurn[] = [
+  {
+    id: "open",
+    speaker: "ai",
+    body: "お疲れさまです。今日は 4 件の行動を把握しました。1 つずつ少しだけ補ってもらえると、日報が完成します。",
+    source: { label: "今日のアクション", detail: "4 件取得済" },
+  },
+  {
+    id: "ac1-q",
+    speaker: "ai",
+    body: "16:42 の篠山訪問、田中さん 78 歳の登録同意のお話、ありがとうございます。司法書士同席は来週いつ頃を予定されていますか?",
+    source: {
+      label: "16:42 篠山訪問・田中さん訪問",
+      detail: "登録に前向き、司法書士同席を希望",
+    },
+    userExample: "来週水曜の午後、司法書士の佐藤先生同席で",
+  },
+  {
+    id: "ac1-fu",
+    speaker: "ai",
+    body: "ありがとうございます。会話の中で、田中さんが一番気にされていたことは何でしたか?",
+    hint: "次の家族との話し合いに役立ちます",
+    userExample: "相続のときの手間を心配されていた",
+    isFollowUp: true,
+  },
+  {
+    id: "ac2-q",
+    speaker: "ai",
+    body: "14:05 の山の芋・岡田さんとの打合せ、800kg の収穫予定とのこと。レストランへの試作品発送は何時頃の予定ですか?",
+    source: {
+      label: "14:05 山の芋・岡田さん宅",
+      detail: "収穫 800kg、レストラン試作品発送承諾",
+    },
+    userExample: "5/10 までに 2kg 発送、5/15 のディナーで使ってもらう",
+  },
+  {
+    id: "ac3-q",
+    speaker: "ai",
+    body: "11:30 の市役所打合せ、広報誌の原稿締切は 5/10 とのことでした。テーマや字数は決まりましたか?",
+    source: {
+      label: "11:30 市役所打合せ",
+      detail: "広報誌寄稿、5/10 締切",
+    },
+    userExample: "1500 字、テーマは「移住の決め手になった出来事」",
+  },
+  {
+    id: "summary-q",
+    speaker: "ai",
+    body: "ここまで聞いた内容で、今日のハイライトを 1 つ選ぶとすればどれですか?(事例として残す候補になります)",
+    hint: "「これは話したい」ものを 1 つ",
+    userExample: "司法書士同席で田中さんが安心されたのが大きい",
+  },
+  {
+    id: "trouble-q",
+    speaker: "ai",
+    body: "最後に。困ったことや、もう一歩進めたいなと感じたことはありましたか?",
+    hint: "なければスキップで OK",
+    userExample: "登録交渉が高齢者ばかりで時間がかかる、若年層へのアプローチ手段が課題",
+  },
+];
+
+// プロジェクト計画も会話型 - 「やりたいこと」から AI が引き出すスタイル
+export type PlanTurn = {
+  id: string;
+  speaker: "ai" | "user";
+  body: string;
+  hint?: string;
+  userExample?: string;
+  // この回でデータが固まる項目(可視化用)
+  capturedField?:
+    | "topic"
+    | "purpose"
+    | "outcome"
+    | "metric"
+    | "method"
+    | "duration"
+    | "risk";
+};
+
+export const planConversation: PlanTurn[] = [
+  {
+    id: "open",
+    speaker: "ai",
+    body: "新しいプロジェクトを一緒に整理しましょう。まず、最近気になっていることや、やってみたいことを教えてください。難しく考えなくて大丈夫です。",
+    hint: "「○○がもったいない」「○○できたらいいな」レベルで OK",
+    userExample: "篠山地区の空き家がもったいないなあって思ってる",
+    capturedField: "topic",
+  },
+  {
+    id: "deepen-1",
+    speaker: "ai",
+    body: "「空き家がもったいない」というのは、具体的にはどういう気持ちですか? 住めるのに空いている? 家が朽ちていく? それとも他にも?",
+    userExample: "住める家なのに空いてて、もったいない。地域の景色も寂しくなる",
+    capturedField: "purpose",
+  },
+  {
+    id: "deepen-2",
+    speaker: "ai",
+    body: "なるほど。もしこの状況が変わるとしたら、どんな未来が嬉しいですか? 「○○な状態になっていたら嬉しい」みたいに。",
+    userExample: "移住者が増えて、地域に新しい風が入って、家も人も活きてる感じ",
+    capturedField: "outcome",
+  },
+  {
+    id: "outcome-confirm",
+    speaker: "ai",
+    body: "素敵な目標ですね。整理すると、**「空き家を活用して移住者を増やす」** が大きな方向性ですね。期間はどれくらいで取り組みたいですか?(目安で OK、例: 3 ヶ月 / 半年 / 1 年)",
+    userExample: "半年くらいかな、まずは",
+    capturedField: "duration",
+  },
+  {
+    id: "metric-suggest",
+    speaker: "ai",
+    body: "半年で進めるなら、何件くらい登録できたら「うまくいった」と感じますか? 過去の事例だと月 1 件のペースで半年 6 件、頑張って 10 件、というレンジが多いです。",
+    hint: "ざっくりで大丈夫",
+    userExample: "じゃあ 5 〜 6 件登録、移住確定で 2 組くらいかな",
+    capturedField: "metric",
+  },
+  {
+    id: "method-1",
+    speaker: "ai",
+    body: "どうやって所有者にアプローチしますか? 自分で見つけにいく / 既にリストがある / 誰かに紹介してもらう、のどれが近いですか?",
+    userExample: "市役所のリストはあるけど、高齢者ばかりで難しそう。司法書士同席で安心してもらえそう",
+    capturedField: "method",
+  },
+  {
+    id: "risk-1",
+    speaker: "ai",
+    body: "気をつけたいことや、つまずきそうなところはありますか? 先に整理しておくと後で動きやすいです。",
+    userExample: "高齢者ばかりだから時間がかかる、相続周りで揉めるかもしれない",
+    capturedField: "risk",
+  },
+  {
+    id: "wrap-up",
+    speaker: "ai",
+    body: "ありがとうございます。ここまでの話を AI が「プロジェクト計画」として整理しました。確認してみてください。",
+  },
+];
+
+// 完成版の計画(プレビュー用)
+export const planResultPreview = {
+  name: "篠山地区 空き家活用 × 移住促進プロジェクト",
+  topic: "空き家がもったいない・地域の風景が寂しくなる",
+  purpose: "住める家を活用し、地域に新しい人の流れを作る",
+  outcome: "移住者が増え、家も人も活きている状態",
+  duration: "2026 年 4 月 〜 9 月(半年)",
+  metric: [
+    "空き家バンク登録 5-6 件",
+    "移住確定 2 組",
+    "内覧 15 件以上",
+  ],
+  method:
+    "市役所の所有者リスト + 司法書士同席で高齢所有者の安心感を確保",
+  risk: [
+    "高齢者中心で交渉に時間がかかる",
+    "相続周りの調整が必要なケース",
+  ],
+};
