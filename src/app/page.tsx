@@ -75,20 +75,47 @@ export default function HomePage() {
         </Link>
       </section>
 
-      <section className="mt-6">
+      <section className="mt-6 space-y-3">
+        <div className="flex items-center gap-2">
+          <FlaskConical className="h-4 w-4 text-amber-700" />
+          <h2 className="text-sm font-semibold text-amber-900">
+            🧪 ラボ — 実験中の UI
+          </h2>
+        </div>
+
+        <Link href="/lab/integrated-flow" className="block">
+          <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 transition hover:shadow-md">
+            <CardContent>
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl bg-amber-100 p-2.5 text-amber-700">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div className="flex-1">
+                  <Badge variant="secondary" className="bg-violet-100 text-violet-800 mb-1">
+                    新コンセプト
+                  </Badge>
+                  <div className="text-base font-bold text-amber-950">
+                    統合フロー(3 タッチポイント)
+                  </div>
+                  <p className="mt-1 text-xs text-amber-900">
+                    ユーザーは「① 計画 / ② 実行 / ③ 振り返り」だけ。
+                    日報・月報・事例・進捗・成果は AI が自動で組み立て。
+                  </p>
+                </div>
+                <ArrowRight className="h-4 w-4 shrink-0 text-amber-700" />
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+
         <Link href="/lab" className="block">
           <Card className="border-amber-200 bg-amber-50 transition hover:bg-amber-100">
-            <CardContent className="flex items-center gap-3 py-4">
+            <CardContent className="flex items-center gap-3 py-3">
               <div className="rounded-xl bg-amber-100 p-2 text-amber-700">
-                <FlaskConical className="h-5 w-5" />
+                <FlaskConical className="h-4 w-4" />
               </div>
-              <div className="flex-1">
-                <div className="text-xs font-semibold text-amber-700">
-                  実験中の機能
-                </div>
-                <div className="mt-0.5 text-sm font-bold text-amber-900">
-                  🧪 ラボ — 行動ベース記録(音声 + AI)など検証中
-                </div>
+              <div className="flex-1 text-sm font-semibold text-amber-900">
+                すべての実験 UI を見る(行動ベース記録 v1-v3 等)
               </div>
               <ArrowRight className="h-4 w-4 text-amber-700" />
             </CardContent>

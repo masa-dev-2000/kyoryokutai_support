@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Target,
   CalendarDays,
+  FlaskConical,
 } from "lucide-react";
 import {
   currentMember,
@@ -53,6 +54,20 @@ export default function MemberHomePage() {
           </div>
         </div>
       </header>
+
+      {/* Lab banner (実験用UIへの導線) */}
+      <Link href="/lab" className="block">
+        <div className="flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5 transition hover:bg-amber-100">
+          <FlaskConical className="h-4 w-4 shrink-0 text-amber-700" />
+          <div className="flex-1 text-xs">
+            <span className="font-semibold text-amber-900">🧪 ラボ</span>
+            <span className="ml-1 text-amber-800">
+              統合フロー(計画 / 実行 / 振り返り)を試す
+            </span>
+          </div>
+          <ChevronRight className="h-3.5 w-3.5 text-amber-700" />
+        </div>
+      </Link>
 
       {/* Streak */}
       <div className="flex items-center gap-3 rounded-2xl bg-gradient-to-r from-emerald-100 to-emerald-50 px-4 py-3">
