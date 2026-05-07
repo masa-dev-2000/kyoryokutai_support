@@ -51,7 +51,14 @@ export default function HomePage() {
           </div>
         </div>
 
-        <footer className="mt-12 flex flex-col items-center gap-2 text-center text-xs text-slate-500">
+        <footer className="mt-12 flex flex-col items-center gap-3 text-center text-xs text-slate-500">
+          <a
+            href="/tutorial"
+            className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-4 py-2 font-semibold text-emerald-700 shadow-md ring-1 ring-emerald-200 transition hover:bg-white"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            🫧 はじめての方は チュートリアル(2 分)
+          </a>
           <a
             href="/lab"
             className="inline-flex items-center gap-1 text-slate-600 hover:text-slate-900"

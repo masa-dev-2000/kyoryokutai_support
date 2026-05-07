@@ -56,8 +56,14 @@ export default function V2HubPage() {
           </div>
         </div>
 
-        <footer className="mt-8 text-center text-xs text-slate-500">
-          タップで弾けて画面が切り替わります
+        <footer className="mt-8 flex flex-col items-center gap-3 text-center text-xs text-slate-500">
+          <Link
+            href="/tutorial"
+            className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-4 py-2 font-semibold text-emerald-700 shadow-md ring-1 ring-emerald-200 transition hover:bg-white"
+          >
+            🫧 つかい方を見る(2 分)
+          </Link>
+          <p>タップで弾けて画面が切り替わります</p>
         </footer>
       </div>
     </main>
