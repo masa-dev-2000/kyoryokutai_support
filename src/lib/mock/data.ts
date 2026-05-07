@@ -1057,6 +1057,120 @@ export const planConversation: PlanTurn[] = [
   },
 ];
 
+// ================== v2 mock: 複数プロジェクト + 学びデータ ==================
+
+export type V2Project = {
+  id: string;
+  name: string;
+  emoji: string;
+  status: "planning" | "active" | "completed";
+  isPublic?: boolean;
+  progress: number;
+  highlight: string;
+  color: "violet" | "emerald" | "amber" | "sky" | "rose";
+};
+
+export const v2Projects: V2Project[] = [
+  {
+    id: "vp1",
+    name: "空き家活用 × 移住促進",
+    emoji: "🏠",
+    status: "active",
+    progress: 60,
+    highlight: "登録 6/10 件・移住確定 1 組",
+    color: "emerald",
+  },
+  {
+    id: "vp2",
+    name: "山の芋 販路開拓",
+    emoji: "🌾",
+    status: "active",
+    progress: 40,
+    highlight: "レストラン仮決定 1 店舗",
+    color: "amber",
+  },
+  {
+    id: "vp3",
+    name: "観光特区への提案",
+    emoji: "🗺️",
+    status: "planning",
+    progress: 15,
+    highlight: "市長秘書に資料提出済",
+    color: "sky",
+  },
+  {
+    id: "vp4",
+    name: "コミュニティカフェ開店",
+    emoji: "☕",
+    status: "planning",
+    progress: 30,
+    highlight: "改修見積取得中",
+    color: "violet",
+  },
+  {
+    id: "vp5",
+    name: "移住相談オンライン窓口",
+    emoji: "💬",
+    status: "completed",
+    isPublic: true,
+    progress: 100,
+    highlight: "✨ 事例公開済 / 移住 2 組確定",
+    color: "rose",
+  },
+];
+
+export type V2LearnItem = {
+  id: string;
+  type: "case" | "ai-mode";
+  title: string;
+  emoji: string;
+  description: string;
+  color: "violet" | "emerald" | "amber" | "sky" | "rose";
+};
+
+export const v2LearnItems: V2LearnItem[] = [
+  {
+    id: "case-1",
+    type: "case",
+    title: "全国の事例を探す",
+    emoji: "🔍",
+    description: "10 件以上の成功事例から学ぶ",
+    color: "violet",
+  },
+  {
+    id: "ai-strategy",
+    type: "ai-mode",
+    title: "戦略レビュー",
+    emoji: "🎯",
+    description: "事業計画を AI が批判的に評価",
+    color: "violet",
+  },
+  {
+    id: "ai-proposal",
+    type: "ai-mode",
+    title: "提案準備",
+    emoji: "🏛",
+    description: "役場提案の通し方を相談",
+    color: "emerald",
+  },
+  {
+    id: "ai-career",
+    type: "ai-mode",
+    title: "キャリア相談",
+    emoji: "💼",
+    description: "任期後の道筋を整理",
+    color: "amber",
+  },
+  {
+    id: "ai-worry",
+    type: "ai-mode",
+    title: "悩み相談",
+    emoji: "💭",
+    description: "今の課題を一緒に整理",
+    color: "sky",
+  },
+];
+
 // 完成版の計画(プレビュー用)
 export const planResultPreview = {
   name: "篠山地区 空き家活用 × 移住促進プロジェクト",
