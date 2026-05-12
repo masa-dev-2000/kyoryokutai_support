@@ -16,6 +16,7 @@ import {
   Target,
   CalendarDays,
   FlaskConical,
+  Settings,
 } from "lucide-react";
 import {
   currentMember,
@@ -53,6 +54,13 @@ export default function MemberHomePage() {
             {currentMember.fullName} さん
           </div>
         </div>
+        <Link
+          href="/v1/me/settings"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-white/80 text-slate-600 shadow-sm ring-1 ring-slate-200 backdrop-blur transition active:scale-95"
+          aria-label="設定"
+        >
+          <Settings className="h-4 w-4" />
+        </Link>
       </header>
 
       {/* Lab banner (実験用UIへの導線) */}
