@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { AmbientBubbles } from "@/components/bubble/ambient-bubbles";
 import { BubbleButton } from "@/components/bubble/bubble-button";
 import { Sparkles, FlaskConical } from "lucide-react";
@@ -52,20 +53,20 @@ export default function HomePage() {
         </div>
 
         <footer className="mt-12 flex flex-col items-center gap-3 text-center text-xs text-slate-500">
-          <a
+          <Link
             href="/tutorial"
             className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-4 py-2 font-semibold text-emerald-700 shadow-md ring-1 ring-emerald-200 transition hover:bg-white"
           >
             <Sparkles className="h-3.5 w-3.5" />
             🫧 はじめての方は チュートリアル(2 分)
-          </a>
-          <a
+          </Link>
+          <Link
             href="/lab"
             className="inline-flex items-center gap-1 text-slate-600 hover:text-slate-900"
           >
             <FlaskConical className="h-3.5 w-3.5" />
             🧪 ラボ — 実験中の UI を見る
-          </a>
+          </Link>
           <p className="mt-2">
             タップすると弾けて画面が切り替わります。
           </p>
