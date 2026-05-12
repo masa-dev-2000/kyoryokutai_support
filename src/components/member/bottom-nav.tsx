@@ -28,8 +28,8 @@ export function MemberBottomNav() {
       {memberNav.map((item) => {
         const Icon = iconMap[item.icon as keyof typeof iconMap];
         const active =
-          item.href === "/me"
-            ? pathname === "/me"
+          item.href === "/v1/me"
+            ? pathname === "/v1/me"
             : pathname.startsWith(item.href);
         return (
           <Link

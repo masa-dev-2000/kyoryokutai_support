@@ -282,10 +282,10 @@ export type NavLink = {
 };
 
 export const memberNav: NavLink[] = [
-  { href: "/me", label: "ホーム", icon: "home" },
-  { href: "/me/logs", label: "日報", icon: "log" },
-  { href: "/me/reports", label: "レポート", icon: "report" },
-  { href: "/me/chat", label: "連絡", icon: "phone" },
+  { href: "/v1/me", label: "ホーム", icon: "home" },
+  { href: "/v1/me/logs", label: "日報", icon: "log" },
+  { href: "/v1/me/reports", label: "レポート", icon: "report" },
+  { href: "/v1/me/chat", label: "連絡", icon: "phone" },
 ];
 
 export function formatJstDate(iso: string) {

@@ -67,7 +67,7 @@ export function TutorialFlow({
       {/* Header */}
       <div className="flex items-center justify-between">
         <Link
-          href="/tutorial"
+          href="/v2/tutorial"
           className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900"
         >
           <ChevronLeft className="h-3.5 w-3.5" />

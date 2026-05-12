@@ -102,13 +102,13 @@ export default function LabIndex() {
               </Link>
             </Button>
             <Button variant="outline" size="sm" asChild>
-              <Link href="/me">
+              <Link href="/v1/me">
                 <Mic />
                 隊員アプリ
               </Link>
             </Button>
             <Button variant="outline" size="sm" asChild>
-              <Link href="/admin">
+              <Link href="/v1/admin">
                 <Activity />
                 役場画面
               </Link>

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AmbientBubbles } from "@/components/bubble/ambient-bubbles";
 import { BubbleButton } from "@/components/bubble/bubble-button";
-import { Smartphone, LayoutDashboard, ChevronLeft, FlaskConical } from "lucide-react";
+import { Smartphone, LayoutDashboard, ChevronLeft, FlaskConical, BookOpen } from "lucide-react";
 
 export default function V1HubPage() {
   return (
@@ -29,10 +29,10 @@ export default function V1HubPage() {
           </p>
         </header>
 
-        <div className="mt-12 flex flex-1 items-center justify-center">
+        <div className="mt-12 flex flex-1 flex-col items-center justify-center gap-8">
           <div className="flex flex-col items-center gap-8 sm:flex-row sm:gap-12">
             <BubbleButton
-              href="/me"
+              href="/v1/me"
               label="隊員アプリ"
               sublabel="スマホ前提"
               icon={<Smartphone className="h-5 w-5" />}
@@ -42,7 +42,7 @@ export default function V1HubPage() {
               delay={0}
             />
             <BubbleButton
-              href="/admin"
+              href="/v1/admin"
               label="役場画面"
               sublabel="PC 前提"
               icon={<LayoutDashboard className="h-5 w-5" />}
@@ -51,6 +51,18 @@ export default function V1HubPage() {
               float="slow"
               delay={300}
             />
+          </div>
+          <div className="flex items-center gap-6">
+            <BubbleButton
+              href="/v1/tutorial"
+              label="つかい方"
+              sublabel="チュートリアル"
+              icon={<BookOpen className="h-5 w-5" />}
+              color="violet"
+              size="md"
+              float="fast"
+              delay={500}
+            />
             <BubbleButton
               href="/lab"
               label="ラボ"
@@ -58,8 +70,8 @@ export default function V1HubPage() {
               icon={<FlaskConical className="h-5 w-5" />}
               color="amber"
               size="md"
-              float="fast"
-              delay={600}
+              float="slow"
+              delay={700}
             />
           </div>
         </div>

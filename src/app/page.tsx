@@ -54,7 +54,7 @@ export default function HomePage() {
 
         <footer className="mt-12 flex flex-col items-center gap-3 text-center text-xs text-slate-500">
           <Link
-            href="/tutorial"
+            href="/v2/tutorial"
             className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-4 py-2 font-semibold text-emerald-700 shadow-md ring-1 ring-emerald-200 transition hover:bg-white"
           >
             <Sparkles className="h-3.5 w-3.5" />

@@ -15,11 +15,11 @@ import {
 import type { Route } from "next";
 
 const navItems: { href: Route; label: string; icon: React.ComponentType<{ className?: string; strokeWidth?: number }> }[] = [
-  { href: "/admin", label: "ダッシュボード", icon: LayoutDashboard },
-  { href: "/admin/members", label: "隊員一覧", icon: Users },
-  { href: "/admin/announcements", label: "お知らせ配信", icon: Megaphone },
-  { href: "/admin/analytics", label: "活動サマリー", icon: BarChart3 },
-  { href: "/admin/cases", label: "事例ライブラリ", icon: FolderSearch },
+  { href: "/v1/admin", label: "ダッシュボード", icon: LayoutDashboard },
+  { href: "/v1/admin/members", label: "隊員一覧", icon: Users },
+  { href: "/v1/admin/announcements", label: "お知らせ配信", icon: Megaphone },
+  { href: "/v1/admin/analytics", label: "活動サマリー", icon: BarChart3 },
+  { href: "/v1/admin/cases", label: "事例ライブラリ", icon: FolderSearch },
 ];
 
 export function AdminSidebar() {
@@ -45,8 +45,8 @@ export function AdminSidebar() {
         </div>
         {navItems.map((item) => {
           const active =
-            item.href === "/admin"
-              ? pathname === "/admin"
+            item.href === "/v1/admin"
+              ? pathname === "/v1/admin"
               : pathname.startsWith(item.href);
           const Icon = item.icon;
           return (
