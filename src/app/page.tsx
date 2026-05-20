@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AmbientBubbles } from "@/components/bubble/ambient-bubbles";
 import { BubbleButton } from "@/components/bubble/bubble-button";
-import { Sparkles, FlaskConical } from "lucide-react";
+import { Sparkles, FlaskConical, Building2 } from "lucide-react";
 
 export default function HomePage() {
   return (
@@ -48,6 +48,16 @@ export default function HomePage() {
               size="xl"
               float="normal"
               delay={400}
+            />
+            <BubbleButton
+              href="/v3"
+              label="v3"
+              sublabel="役場主眼・ガードレール版"
+              icon={<Building2 className="h-6 w-6" />}
+              color="violet"
+              size="xl"
+              float="fast"
+              delay={800}
             />
           </div>
         </div>
