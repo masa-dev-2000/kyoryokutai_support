@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AmbientBubbles } from "@/components/bubble/ambient-bubbles";
 import { BubbleButton } from "@/components/bubble/bubble-button";
-import { Sparkles, FlaskConical, Building2 } from "lucide-react";
+import { Sparkles, FlaskConical, Building2, Bot } from "lucide-react";
 
 export default function HomePage() {
   return (
@@ -29,13 +29,13 @@ export default function HomePage() {
         </header>
 
         <div className="mt-12 flex flex-1 items-center justify-center">
-          <div className="flex flex-col items-center gap-12 sm:flex-row sm:gap-16">
+          <div className="grid grid-cols-2 gap-8 sm:flex sm:flex-row sm:flex-wrap sm:justify-center sm:gap-12">
             <BubbleButton
               href="/v1"
               label="v1"
               sublabel="既存の機能フル実装版"
               color="slate"
-              size="xl"
+              size="lg"
               float="slow"
               delay={0}
             />
@@ -45,9 +45,9 @@ export default function HomePage() {
               sublabel="3 機能ベースの再設計版"
               icon={<Sparkles className="h-6 w-6" />}
               color="emerald"
-              size="xl"
+              size="lg"
               float="normal"
-              delay={400}
+              delay={300}
             />
             <BubbleButton
               href="/v3"
@@ -55,9 +55,19 @@ export default function HomePage() {
               sublabel="役場主眼・ガードレール版"
               icon={<Building2 className="h-6 w-6" />}
               color="violet"
-              size="xl"
+              size="lg"
               float="fast"
-              delay={800}
+              delay={600}
+            />
+            <BubbleButton
+              href="/v4"
+              label="v4"
+              sublabel="AI = 第三の当事者"
+              icon={<Bot className="h-6 w-6" />}
+              color="sky"
+              size="lg"
+              float="normal"
+              delay={900}
             />
           </div>
         </div>
