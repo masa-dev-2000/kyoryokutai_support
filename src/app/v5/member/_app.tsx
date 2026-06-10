@@ -10,7 +10,6 @@ import {
   Bell,
   Check,
   Camera,
-  Type,
   Quote,
   EyeOff,
   Building2,
@@ -18,7 +17,15 @@ import {
   UserCircle2,
   Sparkles,
   ChevronRight,
-  Plus,
+  Clock,
+  Home as HomeIcon,
+  Briefcase,
+  Plane,
+  Megaphone,
+  PartyPopper,
+  Receipt,
+  PenLine,
+  X,
 } from "lucide-react";
 
 type Tab = "home" | "record" | "mentor";
@@ -98,14 +105,14 @@ function HomeTab({ onJumpTo }: { onJumpTo: (t: Tab) => void }) {
       {/* Primary CTA = jump to record */}
       <button
         onClick={() => onJumpTo("record")}
-        className="flex w-full items-center gap-3 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 px-5 py-4 text-left text-white shadow-lg ring-2 ring-white/40 active:scale-[0.98]"
+        className="flex w-full items-center gap-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-5 py-4 text-left text-white shadow-lg ring-2 ring-white/40 active:scale-[0.98]"
       >
         <div className="rounded-xl bg-white/25 p-2 ring-1 ring-white/40">
-          <Mic className="h-5 w-5" />
+          <PenLine className="h-5 w-5" />
         </div>
         <div className="flex-1">
-          <div className="text-sm font-bold">話して記録する</div>
-          <div className="text-[11px] opacity-90">3 分話せば日報も月報も完成</div>
+          <div className="text-sm font-bold">今日の活動を記録する</div>
+          <div className="text-[11px] opacity-90">タップ + ひと言メモ。30 秒で完了。</div>
         </div>
         <ChevronRight className="h-5 w-5" />
       </button>
@@ -203,134 +210,199 @@ function RecentItem({
   );
 }
 
-/* -------------------- RECORD(主役だけ) -------------------- */
+/* -------------------- RECORD(フォーム主体・最小手間) -------------------- */
 
-type RecordKind = "voice" | "photo" | "text";
+type Category = {
+  id: string;
+  label: string;
+  icon: React.ReactNode;
+  color: string;
+};
+
+const categories: Category[] = [
+  { id: "akiya",     label: "空き家",   icon: <HomeIcon className="h-5 w-5" />,      color: "from-amber-400 to-orange-500" },
+  { id: "ijuu",      label: "移住相談", icon: <Users className="h-5 w-5" />,         color: "from-emerald-400 to-teal-500" },
+  { id: "event",     label: "イベント", icon: <PartyPopper className="h-5 w-5" />,   color: "from-rose-400 to-pink-500" },
+  { id: "meeting",   label: "会議",     icon: <Briefcase className="h-5 w-5" />,     color: "from-violet-400 to-indigo-500" },
+  { id: "trip",      label: "出張",     icon: <Plane className="h-5 w-5" />,         color: "from-sky-400 to-blue-500" },
+  { id: "pr",        label: "広報",     icon: <Megaphone className="h-5 w-5" />,     color: "from-fuchsia-400 to-purple-500" },
+  { id: "expense",   label: "経費",     icon: <Receipt className="h-5 w-5" />,       color: "from-lime-400 to-emerald-500" },
+  { id: "reflect",   label: "振り返り", icon: <PenLine className="h-5 w-5" />,       color: "from-slate-400 to-slate-600" },
+];
 
 function RecordTab() {
-  const [kind, setKind] = React.useState<RecordKind>("voice");
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [memo, setMemo] = React.useState("");
+  const [photoAttached, setPhotoAttached] = React.useState(false);
+  const [savedAt, setSavedAt] = React.useState<Date | null>(null);
+
+  const selected = categories.find((c) => c.id === selectedId);
+  const canSave = !!selectedId;
+
+  function reset() {
+    setSelectedId(null);
+    setMemo("");
+    setPhotoAttached(false);
+  }
+
+  function save() {
+    if (!canSave) return;
+    setSavedAt(new Date());
+    setTimeout(() => {
+      reset();
+      setSavedAt(null);
+    }, 1600);
+  }
+
+  if (savedAt) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 text-center">
+        <div className="flex h-24 w-24 items-center justify-center rounded-full bg-emerald-500 text-white shadow-xl">
+          <Check className="h-12 w-12" />
+        </div>
+        <div className="mt-4 text-lg font-bold text-slate-900">
+          記録しました
+        </div>
+        <div className="mt-1 text-xs text-slate-500">
+          AI がタグ付けと月報への反映を行います
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="px-1">
         <h1 className="text-xl font-bold text-slate-900">記録する</h1>
         <p className="mt-0.5 text-xs text-slate-600">
-          どれか 1 つで OK。あとは AI が組み立てます。
+          種類をタップ → メモは <strong>任意</strong> → 保存。それだけ。
         </p>
       </div>
 
-      {/* Segmented selector */}
-      <div className="flex gap-1 rounded-2xl bg-slate-100 p-1">
-        <SegBtn
-          active={kind === "voice"}
-          onClick={() => setKind("voice")}
-          icon={<Mic className="h-3.5 w-3.5" />}
-          label="話す"
-        />
-        <SegBtn
-          active={kind === "photo"}
-          onClick={() => setKind("photo")}
-          icon={<Camera className="h-3.5 w-3.5" />}
-          label="写真"
-        />
-        <SegBtn
-          active={kind === "text"}
-          onClick={() => setKind("text")}
-          icon={<Type className="h-3.5 w-3.5" />}
-          label="文字"
-        />
-      </div>
-
-      {/* Main canvas */}
-      {kind === "voice" && (
-        <RecordCanvas
-          gradient="from-rose-400 via-pink-500 to-purple-500"
-          icon={<Mic className="h-20 w-20" />}
-          title="タップで録音"
-          sub="3 分話せば日報・タグ付け・月報まで全自動"
-          cta="録音を始める"
-        />
-      )}
-      {kind === "photo" && (
-        <RecordCanvas
-          gradient="from-amber-400 via-orange-400 to-rose-400"
-          icon={<Camera className="h-20 w-20" />}
-          title="シャッターを切る"
-          sub="レシート → 経費申請 / 活動写真 → 自動タグ"
-          cta="カメラを開く"
-        />
-      )}
-      {kind === "text" && (
-        <div className="rounded-3xl bg-white p-5 shadow-md ring-1 ring-slate-100">
-          <textarea
-            rows={5}
-            placeholder="今日あったことを 1-2 行で..."
-            className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-100"
-          />
-          <button className="mt-3 w-full rounded-full bg-gradient-to-r from-sky-500 to-blue-500 py-2.5 text-xs font-bold text-white shadow-sm active:scale-95">
-            記録する
-          </button>
+      {/* 1. 種類選択(必須・1 タップ) */}
+      <SimpleCard title="① 何をしましたか?" sub={selected ? "選択済み" : "1 つ選ぶ"}>
+        <div className="grid grid-cols-4 gap-2">
+          {categories.map((c) => (
+            <CategoryTile
+              key={c.id}
+              category={c}
+              active={selectedId === c.id}
+              onClick={() => setSelectedId(c.id)}
+            />
+          ))}
         </div>
-      )}
+      </SimpleCard>
+
+      {/* 2. メモ(任意) */}
+      <SimpleCard title="② ひと言メモ" sub="任意 / 空欄でも OK">
+        <input
+          type="text"
+          value={memo}
+          onChange={(e) => setMemo(e.target.value)}
+          placeholder="例:A 邸を内覧、移住希望者と一緒に"
+          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-[13px] focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+        />
+      </SimpleCard>
+
+      {/* 3. オプション(写真・時刻) */}
+      <SimpleCard title="③ オプション" sub="任意">
+        <div className="grid grid-cols-2 gap-2">
+          <OptionTile
+            icon={<Camera className="h-4 w-4" />}
+            label={photoAttached ? "写真 1 枚" : "写真を追加"}
+            active={photoAttached}
+            onClick={() => setPhotoAttached((v) => !v)}
+            color="amber"
+          />
+          <OptionTile
+            icon={<Clock className="h-4 w-4" />}
+            label="今(変更可)"
+            active={false}
+            onClick={() => {}}
+            color="slate"
+          />
+        </div>
+      </SimpleCard>
+
+      {/* Save */}
+      <button
+        onClick={save}
+        disabled={!canSave}
+        className={`flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-sm font-bold text-white shadow-lg transition ${
+          canSave
+            ? "bg-gradient-to-r from-emerald-500 to-teal-500 active:scale-[0.98]"
+            : "cursor-not-allowed bg-slate-300"
+        }`}
+      >
+        <Check className="h-4 w-4" />
+        {canSave ? `${selected?.label}を記録する` : "種類を選んでください"}
+      </button>
+
+      {/* Voice fallback (secondary) */}
+      <button className="flex w-full items-center justify-center gap-1.5 rounded-full bg-white py-2.5 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200 active:scale-95">
+        <Mic className="h-3.5 w-3.5" />
+        声で書き取る(代わりに使う)
+      </button>
     </div>
   );
 }
 
-function SegBtn({
+function CategoryTile({
+  category,
   active,
   onClick,
-  icon,
-  label,
 }: {
+  category: Category;
   active: boolean;
   onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex flex-1 items-center justify-center gap-1 rounded-xl py-1.5 text-[11px] font-bold transition ${
+      className={`relative flex aspect-square flex-col items-center justify-center gap-1 rounded-2xl text-[10px] font-bold transition active:scale-95 ${
         active
-          ? "bg-white text-slate-900 shadow-sm"
-          : "text-slate-500"
+          ? `bg-gradient-to-br ${category.color} text-white shadow-md ring-2 ring-white/40`
+          : "bg-slate-50 text-slate-700 ring-1 ring-slate-200"
       }`}
     >
-      {icon}
-      {label}
+      {active && (
+        <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-md ring-2 ring-white">
+          <Check className="h-3 w-3" />
+        </span>
+      )}
+      {category.icon}
+      {category.label}
     </button>
   );
 }
 
-function RecordCanvas({
-  gradient,
+function OptionTile({
   icon,
-  title,
-  sub,
-  cta,
+  label,
+  active,
+  onClick,
+  color,
 }: {
-  gradient: string;
   icon: React.ReactNode;
-  title: string;
-  sub: string;
-  cta: string;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  color: "amber" | "slate";
 }) {
+  const colorClass = active
+    ? color === "amber"
+      ? "bg-amber-100 text-amber-800 ring-amber-200"
+      : "bg-slate-100 text-slate-800 ring-slate-200"
+    : "bg-slate-50 text-slate-600 ring-slate-200";
   return (
-    <div
-      className={`relative overflow-hidden rounded-3xl bg-gradient-to-br ${gradient} p-8 text-center text-white shadow-2xl ring-2 ring-white/40`}
+    <button
+      onClick={onClick}
+      className={`flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11px] font-semibold ring-1 active:scale-95 ${colorClass}`}
     >
-      <span className="pointer-events-none absolute left-[8%] top-[10%] h-[18%] w-[26%] rounded-full bg-white/40 blur-md" />
-      <div className="relative">
-        <div className="mx-auto flex h-36 w-36 items-center justify-center rounded-full bg-white/15 ring-4 ring-white/60 backdrop-blur-sm">
-          {icon}
-        </div>
-        <div className="mt-5 text-lg font-black">{title}</div>
-        <div className="mt-1 text-[11px] opacity-90">{sub}</div>
-        <button className="mt-5 w-full rounded-full bg-white py-3 text-sm font-bold text-slate-900 shadow-lg active:scale-95">
-          {cta}
-        </button>
-      </div>
-    </div>
+      {icon}
+      {label}
+      {active && <X className="h-3 w-3 opacity-60" />}
+    </button>
   );
 }
 
@@ -570,12 +642,12 @@ function BottomNav({
           {/* center FAB */}
           <button
             onClick={() => onChange("record")}
-            className={`-mt-7 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-rose-500 via-pink-500 to-purple-500 text-white shadow-xl ring-4 ring-white transition active:scale-95 ${
+            className={`-mt-7 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 via-teal-500 to-sky-500 text-white shadow-xl ring-4 ring-white transition active:scale-95 ${
               active === "record" ? "scale-110" : ""
             }`}
             aria-label="記録"
           >
-            <Mic className="h-7 w-7" />
+            <PenLine className="h-7 w-7" />
           </button>
           <NavBtn
             icon={<Bot className="h-5 w-5" />}
