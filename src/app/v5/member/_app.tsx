@@ -3,253 +3,342 @@
 import * as React from "react";
 import Link from "next/link";
 import {
+  Search,
   ChevronLeft,
   Sparkles,
   X,
-  Plus,
-  Search,
+  ArrowRight,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 
 /* ============================================================
-   v5 隊員アプリ ─ モノクロ・業務リスト型(再々設計)
-   方針: グラデ/FAB/カード過多を捨て、Bear/Notes/Linear 系の
-   情報密度高めの「メモアプリらしい日報ツール」にする。
+   v5 隊員アプリ ─ 検索エンジン型・3 機能(月報 / 経費 / 事例)
+   方針:
+   - 1 viewport で完結(PC / SP 両方スクロールなし)
+   - 中央に検索ボックス、上に機能タブ
+   - 業務ツールとして読める白基調 + slate アクセント
    ============================================================ */
 
-type Category =
-  | "akiya"
-  | "ijuu"
-  | "event"
-  | "meeting"
-  | "trip"
-  | "pr"
-  | "expense"
-  | "reflect";
-
-const categoryLabel: Record<Category, string> = {
-  akiya: "空き家",
-  ijuu: "移住相談",
-  event: "イベント",
-  meeting: "会議",
-  trip: "出張",
-  pr: "広報",
-  expense: "経費",
-  reflect: "振り返り",
-};
-
-type LogEntry = {
-  id: string;
-  category: Category;
-  memo: string;
-};
-
-type DayEntry = {
-  date: string; // "2026-06-09"
-  display: string; // "6月9日(月)"
-  records: LogEntry[];
-};
-
-const todayDisplay = "6月10日(火)";
-
-const past: DayEntry[] = [
-  {
-    date: "2026-06-09",
-    display: "6月9日(月)",
-    records: [
-      { id: "r1", category: "akiya", memo: "A邸内覧、家族4人と現地調整。築80年、構造は良好。" },
-      { id: "r2", category: "meeting", memo: "観光協会 月例会(13:30〜)" },
-      { id: "r3", category: "reflect", memo: "夕方の振り返り。空き家の動きが活発化、来月はDM配布。" },
-    ],
-  },
-  {
-    date: "2026-06-08",
-    display: "6月8日(日)",
-    records: [
-      { id: "r4", category: "akiya", memo: "B邸 清掃ボランティア。地元自治会と合同。" },
-    ],
-  },
-  {
-    date: "2026-06-07",
-    display: "6月7日(土)",
-    records: [
-      { id: "r5", category: "ijuu", memo: "移住相談 Web会議 / 名古屋ファミリー(60分)" },
-      { id: "r6", category: "pr", memo: "Instagram 空き家紹介投稿、いいね 84件" },
-    ],
-  },
-  {
-    date: "2026-06-06",
-    display: "6月6日(金)",
-    records: [
-      { id: "r7", category: "trip", memo: "島根県 視察。類似事例調査(¥38,400 経費要申請)" },
-    ],
-  },
-  {
-    date: "2026-06-05",
-    display: "6月5日(木)",
-    records: [
-      { id: "r8", category: "ijuu", memo: "移住検討者 家族 視察対応" },
-      { id: "r9", category: "event", memo: "地域おこし協議会 出展準備" },
-    ],
-  },
-];
+type Tab = "report" | "expense" | "case";
 
 export function MemberApp() {
+  const [tab, setTab] = React.useState<Tab>("report");
   const [mentorOpen, setMentorOpen] = React.useState(false);
-  const [composeCategory, setComposeCategory] = React.useState<Category | null>(
-    null
-  );
-  const [composeText, setComposeText] = React.useState("");
-  const [entries, setEntries] = React.useState<LogEntry[]>([]);
-
-  function add() {
-    if (!composeCategory && !composeText.trim()) return;
-    setEntries((es) => [
-      {
-        id: String(Date.now()),
-        category: composeCategory ?? "reflect",
-        memo: composeText.trim() || "(メモなし)",
-      },
-      ...es,
-    ]);
-    setComposeText("");
-    setComposeCategory(null);
-  }
 
   return (
-    <main className="min-h-screen bg-white text-slate-900">
-      {/* ─── Header (fixed, minimal) ─── */}
-      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-2.5 backdrop-blur">
-        <Link
-          href="/v5"
-          className="inline-flex items-center gap-0.5 text-[11px] text-slate-500 hover:text-slate-900"
-        >
-          <ChevronLeft className="h-3.5 w-3.5" />
-          切替
-        </Link>
-        <div className="text-center">
-          <div className="text-[12px] font-semibold">田中 あかり</div>
-          <div className="text-[10px] text-slate-500">新温泉町 / 移住促進</div>
+    <main className="flex h-screen flex-col bg-white text-slate-900">
+      <Header onMentorOpen={() => setMentorOpen(true)} />
+      <Tabs active={tab} onChange={setTab} />
+
+      <div className="flex flex-1 flex-col items-center justify-center px-6 pb-12">
+        <div className="w-full max-w-2xl">
+          {tab === "report" && <ReportTab />}
+          {tab === "expense" && <ExpenseTab />}
+          {tab === "case" && <CaseTab />}
         </div>
-        <button
-          onClick={() => setMentorOpen(true)}
-          className="inline-flex items-center gap-1 text-[11px] text-slate-700 hover:text-slate-900"
-        >
-          <Sparkles className="h-3.5 w-3.5" />
-          相談
-        </button>
-      </header>
+      </div>
 
-      {/* ─── Composer (上部固定エリア / Today) ─── */}
-      <section className="border-b border-slate-200 px-4 pb-3 pt-4">
-        <div className="mb-2 flex items-baseline justify-between">
-          <h2 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-            TODAY ・ {todayDisplay}
-          </h2>
-          <span className="text-[10px] text-slate-400">
-            {entries.length === 0 ? "まだ書いていません" : `${entries.length} 件 記録済`}
-          </span>
-        </div>
-
-        {/* Quick category chips */}
-        <div className="flex flex-wrap gap-1">
-          {(Object.keys(categoryLabel) as Category[]).map((c) => (
-            <button
-              key={c}
-              onClick={() => setComposeCategory(c)}
-              className={`rounded-md border px-2 py-1 text-[11px] font-medium transition ${
-                composeCategory === c
-                  ? "border-slate-900 bg-slate-900 text-white"
-                  : "border-slate-200 text-slate-700 hover:border-slate-400"
-              }`}
-            >
-              {categoryLabel[c]}
-            </button>
-          ))}
-        </div>
-
-        {/* Compose text */}
-        <div className="mt-2 flex items-start gap-2">
-          <input
-            type="text"
-            value={composeText}
-            onChange={(e) => setComposeText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") add();
-            }}
-            placeholder="今日の活動を 1 行で…"
-            className="flex-1 border-b border-slate-200 bg-transparent px-0 py-1.5 text-[13px] placeholder-slate-400 focus:border-slate-900 focus:outline-none"
-          />
-          <button
-            onClick={add}
-            disabled={!composeCategory && !composeText.trim()}
-            className="rounded-md border border-slate-900 bg-slate-900 px-3 py-1.5 text-[11px] font-bold text-white transition disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-300"
-          >
-            記録
-          </button>
-        </div>
-
-        {/* Today's added records */}
-        {entries.length > 0 && (
-          <ul className="mt-3 space-y-0">
-            {entries.map((e) => (
-              <RecordRow key={e.id} record={e} />
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* ─── Past entries (timeline list) ─── */}
-      <section>
-        {past.map((day) => (
-          <DaySection key={day.date} day={day} />
-        ))}
-      </section>
-
-      {/* ─── Monthly footer ─── */}
-      <section className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-center text-[11px] text-slate-600">
-        今月 ・ 23 件 ・{" "}
-        <button className="font-bold text-slate-900 underline underline-offset-2 hover:no-underline">
-          月報を見る
-        </button>
-      </section>
-
+      <Footer />
       {mentorOpen && <MentorPanel onClose={() => setMentorOpen(false)} />}
     </main>
   );
 }
 
-function DaySection({ day }: { day: DayEntry }) {
+/* -------------------- Header / Tabs / Footer -------------------- */
+
+function Header({ onMentorOpen }: { onMentorOpen: () => void }) {
   return (
-    <div className="border-b border-slate-100">
-      <div className="flex items-center justify-between bg-slate-50 px-4 py-1.5">
-        <span className="text-[11px] font-bold text-slate-700">
-          {day.display}
-        </span>
-        <span className="text-[10px] text-slate-500">{day.records.length} 件</span>
+    <header className="flex items-center justify-between border-b border-slate-100 px-5 py-2.5">
+      <Link
+        href="/v5"
+        className="inline-flex items-center gap-0.5 text-[11px] text-slate-500 hover:text-slate-900"
+      >
+        <ChevronLeft className="h-3 w-3" />
+        切替
+      </Link>
+      <div className="text-center text-[11px] text-slate-500">
+        田中 あかり / 新温泉町
       </div>
-      <ul>
-        {day.records.map((r) => (
-          <RecordRow key={r.id} record={r} />
-        ))}
+      <button
+        onClick={onMentorOpen}
+        className="inline-flex items-center gap-1 text-[11px] text-slate-700 hover:text-slate-900"
+      >
+        <Sparkles className="h-3 w-3" />
+        相談
+      </button>
+    </header>
+  );
+}
+
+function Tabs({
+  active,
+  onChange,
+}: {
+  active: Tab;
+  onChange: (t: Tab) => void;
+}) {
+  return (
+    <nav className="flex items-center justify-center gap-1 border-b border-slate-100 px-5 py-1.5">
+      <TabBtn
+        label="月報"
+        active={active === "report"}
+        onClick={() => onChange("report")}
+      />
+      <TabBtn
+        label="経費"
+        active={active === "expense"}
+        onClick={() => onChange("expense")}
+      />
+      <TabBtn
+        label="事例"
+        active={active === "case"}
+        onClick={() => onChange("case")}
+      />
+    </nav>
+  );
+}
+
+function TabBtn({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`relative px-4 py-1.5 text-[12px] font-semibold transition ${
+        active ? "text-slate-900" : "text-slate-500 hover:text-slate-700"
+      }`}
+    >
+      {label}
+      {active && (
+        <span className="absolute bottom-[-7px] left-1/2 h-[2px] w-6 -translate-x-1/2 bg-slate-900" />
+      )}
+    </button>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="border-t border-slate-100 py-2 text-center text-[10px] text-slate-400">
+      地域おこし協力隊サポートシステム ・ v5 lab
+    </footer>
+  );
+}
+
+/* -------------------- 1. 月報タブ -------------------- */
+
+function ReportTab() {
+  const [q, setQ] = React.useState("");
+  return (
+    <div className="text-center">
+      <h1 className="text-3xl font-bold tracking-tight">月報</h1>
+      <p className="mt-1 text-[12px] text-slate-500">
+        日々のログから AI が自動生成します
+      </p>
+
+      <SearchBox
+        value={q}
+        onChange={setQ}
+        placeholder="月を指定 ・ 例:2026 年 6 月"
+      />
+
+      <ul className="mt-6 space-y-px text-left">
+        <ResultRow
+          title="2026 年 6 月"
+          sub="自動生成中 ・ 23 件のログから"
+          right="プレビュー"
+          emphasis
+        />
+        <ResultRow
+          title="2026 年 5 月"
+          sub="提出済 ・ 役場承認 5/31"
+          right="開く"
+        />
+        <ResultRow
+          title="2026 年 4 月"
+          sub="提出済 ・ 役場承認 4/30"
+          right="開く"
+        />
       </ul>
     </div>
   );
 }
 
-function RecordRow({ record }: { record: LogEntry }) {
+/* -------------------- 2. 経費タブ -------------------- */
+
+function ExpenseTab() {
+  const [q, setQ] = React.useState("古民家コワーキング 家賃 月 5 万円");
+  const checked = q.trim().length > 0;
   return (
-    <li className="flex items-start gap-2 border-t border-slate-100 px-4 py-2 first:border-t-0 hover:bg-slate-50/60">
-      <span className="mt-0.5 shrink-0 rounded border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[9px] font-semibold text-slate-600">
-        {categoryLabel[record.category]}
-      </span>
-      <span className="flex-1 text-[12px] leading-relaxed text-slate-800">
-        {record.memo}
-      </span>
+    <div className="text-center">
+      <h1 className="text-3xl font-bold tracking-tight">経費</h1>
+      <p className="mt-1 text-[12px] text-slate-500">
+        これ通るかな?を AI と過去事例で確かめる
+      </p>
+
+      <SearchBox
+        value={q}
+        onChange={setQ}
+        placeholder="例:古民家家賃 月 5 万円 / 視察出張費 ¥38,400"
+      />
+
+      {checked && (
+        <>
+          {/* 通過確度 */}
+          <div className="mt-5 flex items-center justify-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-800">
+            <CheckCircle2 className="h-4 w-4" />
+            <span>
+              <strong>通る可能性 高</strong>(過去 6 件中 5 件が承認)
+            </span>
+          </div>
+
+          <ul className="mt-3 space-y-px text-left">
+            <ResultRow
+              title="海士町 古民家コワーキング(2024)"
+              sub="活動拠点として申請 → 承認(週 1 地域開放日が条件)"
+              right="詳細"
+            />
+            <ResultRow
+              title="JOIN お役立ちツール Q&A"
+              sub="「活動拠点としての賃借料は対象」"
+              right="出典"
+            />
+            <ResultRow
+              title="佐用町 役場 過去承認ログ(類似)"
+              sub="拠点賃借 月 4 万円 → 承認 / 月 8 万円 → 差戻"
+              right="詳細"
+            />
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* -------------------- 3. 事例タブ -------------------- */
+
+function CaseTab() {
+  const [q, setQ] = React.useState("");
+  return (
+    <div className="text-center">
+      <h1 className="text-3xl font-bold tracking-tight">事例</h1>
+      <p className="mt-1 text-[12px] text-slate-500">
+        全国の協力隊の活動から探す
+      </p>
+
+      <SearchBox
+        value={q}
+        onChange={setQ}
+        placeholder="キーワード ・ 例:空き家 移住相談 観光協会"
+      />
+
+      {q.trim() === "" ? (
+        <div>
+          <div className="mt-4 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            トレンド
+          </div>
+          <ul className="mt-1 space-y-px text-left">
+            <ResultRow title="空き家バンク立ち上げ" sub="34 件 ・ 全国" right="検索" />
+            <ResultRow title="移住相談ネットワーク" sub="28 件 ・ 全国" right="検索" />
+            <ResultRow title="観光協会との連携" sub="19 件 ・ 全国" right="検索" />
+          </ul>
+        </div>
+      ) : (
+        <ul className="mt-5 space-y-px text-left">
+          <ResultRow
+            title="空き家バンクで 1 年目 12 件登録(養父市・山本氏)"
+            sub="自治会連動の DM 配布が効いた"
+            right="詳細"
+          />
+          <ResultRow
+            title="空き家清掃ボランティアの定着(海士町)"
+            sub="月 1 開催で地元との関係構築"
+            right="詳細"
+          />
+          <ResultRow
+            title="DIY 補助金との組み合わせ(JOIN)"
+            sub="物件登録時の補助金活用例"
+            right="出典"
+          />
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/* -------------------- Reusable: SearchBox / ResultRow -------------------- */
+
+function SearchBox({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <div className="mx-auto mt-6 flex max-w-xl items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.04)] transition focus-within:border-slate-900 focus-within:shadow-md">
+      <Search className="h-4 w-4 shrink-0 text-slate-400" />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="flex-1 bg-transparent text-[13px] placeholder-slate-400 focus:outline-none"
+      />
+      {value && (
+        <button
+          onClick={() => onChange("")}
+          className="text-slate-400 hover:text-slate-600"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ResultRow({
+  title,
+  sub,
+  right,
+  emphasis,
+}: {
+  title: string;
+  sub?: string;
+  right?: string;
+  emphasis?: boolean;
+}) {
+  return (
+    <li
+      className={`flex items-center gap-3 border-b border-slate-100 py-2.5 transition last:border-b-0 hover:bg-slate-50/60 ${
+        emphasis ? "bg-slate-50/30" : ""
+      }`}
+    >
+      <div className="min-w-0 flex-1 px-1">
+        <div className="text-[13px] font-semibold text-slate-900">{title}</div>
+        {sub && (
+          <div className="mt-0.5 text-[11px] text-slate-500">{sub}</div>
+        )}
+      </div>
+      {right && (
+        <button className="inline-flex items-center gap-0.5 px-2 text-[11px] font-semibold text-slate-700 hover:text-slate-900">
+          {right}
+          <ArrowRight className="h-3 w-3" />
+        </button>
+      )}
     </li>
   );
 }
 
-/* -------------------- メンターパネル (Slide-up) -------------------- */
+/* -------------------- メンターパネル -------------------- */
 
 function MentorPanel({ onClose }: { onClose: () => void }) {
   const [q, setQ] = React.useState(
@@ -257,8 +346,7 @@ function MentorPanel({ onClose }: { onClose: () => void }) {
   );
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-white">
-      {/* Header */}
-      <header className="flex items-center justify-between border-b border-slate-200 px-4 py-2.5">
+      <header className="flex items-center justify-between border-b border-slate-200 px-5 py-2.5">
         <button
           onClick={onClose}
           className="inline-flex items-center gap-1 text-[12px] text-slate-700 hover:text-slate-900"
@@ -267,74 +355,29 @@ function MentorPanel({ onClose }: { onClose: () => void }) {
           閉じる
         </button>
         <div className="text-[12px] font-semibold">AI メンター・あおい</div>
-        <button className="text-[11px] text-slate-500 hover:text-slate-900">
-          履歴
-        </button>
+        <span className="w-12" />
       </header>
 
-      {/* Q&A */}
-      <div className="flex-1 overflow-y-auto">
-        <section className="border-b border-slate-200 px-4 py-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            質問
-          </div>
-          <textarea
-            rows={3}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            className="mt-1.5 w-full resize-none border-0 bg-transparent text-[13px] text-slate-900 placeholder-slate-400 focus:outline-none"
-          />
-          <button className="rounded-md border border-slate-900 bg-slate-900 px-3 py-1.5 text-[11px] font-bold text-white">
-            助言を見る
-          </button>
-        </section>
+      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center px-6">
+        <h1 className="text-2xl font-bold tracking-tight">相談する</h1>
+        <p className="mt-1 text-[12px] text-slate-500">
+          わからないこと・迷っていることを聞いてください
+        </p>
 
-        <section>
-          <div className="border-b border-slate-100 bg-slate-50 px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-600">
-            あおいの 4 視点
-          </div>
-          <AdviceRow
-            label="役場目線"
-            body="活動拠点としての賃借料は対象になり得る(JOIN Q&A)。事前協議が原則、ミッションとの紐付けが必須。"
-            citation="JOIN Q&A"
-          />
-          <AdviceRow
-            label="地域目線"
-            body="「閉じた空間」に見えると地域から距離を置かれる懸念。週 1 で地域開放日を設けると自治会の信頼を得やすい。"
-            citation="海士町 古民家コワーキング 2024"
-          />
-          <AdviceRow
-            label="あなた目線"
-            body="1 年目=試作 / 2 年目=巻き込み / 3 年目=運営移譲、の段階で組み立てると任期内で成果物として残せる。"
-          />
-          <AdviceRow
-            label="スモールスタート"
-            body="月 2 回・3 時間だけ短期賃借 → SNS 募集 → 来場者数と写真を記録。1 週間でできる。"
-          />
-        </section>
-      </div>
-    </div>
-  );
-}
-
-function AdviceRow({
-  label,
-  body,
-  citation,
-}: {
-  label: string;
-  body: string;
-  citation?: string;
-}) {
-  return (
-    <div className="border-b border-slate-100 px-4 py-3">
-      <div className="text-[10px] font-bold text-slate-700">{label}</div>
-      <p className="mt-1 text-[12px] leading-relaxed text-slate-800">{body}</p>
-      {citation && (
-        <div className="mt-1.5 font-mono text-[10px] text-slate-500">
-          引用: {citation}
+        <textarea
+          rows={3}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          className="mt-6 w-full resize-none rounded-2xl border border-slate-300 bg-white px-4 py-3 text-[13px] focus:border-slate-900 focus:outline-none"
+        />
+        <button className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-slate-900 px-5 py-2 text-[12px] font-bold text-white hover:bg-slate-800">
+          <Sparkles className="h-3.5 w-3.5" />
+          助言を見る
+        </button>
+        <div className="mt-4 text-[10px] text-slate-400">
+          ※ AI は判定しません。視点と材料のみ提供します。
         </div>
-      )}
+      </div>
     </div>
   );
 }
