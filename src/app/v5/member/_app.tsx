@@ -26,12 +26,9 @@ import {
   PenLine,
   X,
   Home as HomeIcon,
-  FolderKanban,
-  History as HistoryIcon,
-  CircleDot,
 } from "lucide-react";
 
-type Tab = "home" | "record" | "more";
+type Tab = "home" | "record" | "mentor";
 
 type Project = {
   id: string;
@@ -95,7 +92,7 @@ export function MemberApp() {
               onConsumePreset={() => setRecordPreset(null)}
             />
           )}
-          {tab === "more" && <MoreTab />}
+          {tab === "mentor" && <MentorTab />}
         </div>
       </div>
 
@@ -136,17 +133,14 @@ function HomeTab({
   onJumpToRecord: (categoryId?: string) => void;
 }) {
   const active = projects.filter((p) => p.status === "active");
-  const planning = projects.filter((p) => p.status === "planning");
 
   return (
     <div className="space-y-4">
-      {/* Section header */}
-      <div className="px-1 flex items-baseline justify-between">
+      {/* Project status — 主役 */}
+      <div className="flex items-baseline justify-between px-1">
         <h1 className="text-xl font-bold text-slate-900">今、動いてる</h1>
-        <span className="text-[10px] text-slate-500">{active.length} 件 進行中</span>
+        <span className="text-[10px] text-slate-500">{active.length} 件</span>
       </div>
-
-      {/* Active projects (主役) */}
       <div className="space-y-3">
         {active.map((p) => (
           <ProjectCard
@@ -157,26 +151,10 @@ function HomeTab({
         ))}
       </div>
 
-      {/* Planning(小さく) */}
-      {planning.length > 0 && (
-        <div className="rounded-2xl bg-white/70 p-3 ring-1 ring-slate-100 backdrop-blur">
-          <div className="mb-1.5 flex items-center gap-1 text-[10px] font-semibold text-slate-500">
-            <CircleDot className="h-3 w-3" />
-            計画中
-          </div>
-          {planning.map((p) => (
-            <div
-              key={p.id}
-              className="flex items-center justify-between text-[12px]"
-            >
-              <span className="font-semibold text-slate-700">{p.title}</span>
-              <span className="text-[10px] text-slate-500">{p.thisWeek}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Monthly report — 主役 2 */}
+      <MonthlyReportCard />
 
-      {/* 最近の動き(補助・コンパクト) */}
+      {/* Recent activity — 補助 */}
       <SimpleCard title="最近の動き">
         <ul className="space-y-1.5">
           <RecentLine date="昨日" label="空き家清掃ボランティア(B 邸)" />
@@ -184,6 +162,47 @@ function HomeTab({
           <RecentLine date="3 日前" label="夕方の振り返り 5 分" />
         </ul>
       </SimpleCard>
+    </div>
+  );
+}
+
+function MonthlyReportCard() {
+  // demo: this month's progress
+  const day = 22;
+  const totalDays = 30;
+  const logCount = 23;
+  const pct = Math.round((day / totalDays) * 100);
+
+  return (
+    <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500 via-indigo-500 to-blue-600 text-white shadow-md ring-2 ring-white/40">
+      <div className="p-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider opacity-90">
+              今月の月報(自動生成中)
+            </div>
+            <div className="mt-0.5 text-base font-black">2026 年 6 月</div>
+          </div>
+          <span className="rounded-full bg-white/25 px-2 py-0.5 text-[10px] font-bold backdrop-blur ring-1 ring-white/40">
+            {logCount} 件のログから
+          </span>
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/25">
+            <div
+              className="h-full bg-white/90"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <span className="w-12 text-right text-[11px] font-bold">
+            {day} / {totalDays} 日
+          </span>
+        </div>
+      </div>
+      <button className="flex w-full items-center justify-center gap-1.5 border-t border-white/20 bg-white/10 py-2.5 text-[11px] font-bold backdrop-blur transition active:bg-white/20">
+        プレビューを見る
+        <ChevronRight className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }
@@ -503,114 +522,19 @@ const demoAdvices: Advice[] = [
   },
 ];
 
-/* -------------------- MORE(プロジェクト / 相談 / 履歴) -------------------- */
+/* -------------------- MENTOR(相談・わからないことを聞く) -------------------- */
 
-type MoreSubTab = "projects" | "mentor" | "history";
-
-function MoreTab() {
-  const [sub, setSub] = React.useState<MoreSubTab>("projects");
+function MentorTab() {
   return (
     <div className="space-y-4">
       <div className="px-1">
-        <h1 className="text-xl font-bold text-slate-900">もっと見る</h1>
+        <h1 className="text-xl font-bold text-slate-900">相談する</h1>
+        <p className="mt-0.5 text-xs text-slate-600">
+          わからないことを聞いてください。役場・地域・あなた、3 つの目線で材料を出します。
+        </p>
       </div>
 
-      <div className="flex gap-1 rounded-2xl bg-slate-100 p-1">
-        <SubBtn
-          icon={<FolderKanban className="h-3.5 w-3.5" />}
-          label="プロジェクト"
-          active={sub === "projects"}
-          onClick={() => setSub("projects")}
-        />
-        <SubBtn
-          icon={<Bot className="h-3.5 w-3.5" />}
-          label="相談"
-          active={sub === "mentor"}
-          onClick={() => setSub("mentor")}
-        />
-        <SubBtn
-          icon={<HistoryIcon className="h-3.5 w-3.5" />}
-          label="履歴"
-          active={sub === "history"}
-          onClick={() => setSub("history")}
-        />
-      </div>
-
-      {sub === "projects" && <ProjectsList />}
-      {sub === "mentor" && <MentorSubTab />}
-      {sub === "history" && <HistorySubTab />}
-    </div>
-  );
-}
-
-function SubBtn({
-  icon,
-  label,
-  active,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex flex-1 items-center justify-center gap-1 rounded-xl py-1.5 text-[11px] font-bold transition ${
-        active ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
-function ProjectsList() {
-  return (
-    <SimpleCard title="プロジェクト一覧" sub={`${projects.length} 件`}>
-      <div className="space-y-2">
-        {projects.map((p) => (
-          <div
-            key={p.id}
-            className="flex items-center gap-2.5 rounded-xl bg-slate-50 p-2.5"
-          >
-            <span
-              className={`h-2 w-2 shrink-0 rounded-full ${
-                p.status === "active" ? "bg-emerald-500" : "bg-amber-500"
-              }`}
-            />
-            <div className="min-w-0 flex-1">
-              <div className="text-[12px] font-bold text-slate-900">
-                {p.title}
-              </div>
-              <div className="mt-1 flex items-center gap-2">
-                <div className="h-1 flex-1 overflow-hidden rounded-full bg-slate-200">
-                  <div
-                    className={`h-full ${
-                      p.status === "active"
-                        ? "bg-gradient-to-r from-emerald-400 to-teal-500"
-                        : "bg-gradient-to-r from-amber-400 to-orange-500"
-                    }`}
-                    style={{ width: `${p.progress}%` }}
-                  />
-                </div>
-                <span className="text-[9px] font-bold text-slate-600">
-                  {p.progress}%
-                </span>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </SimpleCard>
-  );
-}
-
-function MentorSubTab() {
-  return (
-    <div className="space-y-3">
+      {/* 質問入力 */}
       <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
         <div className="text-[10px] font-bold text-emerald-700">あなたの質問</div>
         <textarea
@@ -623,6 +547,8 @@ function MentorSubTab() {
           助言を見る
         </button>
       </div>
+
+      {/* 4 視点回答 */}
       <SimpleCard title="あおいの 4 視点" sub="引用付き">
         <div className="space-y-2">
           {demoAdvices.map((a) => (
@@ -631,20 +557,6 @@ function MentorSubTab() {
         </div>
       </SimpleCard>
     </div>
-  );
-}
-
-function HistorySubTab() {
-  return (
-    <SimpleCard title="活動履歴" sub="今月 18 件">
-      <ul className="space-y-1.5">
-        <RecentLine date="06-05" label="移住検討者 家族 視察対応" />
-        <RecentLine date="06-03" label="空き家清掃 + 写真撮影" />
-        <RecentLine date="06-01" label="月初の振り返り 音声" />
-        <RecentLine date="05-28" label="観光協会 月例会" />
-        <RecentLine date="05-25" label="地域イベント 出展準備" />
-      </ul>
-    </SimpleCard>
   );
 }
 
@@ -781,10 +693,10 @@ function BottomNav({
             <PenLine className="h-7 w-7" />
           </button>
           <NavBtn
-            icon={<FolderKanban className="h-5 w-5" />}
-            label="もっと"
-            active={active === "more"}
-            onClick={() => onChange("more")}
+            icon={<Bot className="h-5 w-5" />}
+            label="相談"
+            active={active === "mentor"}
+            onClick={() => onChange("mentor")}
           />
         </div>
       </div>
