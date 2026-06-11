@@ -18,7 +18,6 @@ import {
   Sparkles,
   ChevronRight,
   Clock,
-  Home as HomeIcon,
   Briefcase,
   Plane,
   Megaphone,
@@ -26,12 +25,60 @@ import {
   Receipt,
   PenLine,
   X,
+  Home as HomeIcon,
+  FolderKanban,
+  History as HistoryIcon,
+  CircleDot,
 } from "lucide-react";
 
-type Tab = "home" | "record" | "mentor";
+type Tab = "home" | "record" | "more";
+
+type Project = {
+  id: string;
+  title: string;
+  status: "active" | "planning";
+  progress: number;
+  categoryId: string;
+  thisWeek: string;
+  nextStep?: string;
+};
+
+const projects: Project[] = [
+  {
+    id: "p1",
+    title: "空き家バンク立ち上げ",
+    status: "active",
+    progress: 64,
+    categoryId: "akiya",
+    thisWeek: "B 邸内覧、家族 4 人で現地調整",
+    nextStep: "条件交渉 → 契約",
+  },
+  {
+    id: "p2",
+    title: "移住相談ネットワーク",
+    status: "active",
+    progress: 35,
+    categoryId: "ijuu",
+    thisWeek: "名古屋ファミリー相談 / 6 月例会の準備",
+  },
+  {
+    id: "p3",
+    title: "古民家コワーキング試作",
+    status: "planning",
+    progress: 10,
+    categoryId: "akiya",
+    thisWeek: "提案書ドラフト中(役場相談中)",
+  },
+];
 
 export function MemberApp() {
   const [tab, setTab] = React.useState<Tab>("home");
+  const [recordPreset, setRecordPreset] = React.useState<string | null>(null);
+
+  function jumpToRecord(presetCategoryId?: string) {
+    setRecordPreset(presetCategoryId ?? null);
+    setTab("record");
+  }
 
   return (
     <main className="relative min-h-screen bg-gradient-to-b from-sky-50 via-white to-emerald-50 pb-28">
@@ -41,9 +88,14 @@ export function MemberApp() {
       <div className="relative mx-auto max-w-md px-4 pt-4">
         <TopBar />
         <div className="mt-4">
-          {tab === "home" && <HomeTab onJumpTo={setTab} />}
-          {tab === "record" && <RecordTab />}
-          {tab === "mentor" && <MentorTab />}
+          {tab === "home" && <HomeTab onJumpToRecord={jumpToRecord} />}
+          {tab === "record" && (
+            <RecordTab
+              presetId={recordPreset}
+              onConsumePreset={() => setRecordPreset(null)}
+            />
+          )}
+          {tab === "more" && <MoreTab />}
         </div>
       </div>
 
@@ -76,136 +128,128 @@ function TopBar() {
   );
 }
 
-/* -------------------- HOME(超シンプル) -------------------- */
+/* -------------------- HOME(プロジェクト主役・引き算) -------------------- */
 
-function HomeTab({ onJumpTo }: { onJumpTo: (t: Tab) => void }) {
+function HomeTab({
+  onJumpToRecord,
+}: {
+  onJumpToRecord: (categoryId?: string) => void;
+}) {
+  const active = projects.filter((p) => p.status === "active");
+  const planning = projects.filter((p) => p.status === "planning");
+
   return (
-    <div className="space-y-5">
-      {/* Greeting (1 line) */}
-      <div className="px-1">
-        <h1 className="text-xl font-bold text-slate-900">
-          おはよう ☀️
-        </h1>
-        <p className="mt-0.5 text-xs text-slate-600">
-          今日は <strong>古民家見学</strong> がありますね。
-        </p>
+    <div className="space-y-4">
+      {/* Section header */}
+      <div className="px-1 flex items-baseline justify-between">
+        <h1 className="text-xl font-bold text-slate-900">今、動いてる</h1>
+        <span className="text-[10px] text-slate-500">{active.length} 件 進行中</span>
       </div>
 
-      {/* Today's checklist */}
-      <SimpleCard title="今日やること" sub="3 / 5 完了">
-        <ul className="divide-y divide-slate-100">
-          <Task text="10:00 空き家見学(A 邸)" done time="10:00" />
-          <Task text="13:30 地域おこし協議会" done time="13:30" />
-          <Task text="活動記録を 1 件登録" done />
-          <Task text="夕方の振り返り音声" />
-          <Task text="メンターに 1 つ質問" />
-        </ul>
-      </SimpleCard>
+      {/* Active projects (主役) */}
+      <div className="space-y-3">
+        {active.map((p) => (
+          <ProjectCard
+            key={p.id}
+            project={p}
+            onRecord={() => onJumpToRecord(p.categoryId)}
+          />
+        ))}
+      </div>
 
-      {/* Primary CTA = jump to record */}
-      <button
-        onClick={() => onJumpTo("record")}
-        className="flex w-full items-center gap-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 px-5 py-4 text-left text-white shadow-lg ring-2 ring-white/40 active:scale-[0.98]"
-      >
-        <div className="rounded-xl bg-white/25 p-2 ring-1 ring-white/40">
-          <PenLine className="h-5 w-5" />
+      {/* Planning(小さく) */}
+      {planning.length > 0 && (
+        <div className="rounded-2xl bg-white/70 p-3 ring-1 ring-slate-100 backdrop-blur">
+          <div className="mb-1.5 flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+            <CircleDot className="h-3 w-3" />
+            計画中
+          </div>
+          {planning.map((p) => (
+            <div
+              key={p.id}
+              className="flex items-center justify-between text-[12px]"
+            >
+              <span className="font-semibold text-slate-700">{p.title}</span>
+              <span className="text-[10px] text-slate-500">{p.thisWeek}</span>
+            </div>
+          ))}
         </div>
-        <div className="flex-1">
-          <div className="text-sm font-bold">今日の活動を記録する</div>
-          <div className="text-[11px] opacity-90">タップ + ひと言メモ。30 秒で完了。</div>
-        </div>
-        <ChevronRight className="h-5 w-5" />
-      </button>
+      )}
 
-      {/* Recent records (3 items) */}
-      <SimpleCard title="最近の記録">
-        <ul className="space-y-2">
-          <RecentItem
-            time="昨日 17:24"
-            label="空き家清掃ボランティア(B 邸)"
-            tags={["空き家"]}
-          />
-          <RecentItem
-            time="2 日前 14:10"
-            label="移住相談 Web 会議 / 名古屋ファミリー"
-            tags={["移住相談"]}
-          />
-          <RecentItem
-            time="3 日前 19:45"
-            label="夕方の振り返り 5 分"
-            tags={["振り返り"]}
-            voice
-          />
+      {/* 最近の動き(補助・コンパクト) */}
+      <SimpleCard title="最近の動き">
+        <ul className="space-y-1.5">
+          <RecentLine date="昨日" label="空き家清掃ボランティア(B 邸)" />
+          <RecentLine date="2 日前" label="移住相談 / 名古屋ファミリー" />
+          <RecentLine date="3 日前" label="夕方の振り返り 5 分" />
         </ul>
       </SimpleCard>
     </div>
   );
 }
 
-function Task({
-  text,
-  done = false,
-  time,
+function ProjectCard({
+  project,
+  onRecord,
 }: {
-  text: string;
-  done?: boolean;
-  time?: string;
+  project: Project;
+  onRecord: () => void;
 }) {
   return (
-    <li className="flex items-center gap-2.5 py-2">
-      <span
-        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
-          done ? "bg-emerald-500 text-white" : "border-2 border-slate-300 bg-white"
-        }`}
+    <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="text-[15px] font-bold text-slate-900">{project.title}</h3>
+          <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-100">
+            進行中
+          </span>
+        </div>
+
+        {/* Progress */}
+        <div className="mt-3 flex items-center gap-2">
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full bg-gradient-to-r from-emerald-400 to-teal-500"
+              style={{ width: `${project.progress}%` }}
+            />
+          </div>
+          <span className="w-10 text-right text-[11px] font-bold text-slate-700">
+            {project.progress}%
+          </span>
+        </div>
+
+        {/* This week */}
+        <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2">
+          <div className="text-[10px] font-bold text-slate-500">今週</div>
+          <div className="mt-0.5 text-[12px] text-slate-800">{project.thisWeek}</div>
+          {project.nextStep && (
+            <div className="mt-1.5 flex items-center gap-1 text-[10px] text-slate-500">
+              <ChevronRight className="h-3 w-3" />
+              次:{project.nextStep}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Quick record */}
+      <button
+        onClick={onRecord}
+        className="flex w-full items-center justify-center gap-1.5 border-t border-slate-100 bg-slate-50 py-2.5 text-[11px] font-bold text-emerald-700 transition active:bg-emerald-50"
       >
-        {done && <Check className="h-3 w-3" />}
-      </span>
-      {time && (
-        <span className="w-10 shrink-0 text-[10px] font-mono text-slate-500">
-          {time}
-        </span>
-      )}
-      <span
-        className={`flex-1 text-[12px] ${
-          done ? "text-slate-400 line-through" : "text-slate-800"
-        }`}
-      >
-        {text}
-      </span>
-    </li>
+        <PenLine className="h-3.5 w-3.5" />
+        このプロジェクトに記録する
+      </button>
+    </div>
   );
 }
 
-function RecentItem({
-  time,
-  label,
-  tags,
-  voice,
-}: {
-  time: string;
-  label: string;
-  tags: string[];
-  voice?: boolean;
-}) {
+function RecentLine({ date, label }: { date: string; label: string }) {
   return (
-    <li className="rounded-xl bg-slate-50 px-3 py-2">
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] font-mono text-slate-500">{time}</span>
-        {voice && <Mic className="h-3 w-3 text-rose-400" />}
-      </div>
-      <div className="mt-0.5 text-[12px] font-semibold text-slate-800">
-        {label}
-      </div>
-      <div className="mt-1 flex gap-1">
-        {tags.map((t) => (
-          <span
-            key={t}
-            className="rounded-full bg-white px-1.5 py-0.5 text-[9px] font-semibold text-slate-600"
-          >
-            #{t}
-          </span>
-        ))}
-      </div>
+    <li className="flex items-center gap-2 text-[12px]">
+      <span className="w-12 shrink-0 font-mono text-[10px] text-slate-500">
+        {date}
+      </span>
+      <span className="truncate text-slate-700">{label}</span>
     </li>
   );
 }
@@ -230,11 +274,25 @@ const categories: Category[] = [
   { id: "reflect",   label: "振り返り", icon: <PenLine className="h-5 w-5" />,       color: "from-slate-400 to-slate-600" },
 ];
 
-function RecordTab() {
-  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+function RecordTab({
+  presetId,
+  onConsumePreset,
+}: {
+  presetId: string | null;
+  onConsumePreset: () => void;
+}) {
+  const [selectedId, setSelectedId] = React.useState<string | null>(presetId);
   const [memo, setMemo] = React.useState("");
   const [photoAttached, setPhotoAttached] = React.useState(false);
   const [savedAt, setSavedAt] = React.useState<Date | null>(null);
+
+  React.useEffect(() => {
+    if (presetId) {
+      setSelectedId(presetId);
+      onConsumePreset();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetId]);
 
   const selected = categories.find((c) => c.id === selectedId);
   const canSave = !!selectedId;
@@ -445,75 +503,148 @@ const demoAdvices: Advice[] = [
   },
 ];
 
-function MentorTab() {
-  const [showAdvice, setShowAdvice] = React.useState(true);
+/* -------------------- MORE(プロジェクト / 相談 / 履歴) -------------------- */
+
+type MoreSubTab = "projects" | "mentor" | "history";
+
+function MoreTab() {
+  const [sub, setSub] = React.useState<MoreSubTab>("projects");
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="px-1">
-        <h1 className="text-xl font-bold text-slate-900">
-          AI メンターに聞く
-        </h1>
-        <p className="mt-0.5 text-xs text-slate-600">
-          役場・地域・あなた、3 つの目線で材料を出します。
-          <br />
-          判定はしません — 決めるのはあなたと役場。
-        </p>
+        <h1 className="text-xl font-bold text-slate-900">もっと見る</h1>
       </div>
 
-      {/* Input box */}
-      <div className="rounded-2xl bg-white p-4 shadow-md ring-1 ring-slate-100">
+      <div className="flex gap-1 rounded-2xl bg-slate-100 p-1">
+        <SubBtn
+          icon={<FolderKanban className="h-3.5 w-3.5" />}
+          label="プロジェクト"
+          active={sub === "projects"}
+          onClick={() => setSub("projects")}
+        />
+        <SubBtn
+          icon={<Bot className="h-3.5 w-3.5" />}
+          label="相談"
+          active={sub === "mentor"}
+          onClick={() => setSub("mentor")}
+        />
+        <SubBtn
+          icon={<HistoryIcon className="h-3.5 w-3.5" />}
+          label="履歴"
+          active={sub === "history"}
+          onClick={() => setSub("history")}
+        />
+      </div>
+
+      {sub === "projects" && <ProjectsList />}
+      {sub === "mentor" && <MentorSubTab />}
+      {sub === "history" && <HistorySubTab />}
+    </div>
+  );
+}
+
+function SubBtn({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex flex-1 items-center justify-center gap-1 rounded-xl py-1.5 text-[11px] font-bold transition ${
+        active ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function ProjectsList() {
+  return (
+    <SimpleCard title="プロジェクト一覧" sub={`${projects.length} 件`}>
+      <div className="space-y-2">
+        {projects.map((p) => (
+          <div
+            key={p.id}
+            className="flex items-center gap-2.5 rounded-xl bg-slate-50 p-2.5"
+          >
+            <span
+              className={`h-2 w-2 shrink-0 rounded-full ${
+                p.status === "active" ? "bg-emerald-500" : "bg-amber-500"
+              }`}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="text-[12px] font-bold text-slate-900">
+                {p.title}
+              </div>
+              <div className="mt-1 flex items-center gap-2">
+                <div className="h-1 flex-1 overflow-hidden rounded-full bg-slate-200">
+                  <div
+                    className={`h-full ${
+                      p.status === "active"
+                        ? "bg-gradient-to-r from-emerald-400 to-teal-500"
+                        : "bg-gradient-to-r from-amber-400 to-orange-500"
+                    }`}
+                    style={{ width: `${p.progress}%` }}
+                  />
+                </div>
+                <span className="text-[9px] font-bold text-slate-600">
+                  {p.progress}%
+                </span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </SimpleCard>
+  );
+}
+
+function MentorSubTab() {
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
         <div className="text-[10px] font-bold text-emerald-700">あなたの質問</div>
         <textarea
           rows={3}
           defaultValue={demoQuestion}
           className="mt-1 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
         />
-        <div className="mt-2 flex gap-2">
-          <button className="rounded-full bg-white p-2.5 ring-1 ring-slate-200 active:scale-95">
-            <Mic className="h-4 w-4 text-slate-600" />
-          </button>
-          <button
-            onClick={() => setShowAdvice(true)}
-            className="flex-1 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 py-2.5 text-xs font-bold text-white shadow-sm active:scale-95"
-          >
-            <Sparkles className="-mt-0.5 mr-1 inline h-3 w-3" />
-            助言を見る
-          </button>
-        </div>
+        <button className="mt-2 w-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 py-2.5 text-xs font-bold text-white shadow-sm active:scale-95">
+          <Sparkles className="-mt-0.5 mr-1 inline h-3 w-3" />
+          助言を見る
+        </button>
       </div>
-
-      {/* Advice (collapsed by default after first view) */}
-      {showAdvice && (
-        <SimpleCard title="あおいの 4 視点" sub="引用付き">
-          <div className="space-y-2">
-            {demoAdvices.map((a) => (
-              <AdviceRow key={a.perspective} {...a} />
-            ))}
-          </div>
-        </SimpleCard>
-      )}
-
-      {/* Recent chats (3 items) */}
-      <SimpleCard title="最近のやりとり">
-        <ul className="space-y-2">
-          <ChatItem
-            title="観光協会との連携、どこから?"
-            sub="まずは月例会議の傍聴から…"
-            date="3 日前"
-          />
-          <ChatItem
-            title="卒業後に法人化したい"
-            sub="OB 12 名のキャリア事例から…"
-            date="1 週間前"
-          />
-          <ChatItem
-            title="副業で農産物を売っていい?"
-            sub="事前申請 + 月 20h 以内…"
-            date="2 週間前"
-          />
-        </ul>
+      <SimpleCard title="あおいの 4 視点" sub="引用付き">
+        <div className="space-y-2">
+          {demoAdvices.map((a) => (
+            <AdviceRow key={a.perspective} {...a} />
+          ))}
+        </div>
       </SimpleCard>
     </div>
+  );
+}
+
+function HistorySubTab() {
+  return (
+    <SimpleCard title="活動履歴" sub="今月 18 件">
+      <ul className="space-y-1.5">
+        <RecentLine date="06-05" label="移住検討者 家族 視察対応" />
+        <RecentLine date="06-03" label="空き家清掃 + 写真撮影" />
+        <RecentLine date="06-01" label="月初の振り返り 音声" />
+        <RecentLine date="05-28" label="観光協会 月例会" />
+        <RecentLine date="05-25" label="地域イベント 出展準備" />
+      </ul>
+    </SimpleCard>
   );
 }
 
@@ -650,10 +781,10 @@ function BottomNav({
             <PenLine className="h-7 w-7" />
           </button>
           <NavBtn
-            icon={<Bot className="h-5 w-5" />}
-            label="相談"
-            active={active === "mentor"}
-            onClick={() => onChange("mentor")}
+            icon={<FolderKanban className="h-5 w-5" />}
+            label="もっと"
+            active={active === "more"}
+            onClick={() => onChange("more")}
           />
         </div>
       </div>
