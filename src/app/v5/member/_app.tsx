@@ -26,6 +26,8 @@ import {
   PenLine,
   X,
   Home as HomeIcon,
+  CircleDot,
+  FileText,
 } from "lucide-react";
 
 type Tab = "home" | "record" | "mentor";
@@ -125,139 +127,172 @@ function TopBar() {
   );
 }
 
-/* -------------------- HOME(プロジェクト主役・引き算) -------------------- */
+/* -------------------- HOME(日報タイムライン) -------------------- */
+
+type DailyEntry = {
+  date: string; // "6/9 (月)"
+  isToday?: boolean;
+  records: { categoryId: string; memo: string }[];
+};
+
+const dailyEntries: DailyEntry[] = [
+  { date: "6/10 (火)", isToday: true, records: [] },
+  {
+    date: "6/9 (月)",
+    records: [
+      { categoryId: "akiya", memo: "A 邸内覧、家族 4 人と現地調整" },
+      { categoryId: "meeting", memo: "観光協会 月例会" },
+      { categoryId: "reflect", memo: "夕方の振り返り 5 分" },
+    ],
+  },
+  {
+    date: "6/8 (日)",
+    records: [{ categoryId: "akiya", memo: "B 邸 清掃ボランティア" }],
+  },
+  {
+    date: "6/7 (土)",
+    records: [
+      { categoryId: "ijuu", memo: "移住相談 / 名古屋ファミリー Web 会議" },
+      { categoryId: "pr", memo: "Instagram で空き家紹介投稿" },
+    ],
+  },
+  {
+    date: "6/6 (金)",
+    records: [{ categoryId: "trip", memo: "島根県視察(類似事例調査)" }],
+  },
+];
 
 function HomeTab({
   onJumpToRecord,
 }: {
   onJumpToRecord: (categoryId?: string) => void;
 }) {
-  const active = projects.filter((p) => p.status === "active");
-
   return (
     <div className="space-y-4">
-      {/* Project status — 主役 */}
-      <div className="flex items-baseline justify-between px-1">
-        <h1 className="text-xl font-bold text-slate-900">今、動いてる</h1>
-        <span className="text-[10px] text-slate-500">{active.length} 件</span>
+      {/* プロジェクト pill row(脇役) */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1">
+        {projects
+          .filter((p) => p.status === "active")
+          .map((p) => (
+            <ProjectPill key={p.id} project={p} />
+          ))}
       </div>
+
+      {/* 月報 mini card(コンパクト) */}
+      <MonthlyReportMini />
+
+      {/* 日報タイムライン(主役) */}
       <div className="space-y-3">
-        {active.map((p) => (
-          <ProjectCard
-            key={p.id}
-            project={p}
-            onRecord={() => onJumpToRecord(p.categoryId)}
+        {dailyEntries.map((d) => (
+          <DailyEntryCard
+            key={d.date}
+            entry={d}
+            onWrite={() => onJumpToRecord()}
           />
         ))}
       </div>
-
-      {/* Monthly report — 主役 2 */}
-      <MonthlyReportCard />
-
-      {/* Recent activity — 補助 */}
-      <SimpleCard title="最近の動き">
-        <ul className="space-y-1.5">
-          <RecentLine date="昨日" label="空き家清掃ボランティア(B 邸)" />
-          <RecentLine date="2 日前" label="移住相談 / 名古屋ファミリー" />
-          <RecentLine date="3 日前" label="夕方の振り返り 5 分" />
-        </ul>
-      </SimpleCard>
     </div>
   );
 }
 
-function MonthlyReportCard() {
-  // demo: this month's progress
-  const day = 22;
-  const totalDays = 30;
-  const logCount = 23;
-  const pct = Math.round((day / totalDays) * 100);
-
+function ProjectPill({ project }: { project: Project }) {
   return (
-    <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-violet-500 via-indigo-500 to-blue-600 text-white shadow-md ring-2 ring-white/40">
-      <div className="p-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider opacity-90">
-              今月の月報(自動生成中)
-            </div>
-            <div className="mt-0.5 text-base font-black">2026 年 6 月</div>
-          </div>
-          <span className="rounded-full bg-white/25 px-2 py-0.5 text-[10px] font-bold backdrop-blur ring-1 ring-white/40">
-            {logCount} 件のログから
-          </span>
+    <div className="shrink-0 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-slate-200">
+      <div className="flex items-center gap-1.5">
+        <CircleDot className="h-3 w-3 text-emerald-500" />
+        <span className="text-[11px] font-semibold text-slate-800">
+          {project.title}
+        </span>
+        <span className="text-[10px] font-bold text-emerald-700">
+          {project.progress}%
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function MonthlyReportMini() {
+  return (
+    <div className="flex items-center gap-2.5 rounded-2xl bg-gradient-to-r from-violet-500 to-indigo-500 p-3 text-white shadow-sm ring-1 ring-white/30">
+      <div className="rounded-lg bg-white/20 p-1.5 ring-1 ring-white/30">
+        <FileText className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] font-bold uppercase tracking-wider opacity-90">
+          今月の月報(自動生成中)
         </div>
-        <div className="mt-3 flex items-center gap-2">
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/25">
-            <div
-              className="h-full bg-white/90"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-          <span className="w-12 text-right text-[11px] font-bold">
-            {day} / {totalDays} 日
-          </span>
+        <div className="text-[12px] font-bold">
+          6 月分 ・ 23 件のログから
         </div>
       </div>
-      <button className="flex w-full items-center justify-center gap-1.5 border-t border-white/20 bg-white/10 py-2.5 text-[11px] font-bold backdrop-blur transition active:bg-white/20">
-        プレビューを見る
-        <ChevronRight className="h-3.5 w-3.5" />
-      </button>
+      <ChevronRight className="h-4 w-4 opacity-80" />
     </div>
   );
 }
 
-function ProjectCard({
-  project,
-  onRecord,
+function DailyEntryCard({
+  entry,
+  onWrite,
 }: {
-  project: Project;
-  onRecord: () => void;
+  entry: DailyEntry;
+  onWrite: () => void;
 }) {
+  if (entry.isToday) {
+    return (
+      <button
+        onClick={onWrite}
+        className="flex w-full items-center gap-3 rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50 px-4 py-4 text-left active:scale-[0.98]"
+      >
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm">
+          <PenLine className="h-5 w-5" />
+        </div>
+        <div className="flex-1">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+            今日 {entry.date}
+          </div>
+          <div className="mt-0.5 text-[13px] font-bold text-slate-900">
+            今日の日報を書く
+          </div>
+        </div>
+        <ChevronRight className="h-5 w-5 text-emerald-600" />
+      </button>
+    );
+  }
+
   return (
     <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="text-[15px] font-bold text-slate-900">{project.title}</h3>
-          <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-100">
-            進行中
-          </span>
-        </div>
-
-        {/* Progress */}
-        <div className="mt-3 flex items-center gap-2">
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="h-full bg-gradient-to-r from-emerald-400 to-teal-500"
-              style={{ width: `${project.progress}%` }}
-            />
-          </div>
-          <span className="w-10 text-right text-[11px] font-bold text-slate-700">
-            {project.progress}%
-          </span>
-        </div>
-
-        {/* This week */}
-        <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2">
-          <div className="text-[10px] font-bold text-slate-500">今週</div>
-          <div className="mt-0.5 text-[12px] text-slate-800">{project.thisWeek}</div>
-          {project.nextStep && (
-            <div className="mt-1.5 flex items-center gap-1 text-[10px] text-slate-500">
-              <ChevronRight className="h-3 w-3" />
-              次:{project.nextStep}
-            </div>
-          )}
-        </div>
+      <div className="flex items-center justify-between border-b border-slate-50 px-4 py-2">
+        <span className="text-[11px] font-bold text-slate-700">
+          {entry.date}
+        </span>
+        <span className="text-[10px] text-slate-500">
+          {entry.records.length} 件
+        </span>
       </div>
-
-      {/* Quick record */}
-      <button
-        onClick={onRecord}
-        className="flex w-full items-center justify-center gap-1.5 border-t border-slate-100 bg-slate-50 py-2.5 text-[11px] font-bold text-emerald-700 transition active:bg-emerald-50"
-      >
-        <PenLine className="h-3.5 w-3.5" />
-        このプロジェクトに記録する
-      </button>
+      <ul className="divide-y divide-slate-50">
+        {entry.records.map((r, i) => {
+          const cat = categories.find((c) => c.id === r.categoryId);
+          return (
+            <li
+              key={i}
+              className="flex items-center gap-2.5 px-4 py-2"
+            >
+              {cat && (
+                <span
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${cat.color} text-white shadow-sm`}
+                >
+                  {React.cloneElement(cat.icon as React.ReactElement, {
+                    className: "h-3.5 w-3.5",
+                  } as any)}
+                </span>
+              )}
+              <span className="flex-1 text-[12px] text-slate-800">
+                {r.memo}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
