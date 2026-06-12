@@ -4,6 +4,7 @@ import {
   ArrowRight,
   UserCircle2,
   Building2,
+  Shield,
 } from "lucide-react";
 
 export default function V5HubPage() {
@@ -38,7 +39,7 @@ export default function V5HubPage() {
             href="/v5/member"
             role="隊員"
             title="活動を記録する"
-            sub="日報 ・ 月報 ・ 経費 ・ 事例"
+            sub="活動報告 ・ 月報 ・ 経費 ・ 事例"
             icon={<UserCircle2 className="h-5 w-5" />}
           />
           <ModeCard
@@ -47,6 +48,13 @@ export default function V5HubPage() {
             title="隊員をサポートする"
             sub="承認 ・ 月報 ・ お知らせ"
             icon={<Building2 className="h-5 w-5" />}
+          />
+          <ModeCard
+            href="/v5/admin"
+            role="管理者"
+            title="組織の設定をする"
+            sub="職員 ・ 担当割当 ・ 隊員台帳"
+            icon={<Shield className="h-5 w-5" />}
           />
         </div>
 

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AmbientBubbles } from "@/components/bubble/ambient-bubbles";
 import { BubbleButton } from "@/components/bubble/bubble-button";
-import { Sparkles, FlaskConical, Building2, Bot, Gamepad2 } from "lucide-react";
+import { Sparkles, FlaskConical, Building2, Bot, LayoutGrid } from "lucide-react";
 
 export default function HomePage() {
   return (
@@ -72,8 +72,8 @@ export default function HomePage() {
             <BubbleButton
               href="/v5"
               label="v5"
-              sublabel="ゲーム調・1 画面 UI"
-              icon={<Gamepad2 className="h-6 w-6" />}
+              sublabel="シンプル版・業務ツール調"
+              icon={<LayoutGrid className="h-6 w-6" />}
               color="rose"
               size="lg"
               float="fast"
