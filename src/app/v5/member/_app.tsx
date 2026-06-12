@@ -559,20 +559,25 @@ function ExpenseTab() {
         <p className="mt-1 text-[12px] text-slate-500">申請(事前)と精算(事後)を分けて管理</p>
       </div>
 
-      {/* 現在の使用状況 */}
-      <section className="mx-auto mt-5 max-w-xl rounded-2xl border border-slate-200 bg-slate-50/40 p-4">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">現在の使用状況(年度)</div>
-        <div className="mt-2 grid grid-cols-3 gap-2">
-          <SummaryCell value={`¥${(usedTotal / 10000).toFixed(1)}万`} label="使用済" />
-          <SummaryCell value={`¥${(remaining / 10000).toFixed(1)}万`} label="残り" />
-          <SummaryCell value={`¥${(monthlyAvg / 10000).toFixed(1)}万`} label="月平均" />
+      {/* 現在の使用状況 ─ グラフ中心、カードなし */}
+      <section className="mx-auto mt-5 max-w-xl">
+        <div className="flex items-baseline justify-between">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            経費使用(年度)
+          </div>
+          <div className="text-[11px] text-slate-500">
+            <span className="font-bold text-slate-900">¥{(usedTotal / 10000).toFixed(1)}万</span>
+            <span className="mx-0.5">/</span>
+            <span>¥{(ANNUAL_BUDGET / 10000).toFixed(0)}万</span>
+            <span className="ml-1.5 text-slate-400">{pct.toFixed(1)}%</span>
+          </div>
         </div>
-        <div className="mt-3 overflow-hidden rounded-full bg-white">
+        <div className="mt-1.5 overflow-hidden rounded-full bg-slate-100">
           <div className="h-2 rounded-full bg-slate-900" style={{ width: `${Math.min(pct, 100)}%` }} />
         </div>
-        <div className="mt-1 flex justify-between text-[10px] text-slate-500">
-          <span>年間予算 ¥{(ANNUAL_BUDGET / 10000).toFixed(0)}万</span>
-          <span>{pct.toFixed(1)}%</span>
+        <div className="mt-1.5 flex justify-between text-[10px] text-slate-500">
+          <span>月平均 ¥{(monthlyAvg / 10000).toFixed(1)}万</span>
+          <span>残り ¥{(remaining / 10000).toFixed(1)}万</span>
         </div>
       </section>
 
