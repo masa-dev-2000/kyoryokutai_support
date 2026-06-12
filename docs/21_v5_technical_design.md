@@ -203,16 +203,43 @@ case-find       → 質問内容に近い全国事例を検索結果として提
    }
    ```
 
-### 5.4 全国事例の匿名化フロー
+### 5.4 全国事例の匿名化フロー(ADR-011 準拠)
 
-1. プロジェクトが完了し、隊員が `is_public = true` を設定
-2. Edge Function が定期実行(週 1)で:
-   - 個人名 → 役割名に置換(田中 あかり → 移住促進担当)
-   - 自治体名 → 県名のみに丸める
-   - 金額 → ¥ 万円単位に丸める
-3. `cases_public` テーブルに匿名化版を投入
-4. Embedding を計算
-5. 他テナントから参照可能になる
+**方針**(ADR-011 参照):
+- 隊員本人:opt-in で実名公開(初期 OFF)
+- 自治体名:常に公開
+- 関係者(個人・民間企業):自動匿名化
+- 公的団体(自治会・観光協会・学校等):実名で残す
+
+**処理ステップ:**
+
+1. プロジェクト完了 + `is_public = true`(隊員のオプトイン)
+2. Edge Function `anonymize_case` が起動(同期 or キューイング):
+   - **隊員名:** `users.disclose_name_in_cases` に従って判定
+     - `true` の場合:`author_label = name`
+     - `false` の場合:`author_label = role_label`(例:「移住促進担当」)
+     - プロジェクト単位で `disclose_name_override` があれば優先
+   - **自治体名:** `municipalities.name` をそのまま出力
+   - **関係者匿名化:** Claude にプロンプト送信、戻り値を `cases_public.summary` 等に投入
+     ```
+     [プロンプト要約]
+     以下の事例本文から、(a) 個人名 と (b) 民間企業名 を匿名化してください。
+     公的団体名(自治会、観光協会、商工会、学校、行政機関)はそのまま残してください。
+     置換ルール:
+       - 個人名 → 「A さん」「住民の方」「協力者」等
+       - 民間企業名 → 「地元の小売店」「町内の建設会社」等、業種と規模を保持
+     ```
+3. `cases_public` に **下書き状態**(`anonymized_by_review = false`)で挿入
+4. 原著隊員に「公開前確認をお願いします」通知(メール + アプリ内)
+5. 隊員がアプリ内で内容を確認、必要に応じて手動修正
+6. 隊員が「公開する」ボタン → `anonymized_by_review = true` で他テナントに公開
+7. Embedding を計算(text-embedding-3-small)
+
+**LLM 精度の保険:**
+- Claude による匿名化は完璧ではない前提
+- 必ず隊員レビューを挟む(`anonymized_by_review` フラグ)
+- レビュー画面で原文 / 匿名化版を並列表示、差分を強調
+- 修正点があれば再生成 or 直接編集して保存
 
 ## 6. フロントエンド
 
@@ -252,7 +279,13 @@ const [sheets, setSheets] = useState<Sheet[]>([]);
 /api/ai/consult              POST  目的別相談
 /api/ai/expense-check        POST  経費判定材料
 /api/notifications/send      POST  メール送信
-/api/cases/anonymize         POST  事例匿名化(Cron)
+/api/cases/anonymize         POST  事例匿名化(隊員 opt-in 起動 / Cron 起動)
+/api/cases/publish           POST  匿名化レビュー後の公開(隊員操作)
+```
+
+**※ Year 2 で追加予定:**
+```
+/api/contact/send            POST  事例 → 隊員 連絡フォーム(ADR-011)
 ```
 
 ### 7.2 Server Actions
@@ -302,9 +335,10 @@ const [sheets, setSheets] = useState<Sheet[]>([]);
 | AI 相談 | 隊員 | 5 × 10 = 50 | 4,000 | 200,000 |
 | 経費判定 | 申請 | 5 × 5 = 25 | 6,000 | 150,000 |
 | 事例 RAG | 検索 | 5 × 5 = 25 | 3,000 | 75,000 |
-| **合計** | | | | **約 575,000 tokens / 月** |
+| 事例匿名化 | プロジェクト | 5 × 1 = 5 | 8,000 | 40,000 |
+| **合計** | | | | **約 615,000 tokens / 月** |
 
-Claude Sonnet 4.6 の料金で月 $4-6 程度。1 自治体年間 200 万円契約なら誤差。
+Claude Sonnet 4.6 の料金で月 $5-7 程度。1 自治体年間 200 万円契約なら誤差。
 
 ### 10.2 ガードレール
 - 1 隊員 1 日あたりの相談回数上限:20 回(モック)
