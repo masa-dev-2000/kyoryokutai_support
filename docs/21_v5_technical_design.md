@@ -241,6 +241,71 @@ case-find       → 質問内容に近い全国事例を検索結果として提
 - レビュー画面で原文 / 匿名化版を並列表示、差分を強調
 - 修正点があれば再生成 or 直接編集して保存
 
+### 5.5 多段階承認の展開ロジック(ADR-012)
+
+**前提:** 隊員ごとに `users.approval_route_id` が割り当てられている。経費種別ごとに既定ルート(シンプル / 中 / 複雑)を用意。
+
+**申請時の処理:**
+```typescript
+// pseudo code
+async function submitApproval(targetTable, targetId, kind, applicantId) {
+  const user = await db.users.findById(applicantId);
+  const route = await db.approval_routes.findById(
+    user.approval_route_id ?? defaultRouteFor(user.municipality_id, kind)
+  );
+  const steps = await db.approval_route_steps.findByRouteId(route.id);
+
+  // step_no 順に approvals を展開
+  for (const step of steps) {
+    const approverId = await resolveApprover(step, user);
+    await db.approvals.insert({
+      route_id: route.id,
+      kind, applicant_id: applicantId,
+      target_table: targetTable, target_id: targetId,
+      step_no: step.step_no,
+      total_steps: steps.length,
+      approver_id: approverId,
+      status: step.step_no === 1 ? 'pending' : 'skipped', // 初手のみ pending
+    });
+  }
+}
+
+async function resolveApprover(step, applicant) {
+  if (step.approver_id) return step.approver_id;
+  if (step.approver_type === 'dept') {
+    return db.users.findOne({ department: step.department, role: 'manager' });
+  }
+  if (step.approver_type === 'host_org') {
+    return db.host_organizations.findById(step.host_organization_id).contact_user_id;
+  }
+  if (step.approver_type === 'admin') {
+    return db.users.findOne({ municipality_id: applicant.municipality_id, role: 'admin' });
+  }
+}
+```
+
+**ステップ進行:**
+- 各ステップで `approved` → 次の `step_no` の `approvals` を `skipped → pending` に遷移
+- 全ステップ approved で `target_table` 側のステータスを最終承認に更新
+- いずれかのステップで `rejected` → 同 target の全 approvals を rejected に、申請者へ通知
+- 再申請時は新規 route 展開(過去の approvals は履歴として保持)
+
+**通知トリガー:**
+- 各ステップ pending 化 → 該当 approver へメール
+- 最終承認 → 申請者へメール
+- 差戻し → 申請者へメール(理由必須)
+
+### 5.6 経費タイトル AI 自動生成
+
+**エンドポイント:** `POST /api/ai/expense-title`
+
+**入力:** `{ purpose: string; amount: number }`
+**出力:** `{ title: string }`(15 文字以内)
+
+経費作成画面でフォーカスアウト時に呼び出し、自動入力。隊員は必要に応じて編集可能(Git のコミットメッセージ自動生成と同じ思想)。
+
+---
+
 ## 6. フロントエンド
 
 ### 6.1 状態管理
@@ -271,6 +336,87 @@ const [sheets, setSheets] = useState<Sheet[]>([]);
 // push / pop / closeAll
 ```
 
+### 6.5 お知らせベル + ドロワー(ADR-013)
+
+**配置:** 全画面の右上に常駐(ロゴ右隣 / プロフィールアバター左隣)
+
+**ベル UI:**
+- アイコン:`Bell` (lucide-react)
+- 未読バッジ:右上に赤丸 + 数字(未読 ≥ 1 のみ)
+- 押下で右からスライドインのドロワー(`AnnouncementsDrawer`)
+
+**ドロワー構成:**
+```
+┌──────────────────────────────┐
+│ お知らせ                 ✕   │
+├──────────────────────────────┤
+│ 📌 ピン留め                  │
+│ ─────────────────────────── │
+│ [rule] 経費ルール v2.1       │
+│ [qa]  領収書添付の質問       │
+├──────────────────────────────┤
+│ 新着                         │
+│ ─────────────────────────── │
+│ [info] 月報提出のリマインド   │
+│ [info] 全体会のお知らせ      │
+└──────────────────────────────┘
+```
+
+- ピン留め(`is_pinned = true`)が上段に常時表示
+- 下段は時系列(未読を太字、既読を薄字)
+- 各項目クリックで本文展開、自動で `announcement_reads` に挿入
+
+### 6.6 ルール参照ボタン(経費作成画面、ADR-013)
+
+**配置:** 経費作成画面のヘッダー右側
+
+**仕様:**
+- ボタンラベル:`📖 ルールを見る`
+- 押下でサイドパネル展開(モーダルではなく画面右側に分割表示)
+- パネル内容:`announcements.kind IN ('rule', 'qa')` を `is_pinned DESC, sent_at DESC` で取得
+- 検索ボックスでルール本文検索(クライアント側 includes)
+- 段階 1 では表示のみ(RAG なし)
+
+### 6.7 経費画面のアクションボタン
+
+**画面下部に固定:**
+```
+[ 下書き保存 ]  [ 提出する ▸ ]
+```
+
+- **下書き保存**:`expenses.status = '下書き'` で保存、画面に留まる
+- **提出する**:バリデーション(タイトル / 金額 / 用途 必須)→ `submitApproval` 呼び出し → `status = '申請中'`、画面閉じる
+
+**タイトル AI 自動生成:**
+- 用途 + 金額が入力された瞬間に `/api/ai/expense-title` を呼び、タイトル欄に自動入力
+- ユーザー編集可能(プレースホルダー表示)
+
+### 6.8 承認タイムライン UI(役場側)
+
+経費 / 月報 / 活動相談 の承認画面に共通配置。
+
+```
+[ 承認の進捗 ]
+●━━━━○━━━━○━━━━○
+担当課  受入団体  企画課  完了
+✓承認  待機中   未着手  ─
+        ↑現在
+```
+
+- `approvals.total_steps` で全体ステップ数を取得
+- 各ステップの `status` で色分け(✓=緑、現在=青、未着手=灰)
+- 自分が承認すべきステップは「承認 / 差戻し」ボタン表示
+- 差戻しは `comment` 必須(textarea を強制展開)
+
+### 6.9 活動報告の移動距離フィールド + 再編集
+
+**入力欄:** 「活動時間」の隣に「移動距離 (km)」を追加(任意)
+**再編集:**
+- 過去の活動報告も編集可能(承認概念は活動報告にはない)
+- 関連月報が `approved` の場合、編集時に確認ダイアログ:
+  > 「この活動が含まれる 5 月の月報は承認済みです。編集すると月報のステータスが『提出済』に戻りますがよろしいですか?」
+- OK で月報の `status` を `approved → submitted` に戻す
+
 ## 7. バックエンド API
 
 ### 7.1 Route Handlers
@@ -278,9 +424,14 @@ const [sheets, setSheets] = useState<Sheet[]>([]);
 /api/ai/monthly-report       POST  月報生成
 /api/ai/consult              POST  目的別相談
 /api/ai/expense-check        POST  経費判定材料
+/api/ai/expense-title        POST  経費タイトル自動生成(ADR-014 関連)
 /api/notifications/send      POST  メール送信
 /api/cases/anonymize         POST  事例匿名化(隊員 opt-in 起動 / Cron 起動)
 /api/cases/publish           POST  匿名化レビュー後の公開(隊員操作)
+/api/approvals/submit        POST  申請 → 多段階 approvals 展開(ADR-012)
+/api/approvals/[id]/decide   POST  ステップ承認 / 差戻し(ADR-012)
+/api/announcements           GET   お知らせ一覧(kind / pinned フィルタ、ADR-013)
+/api/announcements           POST  お知らせ投稿(役場 / 受入団体)
 ```
 
 **※ Year 2 で追加予定:**
@@ -334,11 +485,13 @@ const [sheets, setSheets] = useState<Sheet[]>([]);
 | 月報生成 | 隊員 | 5 × 1 = 5 | 30,000 (in 25k + out 5k) | 150,000 |
 | AI 相談 | 隊員 | 5 × 10 = 50 | 4,000 | 200,000 |
 | 経費判定 | 申請 | 5 × 5 = 25 | 6,000 | 150,000 |
+| 経費タイトル生成 | 申請 | 5 × 5 = 25 | 800 | 20,000 |
 | 事例 RAG | 検索 | 5 × 5 = 25 | 3,000 | 75,000 |
 | 事例匿名化 | プロジェクト | 5 × 1 = 5 | 8,000 | 40,000 |
-| **合計** | | | | **約 615,000 tokens / 月** |
+| **合計** | | | | **約 635,000 tokens / 月** |
 
 Claude Sonnet 4.6 の料金で月 $5-7 程度。1 自治体年間 200 万円契約なら誤差。
+タイトル生成は **Haiku 4.5** で運用しコストをさらに 1/3 に圧縮可能。
 
 ### 10.2 ガードレール
 - 1 隊員 1 日あたりの相談回数上限:20 回(モック)
