@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { apiGet, apiPost } from "@/lib/api/client";
 import {
   Search,
   ChevronLeft,
@@ -325,10 +326,10 @@ type Ctx = {
   approvals: Approval[];
   viewerRole: ApproverType; // PoC: ヘッダーで切替する承認者視点(本番では認証ロールで自動決定)
   setViewerRole: (r: ApproverType) => void;
-  approveOne: (id: string) => void;
-  rejectOne: (id: string, comment: string) => void;
+  approveOne: (id: string) => void | Promise<void>;
+  rejectOne: (id: string, comment: string) => void | Promise<void>;
   notices: NoticeItem[];
-  addNotice: (body: string, targets: number) => void;
+  addNotice: (body: string, targets: number) => void | Promise<void>;
   noticeTargets: string[];
   setNoticeTargets: (t: string[]) => void;
   sheet: Sheet;
@@ -359,38 +360,55 @@ export function ManagerApp() {
     setNoticeTargets((cur) => cur.filter((n) => managed.includes(n)));
   }, [managed]);
 
+  // バックエンドから承認キュー・お知らせを取得(状態機械はサーバ側 ADR-015)
+  const refetchApprovals = React.useCallback(async () => {
+    try {
+      setApprovals(await apiGet<Approval[]>("/api/approvals"));
+    } catch {
+      /* オフライン時はシードのまま */
+    }
+  }, []);
+
+  React.useEffect(() => {
+    refetchApprovals();
+    apiGet<NoticeItem[]>("/api/announcements")
+      .then(setNotices)
+      .catch(() => {});
+  }, [refetchApprovals]);
+
   const ctx: Ctx = {
     managed,
     setManaged,
     approvals,
     viewerRole,
     setViewerRole,
-    // 承認:現ステップを approved に。次があれば pending へ前進、無ければ最終承認でキューから除外。
-    approveOne: (id) =>
-      setApprovals((list) =>
-        list.flatMap((a) => {
-          if (a.id !== id) return [a];
-          const steps = a.steps.map((s, i) =>
-            i === a.currentStep ? { ...s, status: "approved" as StepStatus, decidedAt: "今" } : s
-          );
-          const next = a.currentStep + 1;
-          if (next >= steps.length) return []; // 全ステップ完了 → 最終承認
-          steps[next] = { ...steps[next], status: "pending" };
-          return [{ ...a, steps, currentStep: next }];
-        })
-      ),
-    // 差戻し:現ステップを rejected(コメント必須)→ 全段やり直しのためキューから除外(ADR-012)。
-    // 本番では comment を approvals.comment に保存し申請者へ通知する。
-    rejectOne: (id, comment) => {
-      void comment;
-      setApprovals((list) => list.filter((x) => x.id !== id));
+    // 承認:サーバの状態機械が現ステップを前進させる。完了/差戻しはキューから外れる。
+    approveOne: async (id) => {
+      try {
+        await apiPost(`/api/approvals/${id}/decide`, { action: "approve" });
+      } catch {
+        /* noop */
+      }
+      await refetchApprovals();
+    },
+    // 差戻し:コメント必須(サーバが 5 文字未満を拒否)→ 全段やり直しでキューから除外(ADR-012)。
+    rejectOne: async (id, comment) => {
+      try {
+        await apiPost(`/api/approvals/${id}/decide`, { action: "reject", comment });
+      } catch {
+        /* noop */
+      }
+      await refetchApprovals();
     },
     notices,
-    addNotice: (body, targets) =>
-      setNotices((n) => [
-        { id: String(Date.now()), title: body.slice(0, 24) || "(無題)", body, date: "今", targets, read: 0 },
-        ...n,
-      ]),
+    addNotice: async (body, targets) => {
+      try {
+        const created = await apiPost<NoticeItem>("/api/announcements", { body, targets });
+        setNotices((n) => [created, ...n]);
+      } catch {
+        /* noop */
+      }
+    },
     noticeTargets,
     setNoticeTargets,
     sheet,

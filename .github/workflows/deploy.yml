@@ -1,10 +1,11 @@
 name: Deploy to GitHub Pages
 
+# 注意(ADR-017): v5 にバックエンド(API Routes + SQLite)が入ったため、
+# 静的エクスポート(output: export)は force-dynamic な /api/* と両立しません。
+# フルスタックは Vercel / Node ホスト前提に変更しました。
+# この Pages ワークフローは手動実行のみ残置(静的デモを作る場合は API を除いた
+# 別ビルドが必要)。push では起動しません。
 on:
-  push:
-    branches:
-      - claude/regional-support-system-strategy-NN5BU
-      - main
   workflow_dispatch:
 
 permissions:

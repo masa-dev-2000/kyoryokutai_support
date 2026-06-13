@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api/client";
 import {
   Search,
   ChevronLeft,
@@ -68,6 +69,7 @@ type ActivityLog = {
   type: string;
   topic: string;
   hours: number;
+  distanceKm?: number;
   body: string;
   date: string;
   time: string;
@@ -115,7 +117,7 @@ type Report = {
   statusLabel: string;
 };
 
-const reports: Report[] = [
+const seedReports: Report[] = [
   { id: "r-2026-06", yearMonth: "2026 年 6 月", ym: "2026-06", status: "draft", statusLabel: "自動生成中" },
   { id: "r-2026-05", yearMonth: "2026 年 5 月", ym: "2026-05", status: "approved", statusLabel: "役場承認 5/31" },
   { id: "r-2026-04", yearMonth: "2026 年 4 月", ym: "2026-04", status: "approved", statusLabel: "役場承認 4/30" },
@@ -152,13 +154,13 @@ type CaseItem = {
   learning: string;
 };
 
-const cases: CaseItem[] = [
+const seedCases: CaseItem[] = [
   { id: "c1", title: "空き家バンクで 1 年目 12 件登録", area: "兵庫県 養父市", year: "2024", author: "山本(隊員 1 年目)", summary: "自治会連動の DM 配布で空き家所有者にリーチ。1 年目で 12 件の登録、うち 4 件成約。", kpi: "登録 12 件 / 成約 4 件 / 移住 3 家族", effect: "町外からの移住 7 名増、空き家率 -0.4 pt", process: [{ phase: "1-3 月目", body: "既存の空き家リスト棚卸し。所有者連絡先の整備に注力。" }, { phase: "4-6 月目", body: "自治会経由で所有者に挨拶状を DM 配布(18 件)。返信 9 件。" }, { phase: "7-9 月目", body: "内覧 7 件、登録 5 件。並行して移住希望者リスト作成。" }, { phase: "10-12 月目", body: "成約 4 件、移住 3 家族受け入れ。" }], learning: "自治会経由の DM は反応率が高い(直接送付の 3 倍)。所有者の心理的ハードルが「知らない人より地域経由」で下がる。" },
   { id: "c2", title: "空き家清掃ボランティアの定着", area: "島根県 海士町", year: "2023", author: "中島(隊員 2 年目)", summary: "月 1 回の空き家清掃ボランティアを継続開催。地元住民との関係構築の場として機能。", kpi: "12 回開催 / 延べ参加 84 名 / 清掃完了 8 物件", effect: "地元住民との関係構築 + 物件の早期市場投入", process: [{ phase: "1-2 月目", body: "地元自治会と相談、第 1 回は地域住民のみで開催。" }, { phase: "3-6 月目", body: "SNS で外部にも告知、移住希望者の参加が増える。" }, { phase: "7-12 月目", body: "月 1 定期化、清掃完了物件は空き家バンクに即登録。" }], learning: "地元 → 外部の順で開いていくと、住民の抵抗が少ない。清掃 + 交流の二段構造が効く。" },
   { id: "c3", title: "DIY 補助金との組み合わせ", area: "全国(JOIN)", year: "2024", author: "JOIN お役立ちツール", summary: "空き家物件登録時に DIY 補助金を活用するスキーム例。", kpi: "補助上限 50 万円 / 申請期間 2 ヶ月", effect: "物件登録のインセンティブ強化", process: [{ phase: "申請", body: "市町村窓口で DIY 補助金の交付申請。" }, { phase: "実施", body: "補助対象工事を実施(壁紙・水回り等)。" }, { phase: "登録", body: "工事完了後に空き家バンクに登録。" }], learning: "補助金申請のタイミングを物件登録と連動させると、所有者の意思決定が早まる。" },
 ];
 
-const trendCases = [
+const seedTrend = [
   { id: "t1", title: "空き家バンク立ち上げ", count: 34 },
   { id: "t2", title: "移住相談ネットワーク", count: 28 },
   { id: "t3", title: "観光協会との連携", count: 19 },
@@ -220,15 +222,20 @@ type Sheet =
   | { kind: "consult"; context: ConsultContext; onAdopt?: (text: string) => void }
   | { kind: "topic-edit" };
 
+type TrendItem = { id: string; title: string; count: number };
+
 type Ctx = {
   logs: ActivityLog[];
-  addLog: (l: Omit<ActivityLog, "id">) => void;
+  addLog: (l: Omit<ActivityLog, "id">) => void | Promise<void>;
   topics: string[];
   addTopic: (t: string) => void;
   removeTopic: (t: string) => void;
   expenses: ExpenseRequest[];
-  addExpense: (e: Omit<ExpenseRequest, "id" | "createdAt" | "aiNote" | "citation" | "hasReceipt">) => void;
+  addExpense: (e: Omit<ExpenseRequest, "id" | "createdAt" | "aiNote" | "citation" | "hasReceipt">) => void | Promise<void>;
   markSettled: (id: string) => void;
+  reports: Report[];
+  caseItems: CaseItem[];
+  trend: TrendItem[];
   sheets: Sheet[];
   pushSheet: (s: Sheet) => void;
   popSheet: () => void;
@@ -236,6 +243,8 @@ type Ctx = {
   plan: string;
   setPlan: (p: string) => void;
 };
+
+const MEMBER_ID = "m1";
 
 const AppCtx = React.createContext<Ctx | null>(null);
 const useApp = () => {
@@ -246,23 +255,73 @@ const useApp = () => {
 
 export function MemberApp() {
   const [tab, setTab] = React.useState<Tab>("daily");
+  // 初期値はシード(即描画)→ マウント後にバックエンドの実データで置換
   const [logs, setLogs] = React.useState<ActivityLog[]>(seedLogs);
   const [topics, setTopics] = React.useState<string[]>(DEFAULT_TOPICS);
   const [expenses, setExpenses] = React.useState<ExpenseRequest[]>(initialExpenses);
+  const [reports, setReports] = React.useState<Report[]>(seedReports);
+  const [caseItems, setCaseItems] = React.useState<CaseItem[]>(seedCases);
+  const [trend, setTrend] = React.useState<TrendItem[]>(seedTrend);
   const [sheets, setSheets] = React.useState<Sheet[]>([]);
   const [plan, setPlan] = React.useState(
     "・夏祭り当日の運営(7/14)\n・移住者向け体験ツアー初回開催(7/27)\n・空き家バンク累計 15 件を目標"
   );
 
+  // バックエンドから初期データ取得(SQLite + API Routes)
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const [lg, tp, ex, rp, cs] = await Promise.all([
+          apiGet<ActivityLog[]>(`/api/activity-logs?userId=${MEMBER_ID}`),
+          apiGet<string[]>(`/api/topics?userId=${MEMBER_ID}`),
+          apiGet<ExpenseRequest[]>(`/api/expenses?userId=${MEMBER_ID}`),
+          apiGet<Report[]>(`/api/monthly-reports?userId=${MEMBER_ID}`),
+          apiGet<{ cases: CaseItem[]; trend: TrendItem[] }>(`/api/cases`),
+        ]);
+        if (!alive) return;
+        setLogs(lg);
+        setTopics(tp);
+        setExpenses(ex);
+        setReports(rp);
+        setCaseItems(cs.cases);
+        setTrend(cs.trend);
+      } catch {
+        /* オフライン時はシードのまま */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const ctx: Ctx = {
     logs,
-    addLog: (l) => setLogs((ls) => [{ id: String(Date.now()), ...l }, ...ls]),
+    addLog: async (l) => {
+      const created = await apiPost<ActivityLog>("/api/activity-logs", { userId: MEMBER_ID, ...l });
+      setLogs((ls) => [created, ...ls]);
+    },
     topics,
-    addTopic: (t) => setTopics((ts) => (ts.includes(t) ? ts : [...ts, t])),
-    removeTopic: (t) => setTopics((ts) => ts.filter((x) => x !== t)),
+    addTopic: async (t) => {
+      const next = await apiPost<string[]>("/api/topics", { userId: MEMBER_ID, name: t });
+      setTopics(next);
+    },
+    removeTopic: async (t) => {
+      const next = await apiDelete<string[]>(`/api/topics?userId=${MEMBER_ID}&name=${encodeURIComponent(t)}`);
+      setTopics(next);
+    },
     expenses,
-    addExpense: (e) => setExpenses((es) => [{ id: String(Date.now()), createdAt: new Date().toISOString().slice(0, 10), aiNote: "AI 判定材料は申請後に表示されます。", citation: { source: "(検索中)", quote: "" }, hasReceipt: false, ...e }, ...es]),
-    markSettled: (id) => setExpenses((es) => es.map((e) => (e.id === id ? { ...e, status: "精算済", hasReceipt: true } : e))),
+    addExpense: async (e) => {
+      const created = await apiPost<ExpenseRequest>("/api/expenses", { userId: MEMBER_ID, ...e });
+      setExpenses((es) => [created, ...es]);
+    },
+    markSettled: async (id) => {
+      const updated = await apiPatch<ExpenseRequest>(`/api/expenses/${id}`, { status: "精算済", hasReceipt: true });
+      setExpenses((es) => es.map((e) => (e.id === id ? updated : e)));
+    },
+    reports,
+    caseItems,
+    trend,
     sheets,
     pushSheet: (s) => setSheets((ss) => [...ss, s]),
     popSheet: () => setSheets((ss) => ss.slice(0, -1)),
@@ -489,7 +548,7 @@ function formatDateShort(d: string) {
 /* -------------------- 2. 月報タブ -------------------- */
 
 function ReportTab() {
-  const { pushSheet } = useApp();
+  const { pushSheet, reports } = useApp();
   const [q, setQ] = React.useState("");
   const filtered = reports.filter((r) => (q.trim() ? r.yearMonth.includes(q) : true));
 
@@ -655,9 +714,9 @@ function statusClass(s: ExpenseRequest["status"]) {
 /* -------------------- 4. 事例タブ(相談ボタン追加)-------------------- */
 
 function CaseTab() {
-  const { pushSheet } = useApp();
+  const { pushSheet, caseItems, trend } = useApp();
   const [q, setQ] = React.useState("");
-  const matched = q.trim() ? cases.filter((c) => c.title.includes(q) || c.area.includes(q) || c.summary.includes(q)) : [];
+  const matched = q.trim() ? caseItems.filter((c) => c.title.includes(q) || c.area.includes(q) || c.summary.includes(q)) : [];
 
   return (
     <div className="text-center">
@@ -677,7 +736,7 @@ function CaseTab() {
         <div className="mt-5">
           <div className="text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">トレンド</div>
           <ul className="mt-1 space-y-px text-left">
-            {trendCases.map((t) => (
+            {trend.map((t) => (
               <li key={t.id} className="border-b border-slate-100 last:border-b-0">
                 <button onClick={() => setQ(t.title)} className="flex w-full items-center gap-3 py-2.5 text-left transition hover:bg-slate-50/60">
                   <TrendingUp className="h-4 w-4 shrink-0 text-slate-400" />
@@ -826,21 +885,29 @@ function ActivityCreateSheet({ onClose }: { onClose: () => void }) {
   const [type, setType] = React.useState<string | null>(null);
   const [topic, setTopic] = React.useState<string | null>(null);
   const [hours, setHours] = React.useState<string>("1");
+  const [distance, setDistance] = React.useState<string>("");
   const [body, setBody] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
 
-  const canSave = !!type && !!topic && parseFloat(hours) > 0 && body.trim().length > 0;
+  const canSave = !!type && !!topic && parseFloat(hours) > 0 && body.trim().length > 0 && !saving;
 
-  function save() {
+  async function save() {
     if (!canSave) return;
-    addLog({
-      type: type!,
-      topic: topic!,
-      hours: parseFloat(hours),
-      body: body.trim(),
-      date: todayKey(),
-      time: new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }),
-    });
-    onClose();
+    setSaving(true);
+    try {
+      await addLog({
+        type: type!,
+        topic: topic!,
+        hours: parseFloat(hours),
+        distanceKm: distance ? parseFloat(distance) : undefined,
+        body: body.trim(),
+        date: todayKey(),
+        time: new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }),
+      });
+      onClose();
+    } catch {
+      setSaving(false);
+    }
   }
 
   return (
@@ -877,6 +944,12 @@ function ActivityCreateSheet({ onClose }: { onClose: () => void }) {
         <div className="mt-1 flex items-center gap-2">
           <input type="number" step="0.5" min="0" value={hours} onChange={(e) => setHours(e.target.value)} className="w-24 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
           <span className="text-[12px] text-slate-600">時間</span>
+        </div>
+
+        <Label>移動距離(任意)</Label>
+        <div className="mt-1 flex items-center gap-2">
+          <input type="number" step="0.1" min="0" value={distance} onChange={(e) => setDistance(e.target.value)} placeholder="例:12.5" className="w-24 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
+          <span className="text-[12px] text-slate-600">km(車での移動)</span>
         </div>
 
         <Label right={
@@ -933,6 +1006,9 @@ function ActivityDetailSheet({ log, onClose }: { log: ActivityLog; onClose: () =
             <Clock className="h-3 w-3" />
             {log.hours} 時間
           </span>
+          {typeof log.distanceKm === "number" && (
+            <span className="text-[11px] text-slate-500">・移動 {log.distanceKm} km</span>
+          )}
         </div>
 
         <p className="mt-4 whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50/40 p-3 text-[13px] leading-relaxed text-slate-800">{log.body}</p>
@@ -1219,13 +1295,19 @@ function ExpenseCreateSheet({ onClose }: { onClose: () => void }) {
   const [title, setTitle] = React.useState("");
   const [amount, setAmount] = React.useState("");
   const [purpose, setPurpose] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
   const amountNum = parseInt(amount.replace(/[^0-9]/g, ""), 10);
-  const canSubmit = title.trim() && amountNum > 0 && purpose.trim().length >= 5;
+  const canSubmit = !!title.trim() && amountNum > 0 && purpose.trim().length >= 5 && !saving;
 
-  function submit() {
+  async function submit() {
     if (!canSubmit) return;
-    addExpense({ title: title.trim(), amount: amountNum, purpose: purpose.trim(), status: "申請中" });
-    onClose();
+    setSaving(true);
+    try {
+      await addExpense({ title: title.trim(), amount: amountNum, purpose: purpose.trim(), status: "申請中" });
+      onClose();
+    } catch {
+      setSaving(false);
+    }
   }
 
   return (
@@ -1246,8 +1328,25 @@ function ExpenseCreateSheet({ onClose }: { onClose: () => void }) {
           支出する前に内容と金額を申請します。領収書は支出後に「精算」サブタブから登録してください。
         </div>
 
-        <Label>タイトル</Label>
-        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例:町報 7 月号 印刷費" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
+        <Label right={
+          <button
+            type="button"
+            onClick={async () => {
+              if (!purpose.trim()) return;
+              try {
+                const r = await apiPost<{ title: string }>("/api/ai/expense-title", { purpose: purpose.trim(), amount: amountNum || undefined });
+                if (r.title) setTitle(r.title);
+              } catch { /* noop */ }
+            }}
+            className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-900 hover:bg-slate-50"
+          >
+            <Sparkles className="h-3 w-3" />
+            AI でタイトル生成
+          </button>
+        }>
+          タイトル
+        </Label>
+        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="用途を書いてから「AI でタイトル生成」、または直接入力" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
 
         <Label>金額(円)</Label>
         <input type="text" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="例:12800" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
@@ -1287,8 +1386,8 @@ function ExpenseSettleSheet({ item, onClose }: { item: ExpenseRequest; onClose: 
   const [note, setNote] = React.useState("");
   const [hasReceipt, setHasReceipt] = React.useState(item.hasReceipt);
 
-  function submit() {
-    markSettled(item.id);
+  async function submit() {
+    await markSettled(item.id);
     onClose();
   }
 
@@ -1520,9 +1619,23 @@ function ConsultInner({
 }) {
   const [input, setInput] = React.useState(context.current ?? "");
   const [reply, setReply] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(false);
 
-  function ask() {
-    setReply(meta.mockReply(input));
+  async function ask() {
+    setLoading(true);
+    try {
+      const payload =
+        context.kind === "expense-purpose"
+          ? { current: input, title: context.title, amount: context.amount }
+          : { current: input };
+      const res = await apiPost<{ reply: string }>("/api/ai/consult", { context: context.kind, payload });
+      setReply(res.reply);
+    } catch {
+      // AI 未接続時はローカルのひな形にフォールバック
+      setReply(meta.mockReply(input));
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -1547,10 +1660,11 @@ function ConsultInner({
         <div className="mt-3 flex items-center justify-between">
           <button
             onClick={ask}
-            className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-slate-900 px-4 py-1.5 text-[12px] font-bold text-white hover:bg-slate-800"
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-slate-900 px-4 py-1.5 text-[12px] font-bold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             <Sparkles className="h-3.5 w-3.5" />
-            助言を見る
+            {loading ? "考え中…" : "助言を見る"}
           </button>
           <span className="text-[10px] text-slate-400">※ AI は判定しません。視点と材料のみ</span>
         </div>

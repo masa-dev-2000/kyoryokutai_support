@@ -446,6 +446,56 @@ v5「シンプル版・業務ツール調」で確定した設計判断のまと
 
 ---
 
+## ADR-016: AI は差し替え可能なプロバイダ抽象にする(既定 Ollama)
+
+**確定日:** 2026-06-13
+
+### Context
+- AI ベンダーは状況で変えたい(ローカル無料検証=Ollama、本番品質=Claude、CI/オフライン=決定論モック)
+- 各機能(月報生成・相談・経費判定)が特定 SDK に密結合すると差し替えコストが高い
+
+### Decision
+- `src/lib/ai/` に **`AIProvider` インタフェース**を定義し、実装を 3 つ用意:
+  - **`ollama`**(既定): `http://localhost:11434/api/chat` を叩くローカル LLM
+  - **`anthropic`**: Claude API(`@anthropic-ai/sdk`)
+  - **`mock`**: 外部依存ゼロの決定論的フォールバック(タスク別にそれらしい日本語を返す)
+- `getAIProvider()` が **環境変数 `AI_PROVIDER`** を読んで実装を選ぶ
+- 各 API Route はプロバイダの `generate({ task, messages, ... })` だけを呼ぶ(SDK 非依存)
+- `mock` は CI / Ollama 非導入環境でも end-to-end を動かすための保険
+
+### Consequence
+- `.env` の 1 行(`AI_PROVIDER=ollama|anthropic|mock`)でベンダー切替
+- Ollama を入れられない環境(本サンドボックス等)でも `mock` で全機能が動作
+- 本番は `AI_PROVIDER=anthropic` にするだけ。プロンプトは Route 側に集約され共通
+- プロバイダ追加(Gemini 等)は 1 ファイル足してファクトリに 1 行
+
+---
+
+## ADR-017: ローカル PoC のバックエンドは Next サーバ + SQLite
+
+**確定日:** 2026-06-13
+
+### Context
+- v5 はそれまで静的エクスポート(`output: export`)のモック画面のみで、バックエンドが無かった
+- 「ローカルで動くフルスタック」が必要。だが Supabase/Postgres を立てるのは PoC には重い
+
+### Decision
+- **DB: `node:sqlite`**(Node 22 内蔵)。`npm install` も native ビルドも不要、ファイル 1 個(`.data/app.db`)
+- スキーマは v5 データモデル(docs/22)を移植。初回起動時に自動 migrate + seed(既存モックと同じ初期データ)
+- **API: Next Route Handlers**(`/api/*`、`runtime=nodejs` / `force-dynamic`)
+- フロントは初期描画でシードを表示し、マウント後に API の実データへ置換(フェッチ失敗時はシードのまま=オフライン耐性)
+- 多段階承認の状態機械(ADR-012/015)は**サーバ側**(`/api/approvals/[id]/decide`)へ移動
+- `next.config.mjs` は **`BUILD_STATIC=1` のときだけ静的エクスポート**。既定はサーバモード
+- 本番移行: SQLite → Supabase(Postgres + RLS)、DB アクセス層と API 契約はそのまま流用
+
+### Consequence
+- `npm run dev` だけでフルスタックがローカルで動く(外部サービス不要)
+- GitHub Pages 静的デプロイは API と両立しないため、フルスタックは Vercel / Node ホスト前提に変更
+  (`.github/workflows/deploy.yml` は手動実行に変更)
+- 隊員の経費申請 → 役場の承認キュー出現、という**アプリ横断フローが実データで動く**
+
+---
+
 ## 横断的な設計原則(v5 全体)
 
 1. **画面 = 仕様**(ドキュメント先行ではなく画面試作から逆方向にドキュメントを寄せる)
@@ -458,3 +508,5 @@ v5「シンプル版・業務ツール調」で確定した設計判断のまと
 8. **承認は多段階ルートで隊員ごとに定義**(現場運用差を吸収)
 9. **お知らせ・ルール・通知は右上ベルに統合**(画面増やさず、ピン留めで常設)
 10. **経費は二系統動線 + 親子構造**(現場の入力パターンの違いを吸収)
+11. **AI はプロバイダ抽象で差し替え可能**(ollama/anthropic/mock、env 1 行で切替)
+12. **ローカルはサーバ + SQLite で外部依存ゼロ**(本番は Supabase へ流用)

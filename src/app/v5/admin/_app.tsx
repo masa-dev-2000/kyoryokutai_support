@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api/client";
 import {
   Search,
   ChevronLeft,
@@ -70,11 +71,11 @@ type Ctx = {
   members: Member[];
   staff: Staff[];
   assignments: Record<string, string[]>;
-  upsertMember: (m: Member) => void;
-  removeMember: (id: string) => void;
-  upsertStaff: (s: Staff) => void;
-  removeStaff: (id: string) => void;
-  setAssignment: (staffId: string, memberIds: string[]) => void;
+  upsertMember: (m: Member) => void | Promise<void>;
+  removeMember: (id: string) => void | Promise<void>;
+  upsertStaff: (s: Staff) => void | Promise<void>;
+  removeStaff: (id: string) => void | Promise<void>;
+  setAssignment: (staffId: string, memberIds: string[]) => void | Promise<void>;
   sheet: Sheet;
   openSheet: (s: Sheet) => void;
 };
@@ -93,19 +94,42 @@ export function AdminApp() {
   const [assignments, setAssignments] = React.useState<Record<string, string[]>>(initialAssignments);
   const [sheet, setSheet] = React.useState<Sheet>(null);
 
+  // バックエンドから取得(SQLite + API Routes)
+  const refetch = React.useCallback(async () => {
+    try {
+      const [ms, ss, as] = await Promise.all([
+        apiGet<Member[]>("/api/members"),
+        apiGet<Staff[]>("/api/staff"),
+        apiGet<Record<string, string[]>>("/api/assignments"),
+      ]);
+      setMembers(ms);
+      setStaff(ss);
+      setAssignments(as);
+    } catch {
+      /* オフライン時はシードのまま */
+    }
+  }, []);
+
+  React.useEffect(() => {
+    refetch();
+  }, [refetch]);
+
   const ctx: Ctx = {
     members,
     staff,
     assignments,
-    upsertMember: (m) =>
+    upsertMember: async (m) => {
+      const saved = await apiPost<Member>("/api/members", m);
       setMembers((ms) => {
-        const idx = ms.findIndex((x) => x.id === m.id);
-        if (idx < 0) return [...ms, m];
+        const idx = ms.findIndex((x) => x.id === saved.id);
+        if (idx < 0) return [...ms, saved];
         const copy = [...ms];
-        copy[idx] = m;
+        copy[idx] = saved;
         return copy;
-      }),
-    removeMember: (id) => {
+      });
+    },
+    removeMember: async (id) => {
+      await apiDelete(`/api/members/${id}`);
       setMembers((ms) => ms.filter((m) => m.id !== id));
       setAssignments((a) => {
         const copy: Record<string, string[]> = {};
@@ -113,18 +137,21 @@ export function AdminApp() {
         return copy;
       });
     },
-    upsertStaff: (s) =>
+    upsertStaff: async (s) => {
+      const saved = await apiPost<Staff>("/api/staff", s);
       setStaff((ss) => {
-        const idx = ss.findIndex((x) => x.id === s.id);
+        const idx = ss.findIndex((x) => x.id === saved.id);
         if (idx < 0) {
-          setAssignments((a) => ({ ...a, [s.id]: [] }));
-          return [...ss, s];
+          setAssignments((a) => ({ ...a, [saved.id]: [] }));
+          return [...ss, saved];
         }
         const copy = [...ss];
-        copy[idx] = s;
+        copy[idx] = saved;
         return copy;
-      }),
-    removeStaff: (id) => {
+      });
+    },
+    removeStaff: async (id) => {
+      await apiDelete(`/api/staff/${id}`);
       setStaff((ss) => ss.filter((s) => s.id !== id));
       setAssignments((a) => {
         const copy = { ...a };
@@ -132,8 +159,10 @@ export function AdminApp() {
         return copy;
       });
     },
-    setAssignment: (staffId, memberIds) =>
-      setAssignments((a) => ({ ...a, [staffId]: memberIds })),
+    setAssignment: async (staffId, memberIds) => {
+      await apiPut("/api/assignments", { staffId, memberIds });
+      setAssignments((a) => ({ ...a, [staffId]: memberIds }));
+    },
     sheet,
     openSheet: setSheet,
   };

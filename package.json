@@ -5,9 +5,11 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:static": "BUILD_STATIC=1 next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "db:reset": "rm -rf .data",
     "db:migrate": "tsx scripts/apply-migrations.ts"
   },
   "dependencies": {
