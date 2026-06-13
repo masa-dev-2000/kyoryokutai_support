@@ -408,6 +408,55 @@ const [sheets, setSheets] = useState<Sheet[]>([]);
 - 自分が承認すべきステップは「承認 / 差戻し」ボタン表示
 - 差戻しは `comment` 必須(textarea を強制展開)
 
+#### PoC 実装(ADR-015 ─ クライアント状態機械)
+
+バックエンド未接続のため、`src/app/v5/manager/_app.tsx` 内のクライアント状態で実装。
+
+**型:**
+```typescript
+type ApproverType = "dept" | "host_org" | "admin";
+type StepStatus = "waiting" | "pending" | "approved" | "rejected";
+
+type ApprovalStep = {
+  approverType: ApproverType;
+  approverLabel: string;   // "商工観光課" / "○○観光協会" / "企画課"
+  status: StepStatus;
+  comment?: string;
+  decidedAt?: string;
+};
+
+type Approval = {
+  /* ...既存フィールド... */
+  routeName: string;       // "担当課 → 受入団体 → 企画課"
+  steps: ApprovalStep[];
+  currentStep: number;     // pending なステップの index(=== steps.length で完了)
+};
+```
+
+**コンポーネント:**
+- `ApprovalTimeline`:`●━━○━━○` を描画(承認カード + 詳細シート共通)
+- ヘッダーの **承認者ロール切替トグル**(`dept / host_org / admin`)= PoC 専用デモ装置
+- `ApproveTab`:`steps[currentStep].approverType === viewerRole` のものだけ actionable 表示
+
+**状態遷移(`approveOne` / `rejectOne` を置換):**
+```typescript
+approveOne(id):
+  step = a.steps[a.currentStep]; step.status = "approved";
+  if (a.currentStep + 1 < a.steps.length) {
+    a.steps[a.currentStep + 1].status = "pending"; a.currentStep++;
+  } else {
+    // 全ステップ完了 → 最終承認、キューから除外
+  }
+
+rejectOne(id, comment):
+  step = a.steps[a.currentStep];
+  step.status = "rejected"; step.comment = comment;
+  // 全体を差戻し、キューから除外(全段やり直し、ADR-012)
+```
+
+> 本番移行時にロール切替トグルは削除し、認証ロールで `viewerRole` を自動決定する。
+> クライアント状態遷移ロジックは §5.5 の Postgres 関数の仕様としてそのまま転用する。
+
 ### 6.9 活動報告の移動距離フィールド + 再編集
 
 **入力欄:** 「活動時間」の隣に「移動距離 (km)」を追加(任意)

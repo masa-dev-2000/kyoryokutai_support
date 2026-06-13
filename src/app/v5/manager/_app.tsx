@@ -69,6 +69,26 @@ type ExpenseDetail = {
   receipt: boolean;
 };
 
+/* -------- 多段階承認(ADR-012 / ADR-015)-------- */
+// 承認者の種別。dept=役場担当課 / host_org=受入団体 / admin=企画課(全体取りまとめ)
+type ApproverType = "dept" | "host_org" | "admin";
+// waiting=上位ステップ待ち / pending=自分の番 / approved / rejected
+type StepStatus = "waiting" | "pending" | "approved" | "rejected";
+
+type ApprovalStep = {
+  approverType: ApproverType;
+  approverLabel: string; // "商工観光課" / "○○観光協会" / "企画課"
+  status: StepStatus;
+  comment?: string;
+  decidedAt?: string;
+};
+
+const APPROVER_META: Record<ApproverType, { label: string; short: string }> = {
+  dept: { label: "担当課", short: "課" },
+  host_org: { label: "受入団体", short: "団" },
+  admin: { label: "企画課", short: "企" },
+};
+
 type Approval = {
   id: string;
   kind: "経費" | "月次報告" | "活動相談";
@@ -77,6 +97,9 @@ type Approval = {
   ai: string;
   citations: { source: string; quote: string }[];
   detail: ConsultDetail | ReportDetail | ExpenseDetail;
+  routeName: string; // "担当課 → 受入団体 → 企画課"
+  steps: ApprovalStep[];
+  currentStep: number; // pending なステップの index(=== steps.length で完了)
 };
 
 type NoticeItem = {
@@ -196,6 +219,13 @@ const initialApprovals: Approval[] = [
       budget: "賃料 月 5 万円 × 9 ヶ月 = 45 万円\n備品 5 万円(机・椅子等)\n光熱費 月 1 万円 × 9 ヶ月 = 9 万円\n合計 59 万円",
       risk: "・想定利用者が集まらない場合は月次でレビューし、Phase 1 で撤退判断\n・近隣住民との関係:着任前に説明会を開催",
     },
+    // ルート「中」:担当課 → 企画課(2 段)。今は担当課の番。
+    routeName: "担当課 → 企画課",
+    currentStep: 0,
+    steps: [
+      { approverType: "dept", approverLabel: "商工観光課", status: "pending" },
+      { approverType: "admin", approverLabel: "企画課", status: "waiting" },
+    ],
   },
   {
     id: "a2",
@@ -216,6 +246,13 @@ const initialApprovals: Approval[] = [
         { title: "所感・課題", body: "ツアー参加者の満足度は高かったが、現地での移動手段に課題。レンタカー手配のサポートが必要。" },
       ],
     },
+    // ルート「中」:担当課 → 企画課。担当課は承認済、今は企画課の番。
+    routeName: "担当課 → 企画課",
+    currentStep: 1,
+    steps: [
+      { approverType: "dept", approverLabel: "移住定住課", status: "approved", decidedAt: "6/10" },
+      { approverType: "admin", approverLabel: "企画課", status: "pending" },
+    ],
   },
   {
     id: "a3",
@@ -236,6 +273,10 @@ const initialApprovals: Approval[] = [
         { title: "所感・課題", body: "町民 IT 勉強会の参加者層が想定より高齢。次回は教材難易度を調整する。" },
       ],
     },
+    // ルート「シンプル」:企画課のみ(1 段)。
+    routeName: "企画課のみ",
+    currentStep: 0,
+    steps: [{ approverType: "admin", approverLabel: "企画課", status: "pending" }],
   },
   {
     id: "a4",
@@ -254,6 +295,15 @@ const initialApprovals: Approval[] = [
       paidDate: "2026-05-15",
       receipt: true,
     },
+    // ルート「複雑」:担当課 → 受入団体 → 企画課(3 段)。今は担当課の番。
+    // 受入団体(○○農業法人)が活動費の財布を握っているため団体長承認が挟まる。
+    routeName: "担当課 → 受入団体 → 企画課",
+    currentStep: 0,
+    steps: [
+      { approverType: "dept", approverLabel: "農林水産課", status: "pending" },
+      { approverType: "host_org", approverLabel: "新温泉町農業公社", status: "waiting" },
+      { approverType: "admin", approverLabel: "企画課", status: "waiting" },
+    ],
   },
 ];
 
@@ -273,6 +323,8 @@ type Ctx = {
   managed: string[];
   setManaged: (m: string[]) => void;
   approvals: Approval[];
+  viewerRole: ApproverType; // PoC: ヘッダーで切替する承認者視点(本番では認証ロールで自動決定)
+  setViewerRole: (r: ApproverType) => void;
   approveOne: (id: string) => void;
   rejectOne: (id: string, comment: string) => void;
   notices: NoticeItem[];
@@ -296,6 +348,7 @@ export function ManagerApp() {
     ALL_MEMBERS.slice(0, 5).map((m) => m.name)
   );
   const [approvals, setApprovals] = React.useState<Approval[]>(initialApprovals);
+  const [viewerRole, setViewerRole] = React.useState<ApproverType>("admin");
   const [notices, setNotices] = React.useState<NoticeItem[]>(initialNotices);
   const [noticeTargets, setNoticeTargets] = React.useState<string[]>(
     ALL_MEMBERS.slice(0, 5).map((m) => m.name)
@@ -310,8 +363,28 @@ export function ManagerApp() {
     managed,
     setManaged,
     approvals,
-    approveOne: (id) => setApprovals((a) => a.filter((x) => x.id !== id)),
-    rejectOne: (id, _comment) => setApprovals((a) => a.filter((x) => x.id !== id)),
+    viewerRole,
+    setViewerRole,
+    // 承認:現ステップを approved に。次があれば pending へ前進、無ければ最終承認でキューから除外。
+    approveOne: (id) =>
+      setApprovals((list) =>
+        list.flatMap((a) => {
+          if (a.id !== id) return [a];
+          const steps = a.steps.map((s, i) =>
+            i === a.currentStep ? { ...s, status: "approved" as StepStatus, decidedAt: "今" } : s
+          );
+          const next = a.currentStep + 1;
+          if (next >= steps.length) return []; // 全ステップ完了 → 最終承認
+          steps[next] = { ...steps[next], status: "pending" };
+          return [{ ...a, steps, currentStep: next }];
+        })
+      ),
+    // 差戻し:現ステップを rejected(コメント必須)→ 全段やり直しのためキューから除外(ADR-012)。
+    // 本番では comment を approvals.comment に保存し申請者へ通知する。
+    rejectOne: (id, comment) => {
+      void comment;
+      setApprovals((list) => list.filter((x) => x.id !== id));
+    },
     notices,
     addNotice: (body, targets) =>
       setNotices((n) => [
@@ -348,24 +421,49 @@ export function ManagerApp() {
 /* -------------------- Header / Tabs / Footer -------------------- */
 
 function Header() {
-  const { managed } = useApp();
   return (
     <header className="flex items-center justify-between border-b border-slate-100 px-5 py-2.5">
       <Link href="/v5" className="inline-flex items-center gap-0.5 text-[11px] text-slate-500 hover:text-slate-900">
         <ChevronLeft className="h-3 w-3" />
         切替
       </Link>
-      <div className="text-center text-[11px] text-slate-500">谷本 室長 / 新温泉町 / 企画課</div>
-      <span className="whitespace-nowrap text-[11px] text-slate-400">担当 {managed.length} 名</span>
+      <div className="text-center text-[11px] text-slate-500">谷本 室長 / 新温泉町</div>
+      <ViewerRoleSwitch />
     </header>
   );
 }
 
+// PoC 専用:承認者の視点を切り替えるデモ装置(本番では認証ロールで自動決定 ─ ADR-015)
+function ViewerRoleSwitch() {
+  const { viewerRole, setViewerRole } = useApp();
+  const roles: ApproverType[] = ["dept", "host_org", "admin"];
+  return (
+    <div className="flex items-center gap-1">
+      <span className="mr-0.5 hidden text-[9px] text-slate-300 sm:inline">承認者視点</span>
+      {roles.map((r) => (
+        <button
+          key={r}
+          onClick={() => setViewerRole(r)}
+          title="PoC デモ用:承認者の立場を切り替えます"
+          className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold transition ${
+            viewerRole === r
+              ? "border-slate-900 bg-slate-900 text-white"
+              : "border-slate-200 bg-white text-slate-500 hover:border-slate-400"
+          }`}
+        >
+          {APPROVER_META[r].label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Tabs({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
-  const { approvals } = useApp();
+  const { approvals, viewerRole } = useApp();
+  const myCount = approvals.filter((a) => isMyTurn(a, viewerRole)).length;
   return (
     <nav className="flex items-center justify-center gap-1 border-b border-slate-100 px-5 py-1.5">
-      <TabBtn label="承認" badge={approvals.length} active={active === "approve"} onClick={() => onChange("approve")} />
+      <TabBtn label="承認" badge={myCount} active={active === "approve"} onClick={() => onChange("approve")} />
       <TabBtn label="月報" active={active === "report"} onClick={() => onChange("report")} />
       <TabBtn label="お知らせ" active={active === "notice"} onClick={() => onChange("notice")} />
     </nav>
@@ -404,17 +502,62 @@ function Footer() {
   );
 }
 
+/* -------- 承認タイムライン(ADR-012 / ADR-015)-------- */
+// この承認が、現ロールの番かどうか
+function isMyTurn(a: Approval, role: ApproverType): boolean {
+  const step = a.steps[a.currentStep];
+  return !!step && step.status === "pending" && step.approverType === role;
+}
+
+function ApprovalTimeline({ approval, compact }: { approval: Approval; compact?: boolean }) {
+  const { steps, currentStep } = approval;
+  return (
+    <div className={compact ? "flex items-center gap-0" : "flex items-center gap-0"}>
+      {steps.map((s, i) => {
+        const done = s.status === "approved";
+        const active = s.status === "pending";
+        const dot = done
+          ? "border-slate-900 bg-slate-900 text-white"
+          : active
+            ? "border-slate-900 bg-white text-slate-900"
+            : "border-slate-300 bg-white text-slate-300";
+        return (
+          <React.Fragment key={i}>
+            <div className="flex flex-col items-center">
+              <div className={`flex h-5 w-5 items-center justify-center rounded-full border-2 ${dot}`}>
+                {done ? <Check className="h-3 w-3" /> : <span className="text-[9px] font-bold">{APPROVER_META[s.approverType].short}</span>}
+              </div>
+              {!compact && (
+                <div className={`mt-0.5 max-w-[64px] truncate text-[9px] leading-tight ${active ? "font-bold text-slate-900" : "text-slate-400"}`}>
+                  {s.approverLabel}
+                </div>
+              )}
+            </div>
+            {i < steps.length - 1 && (
+              <div className={`h-[2px] flex-1 ${i < currentStep ? "bg-slate-900" : "bg-slate-200"} ${compact ? "min-w-[16px]" : "min-w-[20px]"}`} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
 /* -------------------- 1. 承認タブ -------------------- */
 
 function ApproveTab() {
-  const { approvals, approveOne, openSheet } = useApp();
+  const { approvals, viewerRole, approveOne, openSheet } = useApp();
   const [q, setQ] = React.useState("");
 
-  const filtered = approvals.filter((a) => {
+  const matchesQuery = (a: Approval) => {
     if (!q.trim()) return true;
     const k = q.toLowerCase();
     return a.kind.toLowerCase().includes(k) || a.member.toLowerCase().includes(k) || a.title.toLowerCase().includes(k);
-  });
+  };
+
+  // 自分の番のもの(actionable)と、他承認者待ちのもの(read-only)に仕分け
+  const mine = approvals.filter((a) => isMyTurn(a, viewerRole) && matchesQuery(a));
+  const others = approvals.filter((a) => !isMyTurn(a, viewerRole) && matchesQuery(a));
 
   return (
     <div className="text-center">
@@ -428,58 +571,114 @@ function ApproveTab() {
 
       <SearchBox value={q} onChange={setQ} placeholder="種別 / 隊員 / タイトルで絞る" />
 
-      {filtered.length === 0 ? (
+      {mine.length === 0 && others.length === 0 ? (
         <EmptyState message={approvals.length === 0 ? "未承認はありません。お疲れさまでした。" : "条件に合うものがありません。"} />
       ) : (
-        <ul className="mt-5 space-y-px text-left">
-          {filtered.map((a) => (
-            <li key={a.id} className="border-b border-slate-100 py-3 last:border-b-0">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                      {a.kind}
-                    </span>
-                    <span className="text-[10px] text-slate-500">{a.member}</span>
-                  </div>
-                  <div className="mt-1 text-[13px] font-semibold text-slate-900">{a.title}</div>
-                  <div className="mt-1 flex items-start gap-1.5 text-[11px] text-slate-600">
-                    <Bot className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
-                    <span className="leading-snug">
-                      {a.ai}
-                      {a.citations.length > 0 && (
-                        <span className="ml-1 text-slate-400">・引用 {a.citations.length} 件</span>
-                      )}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5 pt-1">
-                  <button
-                    onClick={() => openSheet({ kind: "approval-detail", approval: a })}
-                    className="rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold text-slate-700 hover:border-slate-500"
-                  >
-                    詳細
-                  </button>
-                  <button
-                    onClick={() => openSheet({ kind: "reject-comment", approval: a })}
-                    className="rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold text-slate-700 hover:border-slate-500"
-                  >
-                    差戻し
-                  </button>
-                  <button
-                    onClick={() => approveOne(a.id)}
-                    className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1 text-[11px] font-bold text-white hover:bg-slate-800"
-                  >
-                    <CheckCircle2 className="h-3 w-3" />
-                    承認
-                  </button>
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <>
+          {/* あなたの番 */}
+          <div className="mt-5 text-left">
+            <div className="flex items-center gap-2 text-[11px] font-bold text-slate-700">
+              あなた({APPROVER_META[viewerRole].label})の番
+              <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-900 px-1 text-[9px] font-bold text-white">
+                {mine.length}
+              </span>
+            </div>
+            {mine.length === 0 ? (
+              <p className="mt-2 text-[11px] text-slate-400">いま承認待ちのものはありません。</p>
+            ) : (
+              <ul className="mt-2 space-y-px">
+                {mine.map((a) => (
+                  <ApprovalRow key={a.id} a={a} actionable onApprove={() => approveOne(a.id)} onDetail={() => openSheet({ kind: "approval-detail", approval: a })} onReject={() => openSheet({ kind: "reject-comment", approval: a })} />
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* 他の承認者を待っているもの */}
+          {others.length > 0 && (
+            <div className="mt-7 text-left">
+              <div className="text-[11px] font-bold text-slate-400">他の承認者を待っています({others.length})</div>
+              <ul className="mt-2 space-y-px">
+                {others.map((a) => (
+                  <ApprovalRow key={a.id} a={a} onDetail={() => openSheet({ kind: "approval-detail", approval: a })} />
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
       )}
     </div>
+  );
+}
+
+function ApprovalRow({
+  a,
+  actionable,
+  onApprove,
+  onReject,
+  onDetail,
+}: {
+  a: Approval;
+  actionable?: boolean;
+  onApprove?: () => void;
+  onReject?: () => void;
+  onDetail: () => void;
+}) {
+  const waitingLabel = a.steps[a.currentStep]?.approverLabel ?? "—";
+  return (
+    <li className={`border-b border-slate-100 py-3 last:border-b-0 ${actionable ? "" : "opacity-70"}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+              {a.kind}
+            </span>
+            <span className="text-[10px] text-slate-500">{a.member}</span>
+            <span className="text-[10px] text-slate-300">・{a.routeName}</span>
+          </div>
+          <div className="mt-1 text-[13px] font-semibold text-slate-900">{a.title}</div>
+          <div className="mt-1 flex items-start gap-1.5 text-[11px] text-slate-600">
+            <Bot className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
+            <span className="leading-snug">
+              {a.ai}
+              {a.citations.length > 0 && <span className="ml-1 text-slate-400">・引用 {a.citations.length} 件</span>}
+            </span>
+          </div>
+          {/* 進捗タイムライン */}
+          <div className="mt-2.5 max-w-[320px]">
+            <ApprovalTimeline approval={a} />
+            {!actionable && (
+              <div className="mt-1 text-[10px] text-slate-400">「{waitingLabel}」が承認中</div>
+            )}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5 pt-1">
+          <button
+            onClick={onDetail}
+            className="rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold text-slate-700 hover:border-slate-500"
+          >
+            詳細
+          </button>
+          {actionable && (
+            <>
+              <button
+                onClick={onReject}
+                className="rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold text-slate-700 hover:border-slate-500"
+              >
+                差戻し
+              </button>
+              <button
+                onClick={onApprove}
+                className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1 text-[11px] font-bold text-white hover:bg-slate-800"
+              >
+                <CheckCircle2 className="h-3 w-3" />
+                承認
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </li>
   );
 }
 
@@ -739,12 +938,27 @@ function SheetHeader({ title, onClose, right }: { title: string; onClose: () => 
 /* -------- 承認 詳細シート(kind 別に分岐) -------- */
 
 function ApprovalDetailSheet({ approval, onClose }: { approval: Approval; onClose: () => void }) {
-  const { approveOne, openSheet } = useApp();
+  const { approveOne, openSheet, viewerRole } = useApp();
+  const myTurn = isMyTurn(approval, viewerRole);
+  const currentLabel = approval.steps[approval.currentStep]?.approverLabel ?? "—";
   return (
     <>
       <SheetHeader title={`${approval.kind} ・ ${approval.member}`} onClose={onClose} />
       <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
         <h1 className="text-xl font-bold tracking-tight">{approval.title}</h1>
+
+        {/* 承認の進捗(多段階)*/}
+        <Label>承認の進捗 ・ {approval.routeName}</Label>
+        <div className="mt-2 rounded-xl border border-slate-200 bg-white p-4">
+          <ApprovalTimeline approval={approval} />
+          <div className="mt-3 border-t border-slate-100 pt-2 text-[11px] text-slate-500">
+            {myTurn ? (
+              <span className="font-semibold text-slate-900">あなた({currentLabel})の承認待ちです。</span>
+            ) : (
+              <span>現在「{currentLabel}」が承認中です。あなたの番ではありません。</span>
+            )}
+          </div>
+        </div>
 
         {/* kind 別の詳細セクション */}
         {approval.detail.kind === "活動相談" && <ConsultDetailView d={approval.detail} />}
@@ -779,22 +993,28 @@ function ApprovalDetailSheet({ approval, onClose }: { approval: Approval; onClos
       </div>
       <div className="border-t border-slate-200 px-5 py-3">
         <div className="mx-auto flex max-w-2xl items-center justify-end gap-2">
-          <button
-            onClick={() => openSheet({ kind: "reject-comment", approval })}
-            className="rounded-full border border-slate-300 px-4 py-1.5 text-[12px] font-semibold text-slate-700 hover:border-slate-500"
-          >
-            差戻し
-          </button>
-          <button
-            onClick={() => {
-              approveOne(approval.id);
-              onClose();
-            }}
-            className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-4 py-1.5 text-[12px] font-bold text-white hover:bg-slate-800"
-          >
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            承認する
-          </button>
+          {myTurn ? (
+            <>
+              <button
+                onClick={() => openSheet({ kind: "reject-comment", approval })}
+                className="rounded-full border border-slate-300 px-4 py-1.5 text-[12px] font-semibold text-slate-700 hover:border-slate-500"
+              >
+                差戻し
+              </button>
+              <button
+                onClick={() => {
+                  approveOne(approval.id);
+                  onClose();
+                }}
+                className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-4 py-1.5 text-[12px] font-bold text-white hover:bg-slate-800"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {currentLabel}として承認する
+              </button>
+            </>
+          ) : (
+            <span className="text-[11px] text-slate-400">「{currentLabel}」の承認待ちのため、操作できません。</span>
+          )}
         </div>
       </div>
     </>
