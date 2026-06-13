@@ -142,9 +142,21 @@ erDiagram
 erDiagram
   users ||--o{ expenses : "申請"
   expenses }o--o| projects : "プロジェクト(任意)"
+  expenses }o--o| activity_logs : "日報経由(source_activity_log_id)"
+  expenses ||--o{ expenses : "親子(出張 → レシート)"
 ```
 
-**説明:** `status` で申請 → 承認 → 精算のステートマシン管理。AI 判定材料(`ai_note` / `citations`)をキャッシュ。承認は **E. Workflow & Approval** が肩代わりする。
+**説明(ADR-014):**
+- `status` で申請 → 承認 → 精算のステートマシン管理。AI 判定材料(`ai_note` / `citations`)をキャッシュ。承認は **E. Workflow & Approval** が肩代わりする。
+- **二系統動線**:
+  - 動線①:日報経由 ─ `source_activity_log_id` + `source_receipt_index` で識別
+  - 動線②:経費画面直接 ─ `source_activity_log_id IS NULL`
+- **親子構造(旅費等)**:
+  - 親:`expense_kind = trip_parent`、`amount_requested`(見積もり)を持つ
+  - 子:`expense_kind = trip_receipt`、`parent_expense_id` で親に紐付け、各レシート 1 行
+  - 親の `amount_settled` は子の合計値で自動集計
+- **二重申請防止**:部分 UNIQUE INDEX で同一日報からの重複生成を DB レベルで防ぐ
+- **編集ルール**:申請前は両画面から編集可、申請後は経費画面のみ(整合性保持)
 
 ---
 
@@ -258,7 +270,9 @@ erDiagram
   users ||--o{ audit_logs : "actor"
   activity_logs }o--|| activity_topics : "topic"
   activity_logs }o--o| projects : ""
+  activity_logs ||--o{ expenses : "source(日報経由)"
   expenses }o--o| projects : ""
+  expenses ||--o{ expenses : "trip_parent → trip_receipt"
   monthly_reports ||--o{ approvals : "kind=月次報告"
   expenses ||--o{ approvals : "kind=経費"
   projects ||--o{ approvals : "kind=活動相談"
@@ -444,7 +458,7 @@ erDiagram
 
 **UNIQUE:** `(user_id, year_month)`
 
-### 6.9 [D] expenses
+### 6.9 [D] expenses(ADR-014)
 
 | カラム | 型 | NOT NULL | 説明 |
 |---|---|---|---|
@@ -452,11 +466,17 @@ erDiagram
 | user_id | uuid | ✓ | FK → users |
 | municipality_id | uuid | ✓ | FK → municipalities |
 | project_id | uuid |  | FK → projects |
-| title | text | ✓ | タイトル(例:町報 印刷費) |
+| **expense_kind** | text | ✓ | `single`(単発)/ `trip_parent`(出張見積もり)/ `trip_receipt`(出張レシート)、ADR-014 |
+| **parent_expense_id** | uuid |  | FK → expenses(`trip_receipt` の場合の親、ADR-014) |
+| **source_activity_log_id** | uuid |  | FK → activity_logs(日報経由動線、ADR-014) |
+| **source_receipt_index** | int |  | 同一日報内の何枚目のレシートか(0-based、ADR-014) |
+| title | text | ✓ | タイトル(AI 自動生成、編集可) |
 | amount_requested | int | ✓ | 申請金額(円) |
-| amount_settled | int |  | 実支出額(精算時) |
+| amount_settled | int |  | 実支出額(精算時、`trip_parent` は子の合計で自動更新) |
 | purpose | text | ✓ | 用途・内容 |
-| status | text | ✓ | `申請中` / `承認` / `差戻し` / `未精算` / `精算済` |
+| status | text | ✓ | `下書き` / `申請中` / `承認` / `差戻し` / `未精算` / `精算済` / `取下げ` |
+| period_start | date |  | 出張等の開始日(`trip_parent` のみ) |
+| period_end | date |  | 出張等の終了日(`trip_parent` のみ) |
 | payee | text |  | 支払先(精算時) |
 | paid_date | date |  | 支出日(精算時) |
 | receipt_path | text |  | 領収書 Storage パス |
@@ -465,6 +485,16 @@ erDiagram
 | citations | jsonb |  | 引用 `[{source, quote}]` |
 | created_at | timestamptz | ✓ | |
 | updated_at | timestamptz | ✓ | |
+
+**インデックス:**
+- `(user_id, status)`
+- `(municipality_id, status)`
+- `(parent_expense_id)` ─ 親子集計用
+- **部分 UNIQUE**:`(source_activity_log_id, source_receipt_index) WHERE source_activity_log_id IS NOT NULL` ─ 二重申請防止(ADR-014)
+
+**トリガー:**
+- `trip_receipt` の INSERT / UPDATE 時に親(`trip_parent`)の `amount_settled` を集計値で更新
+- `status` 遷移時に `audit_logs` に記録
 
 ### 6.10 [E] approval_routes(ADR-012)
 

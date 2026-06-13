@@ -417,6 +417,112 @@ const [sheets, setSheets] = useState<Sheet[]>([]);
   > 「この活動が含まれる 5 月の月報は承認済みです。編集すると月報のステータスが『提出済』に戻りますがよろしいですか?」
 - OK で月報の `status` を `approved → submitted` に戻す
 
+### 6.10 経費の二系統動線(ADR-014)
+
+#### 動線① 日報経由(現場の少額経費)
+
+**日報入力画面の「💴 経費」セクション:**
+```
+💴 経費(任意)
+─────────────────────────────
+[#1] タイトル: コピー用紙        [削除]
+     金額:    1,200 円
+     用途:    町報印刷用
+     レシート: 📷 添付済み
+─────────────────────────────
+[#2] タイトル: ボールペン        [削除]
+     金額:    300 円
+     用途:    事務用品
+     レシート: 📷 添付済み
+─────────────────────────────
+[ + 経費を追加 ]
+```
+
+**保存時の処理:**
+```typescript
+async function saveActivityLog(logData, expenses) {
+  await db.activity_logs.upsert(logData);
+  for (const [index, exp] of expenses.entries()) {
+    await db.expenses.upsert({
+      source_activity_log_id: logData.id,
+      source_receipt_index: index,
+      expense_kind: 'single',
+      status: 'draft',
+      ...exp,
+    }, {
+      onConflict: '(source_activity_log_id, source_receipt_index)',
+    });
+  }
+  // 削除された明細は status='取下げ' に
+  await db.expenses
+    .where({ source_activity_log_id: logData.id })
+    .where('source_receipt_index', '>=', expenses.length)
+    .update({ status: '取下げ' });
+}
+```
+
+#### 動線② 経費画面の直接作成
+
+**新規ボタン:**
+```
+[ + 単発経費 ]   [ + 出張(見積もり) ]
+```
+
+- **単発経費**:従来 UI、`expense_kind = single`
+- **出張(見積もり)**:親レコード作成 → 詳細画面で子レシート追加
+
+**親詳細画面:**
+```
+出張:島根研修(2026/06/15 - 06/17)
+─────────────────────────────
+見積もり: ¥85,000     精算合計: ¥78,540 (92%)
+進捗バー: ████████░ 92%
+─────────────────────────────
+レシート一覧
+  📄 JR 運賃     ¥28,000  [精算済]
+  📄 宿泊費 2泊  ¥36,000  [精算済]
+  📄 食事代×3   ¥14,540  [精算済]
+─────────────────────────────
+[ + レシートを追加 ]
+[ 出張全体を精算完了 ]
+```
+
+#### 編集ルール(UI 反映)
+
+| 状態 | 日報経由 | 経費画面直接 |
+|---|---|---|
+| `下書き` | 両画面で編集可 | 両画面で編集可(日報側は閲覧のみ) |
+| `申請中` 以降 | 日報側は **灰色化 + 「経費画面で編集」リンク**、経費画面で編集可 | 経費画面のみ編集可 |
+| 取下げ | 日報の経費明細から削除可 | 経費画面で `削除` ボタン |
+
+#### 親子集計トリガー(Postgres)
+
+```sql
+CREATE OR REPLACE FUNCTION update_parent_settled() RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.expense_kind = 'trip_receipt' AND NEW.parent_expense_id IS NOT NULL THEN
+    UPDATE expenses SET amount_settled = (
+      SELECT COALESCE(SUM(amount_settled), 0)
+      FROM expenses
+      WHERE parent_expense_id = NEW.parent_expense_id
+        AND status IN ('精算済', '承認')
+    ) WHERE id = NEW.parent_expense_id;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_update_parent_settled
+AFTER INSERT OR UPDATE ON expenses
+FOR EACH ROW EXECUTE FUNCTION update_parent_settled();
+```
+
+#### 月報集計の真実の源
+
+- `monthly_reports.total_expense` の集計は **`expenses.amount_settled`** から計算
+- `activity_logs.expense_amount` は表示用キャッシュ(集計には使わない)
+- これにより日報の数字を後から書き換えても月報集計は崩れない
+
 ## 7. バックエンド API
 
 ### 7.1 Route Handlers
