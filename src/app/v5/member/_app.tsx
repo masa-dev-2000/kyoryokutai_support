@@ -7,6 +7,8 @@ import {
   Search,
   ChevronLeft,
   Sparkles,
+  Bell,
+  Pin,
   X,
   ArrowRight,
   Plus,
@@ -210,6 +212,8 @@ const consultMeta: Record<Exclude<ConsultContext["kind"], "menu">, { title: stri
 
 /* -------------------- Context -------------------- */
 
+type Notice = { id: string; title: string; body: string; date: string; kind: string; isPinned: boolean; sender: string };
+
 type Sheet =
   | { kind: "activity-create" }
   | { kind: "activity-detail"; log: ActivityLog }
@@ -220,7 +224,9 @@ type Sheet =
   | { kind: "expense-settle"; item: ExpenseRequest }
   | { kind: "case-detail"; case: CaseItem }
   | { kind: "consult"; context: ConsultContext; onAdopt?: (text: string) => void }
-  | { kind: "topic-edit" };
+  | { kind: "topic-edit" }
+  | { kind: "announcements" }
+  | { kind: "rules-panel" };
 
 type TrendItem = { id: string; title: string; count: number };
 
@@ -236,6 +242,8 @@ type Ctx = {
   reports: Report[];
   caseItems: CaseItem[];
   trend: TrendItem[];
+  notices: Notice[];
+  rules: Notice[];
   sheets: Sheet[];
   pushSheet: (s: Sheet) => void;
   popSheet: () => void;
@@ -262,6 +270,8 @@ export function MemberApp() {
   const [reports, setReports] = React.useState<Report[]>(seedReports);
   const [caseItems, setCaseItems] = React.useState<CaseItem[]>(seedCases);
   const [trend, setTrend] = React.useState<TrendItem[]>(seedTrend);
+  const [notices, setNotices] = React.useState<Notice[]>([]);
+  const [rules, setRules] = React.useState<Notice[]>([]);
   const [sheets, setSheets] = React.useState<Sheet[]>([]);
   const [plan, setPlan] = React.useState(
     "・夏祭り当日の運営(7/14)\n・移住者向け体験ツアー初回開催(7/27)\n・空き家バンク累計 15 件を目標"
@@ -272,12 +282,14 @@ export function MemberApp() {
     let alive = true;
     (async () => {
       try {
-        const [lg, tp, ex, rp, cs] = await Promise.all([
+        const [lg, tp, ex, rp, cs, ns, rl] = await Promise.all([
           apiGet<ActivityLog[]>(`/api/activity-logs?userId=${MEMBER_ID}`),
           apiGet<string[]>(`/api/topics?userId=${MEMBER_ID}`),
           apiGet<ExpenseRequest[]>(`/api/expenses?userId=${MEMBER_ID}`),
           apiGet<Report[]>(`/api/monthly-reports?userId=${MEMBER_ID}`),
           apiGet<{ cases: CaseItem[]; trend: TrendItem[] }>(`/api/cases`),
+          apiGet<Notice[]>(`/api/announcements`),
+          apiGet<Notice[]>(`/api/announcements?kinds=rule,qa`),
         ]);
         if (!alive) return;
         setLogs(lg);
@@ -286,6 +298,8 @@ export function MemberApp() {
         setReports(rp);
         setCaseItems(cs.cases);
         setTrend(cs.trend);
+        setNotices(ns);
+        setRules(rl);
       } catch {
         /* オフライン時はシードのまま */
       }
@@ -322,6 +336,8 @@ export function MemberApp() {
     reports,
     caseItems,
     trend,
+    notices,
+    rules,
     sheets,
     pushSheet: (s) => setSheets((ss) => [...ss, s]),
     popSheet: () => setSheets((ss) => ss.slice(0, -1)),
@@ -333,7 +349,11 @@ export function MemberApp() {
   return (
     <AppCtx.Provider value={ctx}>
       <main className="flex h-screen flex-col bg-white text-slate-900">
-        <Header onConsultMenu={() => setSheets([{ kind: "consult", context: { kind: "menu" } }])} />
+        <Header
+          onConsultMenu={() => setSheets([{ kind: "consult", context: { kind: "menu" } }])}
+          onBell={() => setSheets([{ kind: "announcements" }])}
+          unread={notices.length}
+        />
         <Tabs active={tab} onChange={setTab} />
 
         <div className="flex flex-1 flex-col overflow-y-auto px-6 pb-20">
@@ -354,7 +374,7 @@ export function MemberApp() {
 
 /* -------------------- Header / Tabs / Footer -------------------- */
 
-function Header({ onConsultMenu }: { onConsultMenu: () => void }) {
+function Header({ onConsultMenu, onBell, unread }: { onConsultMenu: () => void; onBell: () => void; unread: number }) {
   return (
     <header className="flex items-center justify-between border-b border-slate-100 px-5 py-2.5">
       <Link href="/v5" className="inline-flex items-center gap-0.5 text-[11px] text-slate-500 hover:text-slate-900">
@@ -362,14 +382,29 @@ function Header({ onConsultMenu }: { onConsultMenu: () => void }) {
         切替
       </Link>
       <div className="text-center text-[11px] text-slate-500">田中 あかり / 新温泉町</div>
-      <button
-        onClick={onConsultMenu}
-        className="inline-flex items-center gap-1 text-[11px] text-slate-700 hover:text-slate-900"
-        title="目的別の AI 相談"
-      >
-        <Sparkles className="h-3 w-3" />
-        相談
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onBell}
+          className="relative inline-flex items-center gap-1 text-[11px] text-slate-700 hover:text-slate-900"
+          title="お知らせ・ルール"
+          aria-label="お知らせを開く"
+        >
+          <Bell className="h-3.5 w-3.5" />
+          {unread > 0 && (
+            <span className="absolute -right-1.5 -top-1.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-rose-600 px-0.5 text-[8px] font-bold text-white">
+              {unread}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={onConsultMenu}
+          className="inline-flex items-center gap-1 text-[11px] text-slate-700 hover:text-slate-900"
+          title="目的別の AI 相談"
+        >
+          <Sparkles className="h-3 w-3" />
+          相談
+        </button>
+      </div>
     </header>
   );
 }
@@ -861,6 +896,8 @@ function SheetRoot() {
       {sheet.kind === "case-detail" && <CaseDetailSheet item={sheet.case} onClose={close} />}
       {sheet.kind === "consult" && <ConsultSheet context={sheet.context} onAdopt={sheet.onAdopt} onClose={close} />}
       {sheet.kind === "topic-edit" && <TopicEditSheet onClose={close} />}
+      {sheet.kind === "announcements" && <AnnouncementsSheet onClose={close} />}
+      {sheet.kind === "rules-panel" && <RulesPanelSheet onClose={close} />}
     </div>
   );
 }
@@ -1031,6 +1068,20 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
   const ym = report.ym;
   const monthLogs = logs.filter((l) => l.date.startsWith(ym));
 
+  // AI 月報生成(再生成ボタンから呼び出し)
+  const [generated, setGenerated] = React.useState<string | null>(null);
+  const [genState, setGenState] = React.useState<"idle" | "loading" | "error">("idle");
+  async function regenerate() {
+    setGenState("loading");
+    try {
+      const r = await apiPost<{ markdown: string }>("/api/ai/monthly-report", { userId: "m1", ym });
+      setGenerated(r.markdown);
+      setGenState("idle");
+    } catch {
+      setGenState("error");
+    }
+  }
+
   const totalHours = monthLogs.reduce((s, l) => s + l.hours, 0);
   const totalExpense = monthLogs.reduce((s, l) => s + (l.expense ?? 0), 0);
   const totalCount = monthLogs.length;
@@ -1159,9 +1210,26 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
         <div className="mt-4 text-[10px] text-slate-400">※ AI が日々の活動から自動でまとめます。提出前に確認してください。</div>
       </div>
 
+      {(generated || genState === "loading" || genState === "error") && (
+        <div className="mx-auto w-full max-w-2xl px-6 pb-6">
+          <Label>AI 生成 月報(下書き)</Label>
+          <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/40 p-3 text-[12px] leading-relaxed text-slate-800">
+            {genState === "loading" && <p className="text-slate-500">活動ログから生成中…</p>}
+            {genState === "error" && <p className="text-rose-700">生成に失敗しました。AI プロバイダ(ollama/anthropic/mock)の設定を確認してください。</p>}
+            {generated && <pre className="whitespace-pre-wrap font-sans">{generated}</pre>}
+          </div>
+        </div>
+      )}
+
       <div className="border-t border-slate-200 px-5 py-3">
         <div className="mx-auto flex max-w-2xl items-center justify-end gap-2">
-          <button className="rounded-full border border-slate-300 px-4 py-1.5 text-[12px] font-semibold text-slate-700 hover:border-slate-500">再生成</button>
+          <button
+            onClick={regenerate}
+            disabled={genState === "loading"}
+            className="rounded-full border border-slate-300 px-4 py-1.5 text-[12px] font-semibold text-slate-700 hover:border-slate-500 disabled:cursor-not-allowed disabled:text-slate-300"
+          >
+            {genState === "loading" ? "生成中…" : generated ? "再生成" : "AI 生成"}
+          </button>
           {report.status === "draft" ? (
             <button className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-4 py-1.5 text-[12px] font-bold text-white hover:bg-slate-800">
               <Check className="h-3.5 w-3.5" />
@@ -1224,6 +1292,25 @@ function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () =>
 
 function ExpenseDetailSheet({ item, onClose }: { item: ExpenseRequest; onClose: () => void }) {
   const { pushSheet } = useApp();
+  const [aiNote, setAiNote] = React.useState<string>(item.aiNote);
+  const [citation, setCitation] = React.useState(item.citation);
+  const [loading, setLoading] = React.useState(false);
+
+  async function recheck() {
+    setLoading(true);
+    try {
+      const r = await apiPost<{ aiNote: string; citations: { source: string; quote: string }[] }>(
+        "/api/ai/expense-check",
+        { title: item.title, amount: item.amount, purpose: item.purpose }
+      );
+      setAiNote(r.aiNote);
+      if (r.citations?.[0]) setCitation(r.citations[0]);
+    } catch {
+      /* noop */
+    } finally {
+      setLoading(false);
+    }
+  }
   return (
     <>
       <SheetHeader title="経費申請の詳細" onClose={onClose} />
@@ -1237,18 +1324,32 @@ function ExpenseDetailSheet({ item, onClose }: { item: ExpenseRequest; onClose: 
         <Label>申請内容 ・ 用途</Label>
         <p className="mt-1 whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50/40 p-3 text-[13px] leading-relaxed text-slate-800">{item.purpose}</p>
 
-        <Label>AI 判定材料</Label>
+        <Label
+          right={
+            <button
+              type="button"
+              onClick={recheck}
+              disabled={loading}
+              className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-900 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+            >
+              <Sparkles className="h-3 w-3" />
+              {loading ? "確認中…" : "AI に再確認"}
+            </button>
+          }
+        >
+          AI 判定材料
+        </Label>
         <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/50 p-3">
-          <p className="text-[12px] leading-relaxed text-slate-800">{item.aiNote}</p>
+          <p className="text-[12px] leading-relaxed text-slate-800">{aiNote}</p>
           <div className="mt-1 text-[10px] text-slate-400">※ AI は判定しません。視点と材料のみ提供します。</div>
         </div>
 
-        {item.citation.quote && (
+        {citation.quote && (
           <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
-            <div className="text-[11px] font-semibold text-slate-700">{item.citation.source}</div>
+            <div className="text-[11px] font-semibold text-slate-700">{citation.source}</div>
             <div className="mt-1 flex items-start gap-1.5 text-[12px] text-slate-600">
               <Quote className="mt-0.5 h-3 w-3 shrink-0 text-slate-300" />
-              <span className="leading-snug">{item.citation.quote}</span>
+              <span className="leading-snug">{citation.quote}</span>
             </div>
           </div>
         )}
@@ -1291,7 +1392,7 @@ function ExpenseDetailSheet({ item, onClose }: { item: ExpenseRequest; onClose: 
 /* -------- 経費 申請シート(用途欄に相談ボタン) -------- */
 
 function ExpenseCreateSheet({ onClose }: { onClose: () => void }) {
-  const { addExpense } = useApp();
+  const { addExpense, pushSheet } = useApp();
   const [title, setTitle] = React.useState("");
   const [amount, setAmount] = React.useState("");
   const [purpose, setPurpose] = React.useState("");
@@ -1322,7 +1423,19 @@ function ExpenseCreateSheet({ onClose }: { onClose: () => void }) {
         }
       />
       <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
-        <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-[11px] leading-relaxed text-slate-600">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-[11px] text-slate-500">事前申請(支出前)</div>
+          <button
+            type="button"
+            onClick={() => pushSheet({ kind: "rules-panel" })}
+            className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-900 hover:bg-slate-50"
+            title="この経費が通るかどうかの自治体ルールを見る"
+          >
+            📖 ルールを見る
+          </button>
+        </div>
+
+        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-[11px] leading-relaxed text-slate-600">
           <strong className="text-slate-800">この画面は「事前申請」です。</strong>
           <br />
           支出する前に内容と金額を申請します。領収書は支出後に「精算」サブタブから登録してください。
@@ -1693,6 +1806,110 @@ function ConsultInner({
               </div>
             )}
           </>
+        )}
+      </div>
+    </>
+  );
+}
+
+/* -------- お知らせドロワー(右上ベル / ADR-013)-------- */
+// ピン留め(rule/qa)を上段、新着(info)を時系列で下段。
+
+function AnnouncementsSheet({ onClose }: { onClose: () => void }) {
+  const { notices } = useApp();
+  const pinned = notices.filter((n) => n.isPinned);
+  const fresh = notices.filter((n) => !n.isPinned);
+  const [open, setOpen] = React.useState<string | null>(null);
+
+  return (
+    <>
+      <SheetHeader title="お知らせ" onClose={onClose} />
+      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+        {pinned.length > 0 && (
+          <>
+            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              <Pin className="h-3 w-3" />
+              ピン留め(常時参照)
+            </div>
+            <ul className="mt-2 space-y-px">
+              {pinned.map((n) => (
+                <NoticeRow key={n.id} n={n} open={open === n.id} onToggle={() => setOpen((cur) => (cur === n.id ? null : n.id))} />
+              ))}
+            </ul>
+          </>
+        )}
+
+        <div className={`mt-${pinned.length > 0 ? 6 : 0} text-[11px] font-bold uppercase tracking-wider text-slate-500`}>新着</div>
+        {fresh.length === 0 ? (
+          <div className="mt-2 text-[11px] text-slate-400">新しいお知らせはありません。</div>
+        ) : (
+          <ul className="mt-2 space-y-px">
+            {fresh.map((n) => (
+              <NoticeRow key={n.id} n={n} open={open === n.id} onToggle={() => setOpen((cur) => (cur === n.id ? null : n.id))} />
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
+  );
+}
+
+function NoticeRow({ n, open, onToggle }: { n: Notice; open: boolean; onToggle: () => void }) {
+  const meta =
+    n.kind === "rule" ? { label: "ルール", className: "border-slate-900 bg-slate-900 text-white" } :
+    n.kind === "qa" ? { label: "Q&A", className: "border-slate-300 bg-slate-50 text-slate-700" } :
+    { label: "お知らせ", className: "border-slate-200 bg-white text-slate-600" };
+  return (
+    <li className="border-b border-slate-100 last:border-b-0">
+      <button onClick={onToggle} className="flex w-full items-start gap-2 py-2.5 text-left hover:bg-slate-50/60">
+        <span className={`mt-0.5 shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${meta.className}`}>
+          {meta.label}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-[12.5px] font-semibold text-slate-900">{n.title}</div>
+          <div className="mt-0.5 text-[10px] text-slate-500">{n.sender || "役場"} ・ {n.date}</div>
+          {open && (
+            <p className="mt-2 whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50/50 p-2.5 text-[12px] leading-relaxed text-slate-800">
+              {n.body}
+            </p>
+          )}
+        </div>
+      </button>
+    </li>
+  );
+}
+
+/* -------- ルール参照パネル(経費作成画面から開く / ADR-013 段階 1)-------- */
+
+function RulesPanelSheet({ onClose }: { onClose: () => void }) {
+  const { rules } = useApp();
+  const [q, setQ] = React.useState("");
+  const filtered = q.trim() ? rules.filter((r) => r.title.includes(q) || r.body.includes(q)) : rules;
+
+  return (
+    <>
+      <SheetHeader title="経費のルール・Q&A" onClose={onClose} backLabel="経費入力に戻る" />
+      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+        <p className="text-[11px] text-slate-500">
+          自治体・受入団体が定めたルールと、よくある質問です。経費入力中いつでも参照できます。
+        </p>
+        <SearchBox value={q} onChange={setQ} placeholder="ルール本文で絞る" />
+        {filtered.length === 0 ? (
+          <EmptyState message="該当するルール / Q&A はありません。" />
+        ) : (
+          <ul className="mt-4 space-y-2">
+            {filtered.map((r) => (
+              <li key={r.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="flex items-center gap-2">
+                  <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${r.kind === "rule" ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-slate-50 text-slate-700"}`}>
+                    {r.kind === "rule" ? "ルール" : "Q&A"}
+                  </span>
+                  <span className="text-[12.5px] font-bold text-slate-900">{r.title}</span>
+                </div>
+                <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-slate-700">{r.body}</p>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
     </>

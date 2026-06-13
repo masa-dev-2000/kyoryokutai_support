@@ -37,7 +37,7 @@ npm run dev                  # http://localhost:3000/v5
 
 ### 主な API(`/api/*`)
 
-`health` / `activity-logs` / `expenses` / `monthly-reports` / `approvals` + `approvals/[id]/decide`(多段階承認)/ `announcements` / `members` / `staff` / `assignments` / `cases` / `topics` / `ai/{consult,monthly-report,expense-title,expense-check}`
+`health` / `activity-logs` / `expenses` + `expenses/[id]` / `monthly-reports` / `approvals` + `approvals/[id]/decide`(多段階承認)/ `announcements` / `members` + `members/[id]` / `staff` + `staff/[id]` / `assignments` / `host-organizations` + `host-organizations/[id]` / `approval-routes` + `approval-routes/[id]` / `cases` / `topics` / `ai/{consult,monthly-report,expense-title,expense-check}`
 
 ## スクリプト
 

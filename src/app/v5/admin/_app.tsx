@@ -11,6 +11,8 @@ import {
   Plus,
   Check,
   UserCog,
+  Building2,
+  Workflow,
   Trash2,
 } from "lucide-react";
 
@@ -21,7 +23,19 @@ import {
    3. 担当割当: 職員 × 隊員 のマトリクス
    ============================================================ */
 
-type Tab = "members" | "staff" | "assignments";
+type Tab = "members" | "staff" | "assignments" | "hosts" | "routes";
+
+type HostOrg = { id: string; name: string; kind?: string; contactUserId?: string };
+
+type RouteStep = {
+  id?: string;
+  stepNo: number;
+  approverType: "dept" | "host_org" | "admin";
+  approverLabel: string;
+  department?: string;
+  hostOrganizationId?: string;
+};
+type ApprovalRoute = { id: string; name: string; kind: string; isDefault: boolean; steps: RouteStep[] };
 
 type Member = {
   id: string;
@@ -65,17 +79,23 @@ type Sheet =
   | { kind: "member-edit"; member: Member | null }
   | { kind: "staff-edit"; staff: Staff | null }
   | { kind: "assign-edit"; staffId: string }
+  | { kind: "host-edit"; host: HostOrg | null }
+  | { kind: "route-view"; route: ApprovalRoute }
   | null;
 
 type Ctx = {
   members: Member[];
   staff: Staff[];
   assignments: Record<string, string[]>;
+  hosts: HostOrg[];
+  routes: ApprovalRoute[];
   upsertMember: (m: Member) => void | Promise<void>;
   removeMember: (id: string) => void | Promise<void>;
   upsertStaff: (s: Staff) => void | Promise<void>;
   removeStaff: (id: string) => void | Promise<void>;
   setAssignment: (staffId: string, memberIds: string[]) => void | Promise<void>;
+  upsertHost: (h: HostOrg) => void | Promise<void>;
+  removeHost: (id: string) => void | Promise<void>;
   sheet: Sheet;
   openSheet: (s: Sheet) => void;
 };
@@ -92,19 +112,25 @@ export function AdminApp() {
   const [members, setMembers] = React.useState<Member[]>(initialMembers);
   const [staff, setStaff] = React.useState<Staff[]>(initialStaff);
   const [assignments, setAssignments] = React.useState<Record<string, string[]>>(initialAssignments);
+  const [hosts, setHosts] = React.useState<HostOrg[]>([]);
+  const [routes, setRoutes] = React.useState<ApprovalRoute[]>([]);
   const [sheet, setSheet] = React.useState<Sheet>(null);
 
   // バックエンドから取得(SQLite + API Routes)
   const refetch = React.useCallback(async () => {
     try {
-      const [ms, ss, as] = await Promise.all([
+      const [ms, ss, as, ho, rt] = await Promise.all([
         apiGet<Member[]>("/api/members"),
         apiGet<Staff[]>("/api/staff"),
         apiGet<Record<string, string[]>>("/api/assignments"),
+        apiGet<HostOrg[]>("/api/host-organizations"),
+        apiGet<ApprovalRoute[]>("/api/approval-routes"),
       ]);
       setMembers(ms);
       setStaff(ss);
       setAssignments(as);
+      setHosts(ho);
+      setRoutes(rt);
     } catch {
       /* オフライン時はシードのまま */
     }
@@ -163,6 +189,22 @@ export function AdminApp() {
       await apiPut("/api/assignments", { staffId, memberIds });
       setAssignments((a) => ({ ...a, [staffId]: memberIds }));
     },
+    hosts,
+    routes,
+    upsertHost: async (h) => {
+      const saved = await apiPost<HostOrg>("/api/host-organizations", h);
+      setHosts((hs) => {
+        const idx = hs.findIndex((x) => x.id === saved.id);
+        if (idx < 0) return [...hs, saved];
+        const copy = [...hs];
+        copy[idx] = saved;
+        return copy;
+      });
+    },
+    removeHost: async (id) => {
+      await apiDelete(`/api/host-organizations/${id}`);
+      setHosts((hs) => hs.filter((h) => h.id !== id));
+    },
     sheet,
     openSheet: setSheet,
   };
@@ -178,6 +220,8 @@ export function AdminApp() {
             {tab === "members" && <MembersTab />}
             {tab === "staff" && <StaffTab />}
             {tab === "assignments" && <AssignmentsTab />}
+            {tab === "hosts" && <HostsTab />}
+            {tab === "routes" && <RoutesTab />}
           </div>
         </div>
 
@@ -220,6 +264,8 @@ function Tabs({
       <TabBtn label="隊員台帳" active={active === "members"} onClick={() => onChange("members")} />
       <TabBtn label="職員" active={active === "staff"} onClick={() => onChange("staff")} />
       <TabBtn label="担当割当" active={active === "assignments"} onClick={() => onChange("assignments")} />
+      <TabBtn label="受入団体" active={active === "hosts"} onClick={() => onChange("hosts")} />
+      <TabBtn label="承認ルート" active={active === "routes"} onClick={() => onChange("routes")} />
     </nav>
   );
 }
@@ -463,6 +509,111 @@ function AssignmentsTab() {
   );
 }
 
+/* -------------------- 4. 受入団体(ADR-012 / F-A-05)-------------------- */
+
+function HostsTab() {
+  const { hosts, openSheet } = useApp();
+  const [q, setQ] = React.useState("");
+  const filtered = hosts.filter((h) => (q.trim() ? h.name.includes(q) || (h.kind ?? "").includes(q) : true));
+
+  return (
+    <div className="relative">
+      <div className="text-center">
+        <h1 className="text-3xl font-bold tracking-tight">受入団体</h1>
+        <p className="mt-1 text-[12px] text-slate-500">
+          {hosts.length} 団体 ・ 経費承認の中間ステップに登場します
+        </p>
+        <SearchBox value={q} onChange={setQ} placeholder="団体名 / 種別で絞る" />
+      </div>
+
+      {filtered.length === 0 ? (
+        <EmptyState message="受入団体が登録されていません。右下から追加してください。" />
+      ) : (
+        <ul className="mt-5 space-y-px text-left">
+          {filtered.map((h) => (
+            <li key={h.id} className="border-b border-slate-100 last:border-b-0">
+              <button
+                onClick={() => openSheet({ kind: "host-edit", host: h })}
+                className="flex w-full items-center gap-3 py-2.5 text-left transition hover:bg-slate-50/60"
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-700 ring-1 ring-slate-200">
+                  <Building2 className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1 px-1">
+                  <div className="text-[13px] font-semibold text-slate-900">{h.name}</div>
+                  <div className="mt-0.5 text-[11px] text-slate-500">{h.kind ?? "種別 未設定"}</div>
+                </div>
+                <ArrowRight className="h-3 w-3 shrink-0 text-slate-300" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <button
+        onClick={() => openSheet({ kind: "host-edit", host: null })}
+        className="fixed bottom-10 right-6 z-30 inline-flex h-12 items-center gap-1.5 rounded-full bg-slate-900 px-5 text-[12px] font-bold text-white shadow-lg ring-4 ring-white transition hover:bg-slate-800 active:scale-95"
+      >
+        <Plus className="h-4 w-4" />
+        受入団体を追加
+      </button>
+    </div>
+  );
+}
+
+/* -------------------- 5. 承認ルート(ADR-012 / F-A-04)-------------------- */
+
+function RoutesTab() {
+  const { routes, openSheet } = useApp();
+  return (
+    <div>
+      <div className="text-center">
+        <h1 className="text-3xl font-bold tracking-tight">承認ルート</h1>
+        <p className="mt-1 text-[12px] text-slate-500">
+          {routes.length} ルート ・ 隊員ごとに割り当てて多段階承認を実現します
+        </p>
+      </div>
+
+      <div className="mt-5 space-y-2 text-left">
+        {routes.map((r) => (
+          <button
+            key={r.id}
+            onClick={() => openSheet({ kind: "route-view", route: r })}
+            className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-slate-900 hover:shadow-sm"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Workflow className="h-3.5 w-3.5 text-slate-500" />
+                  <span className="text-[13px] font-bold text-slate-900">{r.name}</span>
+                  {r.isDefault && (
+                    <span className="rounded-full border border-slate-900 bg-slate-900 px-1.5 py-0.5 text-[9px] font-semibold text-white">既定</span>
+                  )}
+                </div>
+                <div className="mt-1 text-[10px] text-slate-500">対象: {r.kind} ・ {r.steps.length} ステップ</div>
+              </div>
+              <ArrowRight className="h-3 w-3 shrink-0 text-slate-300" />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-1">
+              {r.steps.map((s, i) => (
+                <React.Fragment key={s.id ?? i}>
+                  {i > 0 && <span className="text-[10px] text-slate-300">→</span>}
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                    {s.approverLabel}
+                  </span>
+                </React.Fragment>
+              ))}
+            </div>
+          </button>
+        ))}
+      </div>
+      <p className="mt-4 text-[10px] text-slate-400">
+        PoC では既定 3 ルートのみ管理。隊員ごとのカスタム割当・新規ルート作成は Year 2。
+      </p>
+    </div>
+  );
+}
+
 /* -------------------- Reusable -------------------- */
 
 function SearchBox({
@@ -521,7 +672,106 @@ function SheetRoot() {
       {sheet.kind === "assign-edit" && (
         <AssignEditSheet staffId={sheet.staffId} onClose={close} />
       )}
+      {sheet.kind === "host-edit" && (
+        <HostEditSheet host={sheet.host} onClose={close} />
+      )}
+      {sheet.kind === "route-view" && (
+        <RouteViewSheet route={sheet.route} onClose={close} />
+      )}
     </div>
+  );
+}
+
+function HostEditSheet({ host, onClose }: { host: HostOrg | null; onClose: () => void }) {
+  const { upsertHost, removeHost } = useApp();
+  const isNew = !host;
+  const [name, setName] = React.useState(host?.name ?? "");
+  const [kind, setKind] = React.useState(host?.kind ?? "");
+
+  const canSave = !!name.trim();
+  async function save() {
+    await upsertHost({ id: host?.id ?? `ho_${Date.now()}`, name: name.trim(), kind: kind.trim() || undefined });
+    onClose();
+  }
+
+  return (
+    <>
+      <SheetHeader
+        title={isNew ? "受入団体を追加" : "受入団体を編集"}
+        onClose={onClose}
+        right={
+          <button onClick={save} disabled={!canSave} className="text-[11px] font-bold text-slate-900 hover:underline disabled:cursor-not-allowed disabled:text-slate-300">
+            保存
+          </button>
+        }
+      />
+      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+        <Label>団体名</Label>
+        <Input value={name} onChange={setName} placeholder="例:新温泉町農業公社" />
+
+        <Label>種別(任意)</Label>
+        <Input value={kind} onChange={setKind} placeholder="例:農業法人 / 観光協会 / NPO" />
+
+        <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-[11px] leading-relaxed text-slate-600">
+          受入団体が経費の財布を握っている場合、「複雑」ルート(担当課 → 受入団体 → 企画課)の中間ステップに登場します。
+        </div>
+
+        {!isNew && host && (
+          <div className="mt-8 border-t border-slate-100 pt-4">
+            <button
+              onClick={async () => {
+                if (confirm(`${host.name} を削除しますか?`)) {
+                  await removeHost(host.id);
+                  onClose();
+                }
+              }}
+              className="inline-flex items-center gap-1 rounded-full border border-rose-300 px-3 py-1.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              この団体を削除
+            </button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function RouteViewSheet({ route, onClose }: { route: ApprovalRoute; onClose: () => void }) {
+  return (
+    <>
+      <SheetHeader title="承認ルート" onClose={onClose} />
+      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight">{route.name}</h1>
+          {route.isDefault && (
+            <span className="rounded-full border border-slate-900 bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-white">既定</span>
+          )}
+        </div>
+        <p className="mt-1 text-[12px] text-slate-500">対象: {route.kind} ・ {route.steps.length} ステップ</p>
+
+        <Label>承認の流れ</Label>
+        <ol className="mt-2 space-y-2">
+          {route.steps.map((s, i) => (
+            <li key={s.id ?? i} className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[12px] font-bold text-white">
+                {s.stepNo}
+              </div>
+              <div className="flex-1">
+                <div className="text-[13px] font-bold text-slate-900">{s.approverLabel}</div>
+                <div className="mt-0.5 text-[10px] text-slate-500">
+                  種別: {s.approverType === "dept" ? "役場担当課" : s.approverType === "host_org" ? "受入団体" : "企画課(全体取りまとめ)"}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ol>
+
+        <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-[11px] leading-relaxed text-slate-600">
+          PoC では既定 3 ルートのみ。隊員ごとの個別ルート・新規作成・ステップ編集は Year 2 で対応します。
+        </div>
+      </div>
+    </>
   );
 }
 
