@@ -1,7 +1,7 @@
 import { getAIProvider } from "@/lib/ai";
 import type { AIGenerateOptions } from "@/lib/ai";
 import { ok, bad, readJson } from "@/lib/api/http";
-import { run, genId } from "@/lib/db";
+import { getRepos } from "@/lib/db/repositories";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,10 +57,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    run(
-      "INSERT INTO consultations (id,user_id,context_kind,input_text,output_text) VALUES (?,?,?,?,?)",
-      [genId("cs"), body.userId ?? "m1", body.context, cur, reply]
-    );
+    await getRepos().consultations.log({ userId: body.userId ?? "m1", contextKind: body.context, input: cur, output: reply });
   } catch {
     /* ログ失敗は無視 */
   }

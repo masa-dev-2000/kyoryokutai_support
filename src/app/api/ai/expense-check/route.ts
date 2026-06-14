@@ -1,6 +1,6 @@
 import { getAIProvider } from "@/lib/ai";
 import { ok, bad, readJson } from "@/lib/api/http";
-import { all } from "@/lib/db";
+import { getRepos } from "@/lib/db/repositories";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,10 +12,7 @@ export async function POST(req: Request) {
   if (!purpose.trim()) return bad("purpose が必要です");
 
   // 簡易 RAG: 自治体ガイドラインを文脈に渡す(Year 2 で pgvector 化)
-  const guidelines = all<Record<string, unknown>>(
-    "SELECT source,section,body FROM guidelines WHERE municipality_id=?",
-    [municipalityId]
-  );
+  const guidelines = await getRepos().guidelines.listByMuni(municipalityId);
   const glText = guidelines.map((g) => `【${g.section}】${g.body}(出典: ${g.source})`).join("\n");
 
   const provider = getAIProvider();

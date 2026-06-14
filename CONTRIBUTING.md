@@ -20,7 +20,7 @@
 ## 載せ替え 10 か条(docs/24 §15.6)
 
 1. ✅ `AuthProvider` インタフェース経由で認証(SDK 直叩き禁止)
-2. ⏳ Repository パターンで DB アクセス(`createClient(supabase)` を Route で直接呼ばない)
+2. ✅ Repository パターンで DB アクセス(`src/lib/db/repositories`、Route から SQL を追放済)
 3. ✅ RLS は `current_setting('app.current_user_id')` ベース(`auth.uid()` 直接参照を避ける)
 4. ✅ ストレージは S3 互換 API(`src/lib/storage`)
 5. ✅ メールは `src/lib/email`(nodemailer SMTP)

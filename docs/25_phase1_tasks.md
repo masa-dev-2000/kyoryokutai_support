@@ -19,11 +19,17 @@
 - **T-30/31 Dockerfile + output:standalone**(`Dockerfile` / `.dockerignore` / next.config)
 - **T-32 CONTRIBUTING.md**(載せ替え 10 か条 + 使わない Supabase 機能を明文化)
 - **T-44 マイグレーション Runbook**(`supabase/README.md`、RLS の SET LOCAL 使い方含む)
+- **T-19/20/21 Repository パターン**(`src/lib/db/repositories/`、DB_PROVIDER 切替)
+  - 全 23 API ルートから SQL を追放、`getRepos()` 経由に統一
+  - SQLite 実装(`sqlite.ts`)完成。Phase 1 で `supabase.ts` を足せば RDS/Supabase 切替
+  - スモーク verify 済(多段階承認 / 経費連携 / CRUD / AI、全 v5 ページ 200)
+
+→ **載せ替え 10 か条すべてコード化完了**(#1〜#10)。外部アカウント取得後は env 投入で本番化可能。
 
 ### ⏳ 次にやる(コードで進められる)
-- **T-19/20/21 Repository パターン**(DB アクセス抽象化、10 か条 #2)── 23 ルートの段階的移行
-  - 現状: API Route は `@/lib/db` の all/get/run を直接利用(SQLite)
-  - 目標: `src/lib/db/repositories/` 経由にして DB_PROVIDER で sqlite / supabase 切替
+- **T-45 PII Scrub**(Sentry beforeSend)/ T-46〜50 個人情報入力 UI 抑制
+  - ただし Sentry / WAF は外部アカウントが要るため、ローカルで書けるのは UI ヒント等の一部
+- **`src/lib/db/repositories/supabase.ts`**(Phase 1、Supabase 実 DB 接続時に実装)
 
 ### ⛔ 外部アカウント待ち(コードでは進められない)
 - T-01〜T-14(ドメイン / Cloudflare / AWS / Supabase / Vercel の実アカウント)

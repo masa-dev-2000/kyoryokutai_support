@@ -1,6 +1,5 @@
 import { ok, bad, readJson } from "@/lib/api/http";
-import { all, run } from "@/lib/db";
-import { mapApproval } from "@/lib/api/mappers";
+import { getRepos } from "@/lib/db/repositories";
 import { applyApprove, applyReject, type ApprovalStep } from "@/lib/workflow";
 
 export const runtime = "nodejs";
@@ -11,12 +10,14 @@ type Body = { action: "approve" | "reject"; comment?: string };
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const b = await readJson<Body>(req);
-  const row = all<Record<string, unknown>>("SELECT * FROM approvals WHERE id=?", [id])[0];
+  const repos = getRepos();
+
+  const row = await repos.approvals.getRaw(id);
   if (!row) return bad("not found", 404);
   if (row.status !== "pending") return bad("既に処理済みです", 409);
 
-  const steps = JSON.parse(row.steps as string) as ApprovalStep[];
-  const current = row.current_step as number;
+  const steps = JSON.parse(row.steps) as ApprovalStep[];
+  const current = row.current_step;
 
   let next;
   if (b.action === "approve") {
@@ -28,22 +29,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return bad("action は approve / reject");
   }
 
-  run("UPDATE approvals SET steps=?, current_step=?, status=? WHERE id=?", [
-    JSON.stringify(next.steps),
-    next.currentStep,
-    next.status,
-    id,
-  ]);
+  await repos.approvals.updateState(id, next.steps, next.currentStep, next.status);
 
-  // 月次報告が最終承認されたら monthly_reports を承認済みに反映
-  if (next.status === "approved" && row.kind === "月次報告" && row.target_id) {
-    run("UPDATE monthly_reports SET status='approved', status_label='役場承認' WHERE id=?", [row.target_id as string]);
-  }
-  // 経費が最終承認されたら expenses を承認に
-  if (next.status === "approved" && row.kind === "経費" && row.target_id) {
-    run("UPDATE expenses SET status='承認' WHERE id=?", [row.target_id as string]);
+  // 最終承認の反映
+  if (next.status === "approved" && row.target_id) {
+    if (row.kind === "月次報告") await repos.monthlyReports.markApproved(row.target_id);
+    if (row.kind === "経費") await repos.expenses.update(row.target_id, { status: "承認" });
   }
 
-  const updated = all("SELECT * FROM approvals WHERE id=?", [id])[0];
-  return ok({ approval: mapApproval(updated), result: next.status });
+  const updated = await repos.approvals.getById(id);
+  return ok({ approval: updated, result: next.status });
 }

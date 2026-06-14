@@ -3,14 +3,14 @@ import { getAuthProvider } from "@/lib/auth";
 import { getStorageProvider } from "@/lib/storage";
 import { getEmailProvider } from "@/lib/email";
 import { ok } from "@/lib/api/http";
-import { get } from "@/lib/db";
+import { getRepos } from "@/lib/db/repositories";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // 全プロバイダ抽象の疎通確認(載せ替え 10 か条の動作保証 / T-28)。
 export async function GET() {
-  const users = get<{ c: number }>("SELECT COUNT(*) c FROM users")?.c ?? 0;
+  const users = await getRepos().users.count();
 
   const ai = getAIProvider();
   const auth = getAuthProvider();

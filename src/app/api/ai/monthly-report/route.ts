@@ -1,6 +1,6 @@
 import { getAIProvider } from "@/lib/ai";
 import { ok, bad, readJson } from "@/lib/api/http";
-import { all } from "@/lib/db";
+import { getRepos } from "@/lib/db/repositories";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,10 +11,7 @@ export async function POST(req: Request) {
   const { userId = "m1", ym } = await readJson<Body>(req);
   if (!ym) return bad("ym(YYYY-MM)が必要です");
 
-  const logs = all<Record<string, unknown>>(
-    "SELECT activity_type,topic,hours,body,log_date,expense_amount FROM activity_logs WHERE user_id=? AND log_date LIKE ? ORDER BY log_date",
-    [userId, `${ym}%`]
-  );
+  const logs = await getRepos().activityLogs.listForAI(userId, ym);
   if (logs.length === 0) return bad("対象月の活動記録がありません", 404);
 
   const logText = logs
@@ -39,7 +36,7 @@ export async function POST(req: Request) {
           content:
             "あなたは地域おこし協力隊の月次報告を作成する支援 AI。活動ログの事実だけを使い創作しない。" +
             "5 章構成(## 活動サマリ / ## 個別活動の詳細 / ## 成果物 / ## 来月計画 / ## 所感・課題)。" +
-            "自治体提出文書として通用する敬体で 800〜1200 字。",
+            "住民個人を特定する情報は含めない。自治体提出文書として通用する敬体で 800〜1200 字。",
         },
         { role: "user", content: `対象月: ${ym}\n活動ログ:\n${logText}` },
       ],
