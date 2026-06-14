@@ -12,6 +12,7 @@ export type AIGenerateOptions = {
     | "consult-report-plan"
     | "consult-expense-purpose"
     | "consult-case-find"
+    | "polish-memo"
     | "monthly-report"
     | "expense-title"
     | "expense-check"

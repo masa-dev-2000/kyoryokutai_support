@@ -66,6 +66,21 @@ export class MockProvider implements AIProvider {
           "事例タブの検索から詳細を確認できます。",
         ].filter(Boolean).join("\n");
 
+      case "polish-memo": {
+        // 入力メモを 5W1H が伝わる清書に整える(mock は単純整形)
+        const src = input.trim();
+        if (!src) return "(メモを入力してから「ブラッシュアップ」を押してください)";
+        // 改行で文を分け、句点を補い、先頭を整える
+        const sentences = src
+          .split(/[\n。]/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const polished = sentences
+          .map((s) => (s.match(/[。!?!?]$/) ? s : `${s}。`))
+          .join("\n");
+        return `${polished}\n\n_(mock 整形。Ollama/Bedrock 接続時は実モデルが 5W1H に沿って清書します)_`;
+      }
+
       case "monthly-report": {
         return [
           "## 活動サマリ",

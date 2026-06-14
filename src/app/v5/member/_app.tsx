@@ -26,6 +26,7 @@ import {
   Lightbulb,
   Wallet,
   MessageSquare,
+  Trash2,
 } from "lucide-react";
 
 /* ============================================================
@@ -230,9 +231,19 @@ type Sheet =
 
 type TrendItem = { id: string; title: string; count: number };
 
+// ADR-014 動線①:活動報告と一緒に登録する経費明細(複数可)
+export type InlineExpense = {
+  title?: string;
+  amount: number;
+  purpose: string;
+  hasReceipt?: boolean;
+  /** クライアント表示用のレシート画像 dataURL(本番では Storage に上げる、現状はプレビュー専用)*/
+  receiptDataUrl?: string;
+};
+
 type Ctx = {
   logs: ActivityLog[];
-  addLog: (l: Omit<ActivityLog, "id">) => void | Promise<void>;
+  addLog: (l: Omit<ActivityLog, "id"> & { expenses?: InlineExpense[] }) => void | Promise<void>;
   topics: string[];
   addTopic: (t: string) => void;
   removeTopic: (t: string) => void;
@@ -312,8 +323,31 @@ export function MemberApp() {
   const ctx: Ctx = {
     logs,
     addLog: async (l) => {
-      const created = await apiPost<ActivityLog>("/api/activity-logs", { userId: MEMBER_ID, ...l });
+      // 経費明細は receiptDataUrl(クライアント表示専用)を落として送る
+      const { expenses, ...rest } = l;
+      const payload = {
+        userId: MEMBER_ID,
+        ...rest,
+        ...(expenses && expenses.length > 0
+          ? {
+              expenses: expenses.map((e) => ({
+                title: e.title,
+                amount: e.amount,
+                purpose: e.purpose,
+                hasReceipt: !!e.hasReceipt,
+              })),
+            }
+          : {}),
+      };
+      const created = await apiPost<ActivityLog>("/api/activity-logs", payload);
       setLogs((ls) => [created, ...ls]);
+      if (expenses && expenses.length > 0) {
+        // 同時登録した経費を経費一覧にも反映(取り直し)
+        try {
+          const ex = await apiGet<ExpenseRequest[]>(`/api/expenses?userId=${MEMBER_ID}`);
+          setExpenses(ex);
+        } catch { /* noop */ }
+      }
     },
     topics,
     addTopic: async (t) => {
@@ -460,22 +494,38 @@ function DailyTab() {
 
   return (
     <div className="relative">
-      {/* ── ヘッダ ── */}
-      <div className="text-center">
+      {/* ── ヘッダ(右上に新規ボタンを明示)── */}
+      <div className="relative text-center">
         <h1 className="text-3xl font-bold tracking-tight">活動報告</h1>
         <p className="mt-1 text-[12px] text-slate-500">活動のたびに 1 件、月末に AI が月報へまとめます</p>
+        <button
+          onClick={() => pushSheet({ kind: "activity-create" })}
+          className="absolute right-0 top-0 inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-bold text-white shadow-sm hover:bg-slate-800"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          新規
+        </button>
       </div>
 
       {/* ── 今日 ─ 太く目立たせる(主役) ── */}
       <section className="mt-7">
-        <div className="mb-2 flex items-baseline justify-between border-b-2 border-slate-900 pb-1">
-          <h2 className="text-[15px] font-black tracking-tight text-slate-900">今日</h2>
-          <span className="text-[10px] text-slate-500">6 月 11 日(木)</span>
+        <div className="mb-2 flex items-center justify-between border-b-2 border-slate-900 pb-1">
+          <div className="flex items-baseline gap-2">
+            <h2 className="text-[15px] font-black tracking-tight text-slate-900">今日</h2>
+            <span className="text-[10px] text-slate-500">6 月 11 日(木)</span>
+          </div>
+          <button
+            onClick={() => pushSheet({ kind: "activity-create" })}
+            className="inline-flex items-center gap-0.5 rounded-full border border-slate-300 px-2 py-0.5 text-[10px] font-semibold text-slate-700 hover:border-slate-900 hover:bg-slate-50"
+          >
+            <Plus className="h-3 w-3" />
+            報告を追加
+          </button>
         </div>
 
         {today.length === 0 ? (
           <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-[12px] text-slate-500">
-            まだ記録がありません。右下の <strong>+</strong> から作成
+            まだ記録がありません。上の「<strong>+ 報告を追加</strong>」または右下の <strong>+</strong> から作成
           </div>
         ) : (
           <>
@@ -918,13 +968,57 @@ function SheetHeader({ title, onClose, right, backLabel }: { title: string; onCl
 /* -------- 活動報告 作成シート(入力ごとに相談ボタン)-------- */
 
 function ActivityCreateSheet({ onClose }: { onClose: () => void }) {
-  const { addLog, topics, pushSheet } = useApp();
+  const { addLog, topics } = useApp();
   const [type, setType] = React.useState<string | null>(null);
   const [topic, setTopic] = React.useState<string | null>(null);
   const [hours, setHours] = React.useState<string>("1");
   const [distance, setDistance] = React.useState<string>("");
   const [body, setBody] = React.useState("");
   const [saving, setSaving] = React.useState(false);
+
+  // メモのブラッシュアップ(押下 → AI が清書 → プレビュー → 採用 / やめる)
+  const [polishing, setPolishing] = React.useState(false);
+  const [polished, setPolished] = React.useState<string | null>(null);
+
+  async function brushUp() {
+    if (!body.trim() || polishing) return;
+    setPolishing(true);
+    try {
+      const r = await apiPost<{ reply: string }>("/api/ai/consult", {
+        context: "polish-memo",
+        payload: { current: body },
+      });
+      setPolished(r.reply.trim());
+    } catch {
+      setPolished("(AI への接続に失敗しました。少し時間をおいて再度お試しください)");
+    } finally {
+      setPolishing(false);
+    }
+  }
+
+  // 経費明細(ADR-014 動線①):複数登録可、レシート画像は dataURL でプレビュー
+  const [inlineExpenses, setInlineExpenses] = React.useState<InlineExpense[]>([]);
+  function addExpense() {
+    setInlineExpenses((cur) => [...cur, { title: "", amount: 0, purpose: "", hasReceipt: false }]);
+  }
+  function updateExpense(idx: number, patch: Partial<InlineExpense>) {
+    setInlineExpenses((cur) => cur.map((e, i) => (i === idx ? { ...e, ...patch } : e)));
+  }
+  function removeExpense(idx: number) {
+    setInlineExpenses((cur) => cur.filter((_, i) => i !== idx));
+  }
+  async function onReceiptFile(idx: number, file: File | null) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      updateExpense(idx, { hasReceipt: true, receiptDataUrl: typeof reader.result === "string" ? reader.result : undefined });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // 経費は「金額 > 0 かつ 用途が 1 文字以上」の行のみ送信
+  const validExpenses = inlineExpenses.filter((e) => e.amount > 0 && e.purpose.trim().length > 0);
+  const expenseSum = validExpenses.reduce((s, e) => s + e.amount, 0);
 
   const canSave = !!type && !!topic && parseFloat(hours) > 0 && body.trim().length > 0 && !saving;
 
@@ -940,6 +1034,7 @@ function ActivityCreateSheet({ onClose }: { onClose: () => void }) {
         body: body.trim(),
         date: todayKey(),
         time: new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }),
+        expenses: validExpenses.length > 0 ? validExpenses : undefined,
       });
       onClose();
     } catch {
@@ -990,11 +1085,16 @@ function ActivityCreateSheet({ onClose }: { onClose: () => void }) {
         </div>
 
         <Label right={
-          <ConsultButton
-            context={{ kind: "daily-write", current: body }}
-            label="書き方を相談"
-            onAdopt={(t) => setBody(t)}
-          />
+          <button
+            type="button"
+            onClick={brushUp}
+            disabled={!body.trim() || polishing}
+            title="メモを 5W1H に沿って清書します(事実は変えません)"
+            className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-900 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+          >
+            <Sparkles className="h-3 w-3" />
+            {polishing ? "清書中…" : "メモをブラッシュアップ"}
+          </button>
         }>
           メモ
         </Label>
@@ -1006,17 +1106,152 @@ function ActivityCreateSheet({ onClose }: { onClose: () => void }) {
           className="mt-1 w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none"
         />
         <div className="mt-1 text-[10px] text-slate-400">
-          迷ったら 5W1H(いつ・どこで・誰と・何を・なぜ・どうやって)で。
+          住民個人を特定する情報は記載しないでください。迷ったら 5W1H(いつ・どこで・誰と・何を・なぜ・どうやって)で。
         </div>
+
+        {polished && (
+          <div className="mt-3 rounded-xl border border-slate-300 bg-slate-50/60 p-3">
+            <div className="flex items-center justify-between">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                AI 清書プレビュー
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setPolished(null)}
+                  className="rounded-full border border-slate-300 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 hover:border-slate-500"
+                >
+                  やめる
+                </button>
+                <button
+                  onClick={brushUp}
+                  disabled={polishing}
+                  className="rounded-full border border-slate-300 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 hover:border-slate-500"
+                >
+                  もう一度
+                </button>
+                <button
+                  onClick={() => { setBody(polished); setPolished(null); }}
+                  className="inline-flex items-center gap-0.5 rounded-full bg-slate-900 px-2.5 py-0.5 text-[10px] font-bold text-white hover:bg-slate-800"
+                >
+                  <Check className="h-3 w-3" />
+                  採用する
+                </button>
+              </div>
+            </div>
+            <pre className="mt-2 whitespace-pre-wrap font-sans text-[12.5px] leading-relaxed text-slate-800">{polished}</pre>
+            <p className="mt-1 text-[9px] text-slate-400">※ 事実は変えていません。気になる箇所は採用後に手で直してください。</p>
+          </div>
+        )}
+
+        {/* ─── 経費明細(ADR-014 動線①、複数登録可)─── */}
+        <Label
+          right={
+            <button
+              type="button"
+              onClick={addExpense}
+              className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:border-slate-900 hover:bg-slate-50"
+            >
+              <Plus className="h-3 w-3" />
+              経費を追加
+            </button>
+          }
+        >
+          💴 経費(任意)
+        </Label>
+        {inlineExpenses.length === 0 ? (
+          <div className="mt-1 rounded-xl border border-dashed border-slate-300 bg-white px-3 py-4 text-center text-[11px] text-slate-500">
+            この活動で支出があれば「<strong>+ 経費を追加</strong>」(現場で簡単に複数登録できます)
+          </div>
+        ) : (
+          <ul className="mt-1 space-y-2">
+            {inlineExpenses.map((e, i) => (
+              <li key={i} className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">明細 #{i + 1}</div>
+                  <button
+                    onClick={() => removeExpense(i)}
+                    className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] text-slate-400 hover:bg-rose-50 hover:text-rose-700"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    削除
+                  </button>
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <label className="text-[10px] text-slate-500">タイトル(任意)</label>
+                    <input
+                      type="text"
+                      value={e.title ?? ""}
+                      onChange={(ev) => updateExpense(i, { title: ev.target.value })}
+                      placeholder="例:ボールペン"
+                      className="mt-0.5 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[12px] focus:border-slate-900 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500">金額 <span className="text-rose-600">必須</span></label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={e.amount || ""}
+                      onChange={(ev) => updateExpense(i, { amount: parseInt(ev.target.value || "0", 10) })}
+                      placeholder="円"
+                      className="mt-0.5 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[12px] focus:border-slate-900 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <label className="text-[10px] text-slate-500">用途 <span className="text-rose-600">必須</span></label>
+                  <input
+                    type="text"
+                    value={e.purpose}
+                    onChange={(ev) => updateExpense(i, { purpose: ev.target.value })}
+                    placeholder="例:町報の写真撮影で使用"
+                    className="mt-0.5 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[12px] focus:border-slate-900 focus:outline-none"
+                  />
+                </div>
+                <div className="mt-2">
+                  <label className="text-[10px] text-slate-500">レシート(任意)</label>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <label className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${e.hasReceipt ? "border-slate-900 bg-slate-50 text-slate-900" : "border-slate-300 text-slate-600 hover:border-slate-500"}`}>
+                      <Camera className="h-3 w-3" />
+                      {e.hasReceipt ? "添付済(タップで変更)" : "画像を選択"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={(ev) => onReceiptFile(i, ev.target.files?.[0] ?? null)}
+                        className="hidden"
+                      />
+                    </label>
+                    {e.hasReceipt && (
+                      <button
+                        onClick={() => updateExpense(i, { hasReceipt: false, receiptDataUrl: undefined })}
+                        className="text-[10px] text-slate-400 hover:text-rose-700"
+                      >
+                        外す
+                      </button>
+                    )}
+                  </div>
+                  {e.receiptDataUrl && (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={e.receiptDataUrl} alt="レシート" className="mt-2 max-h-32 rounded-lg border border-slate-200" />
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {validExpenses.length > 0 && (
+          <div className="mt-2 flex items-center justify-end gap-1 text-[11px] text-slate-600">
+            <Receipt className="h-3 w-3 text-slate-400" />
+            <span>合計 ¥{expenseSum.toLocaleString()} を経費申請(申請中)として記録</span>
+          </div>
+        )}
 
         <div className="mt-4 flex gap-2">
           <button className="inline-flex items-center gap-1 rounded-full border border-slate-300 px-3 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-slate-500">
             <Mic className="h-3.5 w-3.5" />
-            音声で
-          </button>
-          <button className="inline-flex items-center gap-1 rounded-full border border-slate-300 px-3 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-slate-500">
-            <Camera className="h-3.5 w-3.5" />
-            写真・資料
+            音声で(後日)
           </button>
         </div>
       </div>

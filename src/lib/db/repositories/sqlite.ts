@@ -234,6 +234,24 @@ export const sqliteRepos: Repos = {
       );
       return mapExpense(all("SELECT * FROM expenses WHERE id=?", [id])[0]);
     },
+    async createFromLog(b) {
+      const id = genId("exp");
+      run(
+        `INSERT INTO expenses
+           (id,user_id,municipality_id,expense_kind,source_activity_log_id,source_receipt_index,
+            title,amount_requested,purpose,status,ai_note,citations,has_receipt,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [
+          id, b.userId, MUNI, "single",
+          b.activityLogId, b.receiptIndex,
+          b.title, b.amount, b.purpose, b.status ?? "申請中",
+          "日報経由の経費(ADR-014)。AI 判定材料は申請後に表示されます。",
+          JSON.stringify([]), b.hasReceipt ? 1 : 0,
+          new Date().toISOString().slice(0, 10),
+        ]
+      );
+      return mapExpense(all("SELECT * FROM expenses WHERE id=?", [id])[0]);
+    },
     async update(id, b) {
       const existing = all("SELECT * FROM expenses WHERE id=?", [id])[0];
       if (!existing) return undefined;

@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type Body = {
-  context: "daily-write" | "report-plan" | "expense-purpose" | "case-find";
+  context: "daily-write" | "report-plan" | "expense-purpose" | "case-find" | "polish-memo";
   payload?: { current?: string; title?: string; amount?: string };
   userId?: string;
 };
@@ -21,6 +21,9 @@ const SYSTEM: Record<Body["context"], string> = {
     "あなたは活動費の用途文を整理する支援 AI。目的/必要性/効果/前例の構造で整える。可否判定はしない。",
   "case-find":
     "あなたは全国の協力隊事例から近いものを探す支援 AI。候補を数件、地域名と一言で提示する。",
+  "polish-memo":
+    "あなたは協力隊員の活動メモを清書する支援 AI。事実は変えず、5W1H が伝わるように表現と語順だけを整える。" +
+    "敬体は使わず常体(である調) で簡潔に、住民個人を特定する情報は書かない。説明文・前置きは一切付けず、本文だけを返す。",
 };
 
 const TASK: Record<Body["context"], AIGenerateOptions["task"]> = {
@@ -28,6 +31,7 @@ const TASK: Record<Body["context"], AIGenerateOptions["task"]> = {
   "report-plan": "consult-report-plan",
   "expense-purpose": "consult-expense-purpose",
   "case-find": "consult-case-find",
+  "polish-memo": "polish-memo",
 };
 
 export async function POST(req: Request) {
