@@ -137,6 +137,8 @@ export interface Repos {
   monthlyReports: {
     listByUser(userId: string): Promise<ReportDTO[]>;
     markApproved(id: string): Promise<void>;
+    /** 活動報告を編集/削除した場合、同月の承認済み月報を「提出済」に差し戻す */
+    revertToSubmitted(userId: string, ym: string): Promise<void>;
   };
   approvals: {
     listPending(muni: string): Promise<ApprovalDTO[]>;

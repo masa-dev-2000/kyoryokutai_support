@@ -353,12 +353,22 @@ export function MemberApp() {
       }
     },
     updateLog: async (id, patch) => {
-      const updated = await apiPatch<ActivityLog>(`/api/activity-logs/${id}`, patch);
+      const updated = await apiPatch<ActivityLog>(`/api/activity-logs/${id}`, { ...patch, userId: MEMBER_ID });
       setLogs((ls) => ls.map((l) => (l.id === id ? updated : l)));
+      // 同月の月報が差し戻された可能性があるため再取得
+      try {
+        const rp = await apiGet<Report[]>(`/api/monthly-reports?userId=${MEMBER_ID}`);
+        setReports(rp);
+      } catch { /* noop */ }
     },
     deleteLog: async (id) => {
-      await apiDelete<null>(`/api/activity-logs/${id}`);
+      await apiDelete<null>(`/api/activity-logs/${id}?userId=${MEMBER_ID}`);
       setLogs((ls) => ls.filter((l) => l.id !== id));
+      // 同月の月報が差し戻された可能性があるため再取得
+      try {
+        const rp = await apiGet<Report[]>(`/api/monthly-reports?userId=${MEMBER_ID}`);
+        setReports(rp);
+      } catch { /* noop */ }
     },
     topics,
     addTopic: async (t) => {
@@ -1449,8 +1459,8 @@ const TYPE_COLORS: Record<string, string> = {
   現場訪問:   "bg-slate-500",
   広報:       "bg-slate-400",
   内勤:       "bg-slate-300",
-  イベント:   "bg-amber-500",
-  振り返り:   "bg-emerald-500",
+  イベント:   "bg-slate-600",
+  振り返り:   "bg-slate-800",
   その他:     "bg-slate-200",
 };
 
@@ -1610,9 +1620,9 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
                 <span className="mx-1 text-slate-400">/</span>
                 <span>基準 {MIN_MONTHLY_HOURS}h</span>
                 {hoursOver > 0 ? (
-                  <span className="ml-2 text-emerald-700">+{hoursOver}h 超過</span>
+                  <span className="ml-2 font-semibold text-slate-700">+{hoursOver}h 超過</span>
                 ) : (
-                  <span className="ml-2 text-amber-700">残り {hoursRemain}h</span>
+                  <span className="ml-2 text-slate-500">残り {hoursRemain}h</span>
                 )}
               </div>
             </div>
