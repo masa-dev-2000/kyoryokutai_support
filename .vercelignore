@@ -1,0 +1,10 @@
+.data/
+out/
+.next/
+node_modules/
+docs/
+mock/
+.env
+.env.local
+.env.*.local
+*.log

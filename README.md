@@ -24,6 +24,15 @@ npm run dev                  # http://localhost:3000/v5
 - 画面: `/v5/member`(隊員)/ `/v5/manager`(役場・多段階承認)/ `/v5/admin`(管理者)
 - 動作確認: `curl http://localhost:3000/api/health/`
 
+### オンラインデモ(Vercel Hobby)
+
+リポジトリは Private、デモは **Vercel Hobby で無料公開**。
+セットアップ手順は **`docs/26_mock_hosting.md`** 参照。
+
+- Phase 1 着手(2026-07)で Vercel Pro($20/月)+ Bedrock Tokyo へアップグレード(ADR-018)
+- 現在は **AI=mock / DB=SQLite(揮発)** の試作品共有モード
+- デプロイは `vercel.json` で `hnd1`(Tokyo)固定
+
 ### AI プロバイダの切替(`.env.local` の `AI_PROVIDER`)
 
 | 値 | 用途 | 必要なもの |
