@@ -750,25 +750,182 @@ ADR-018 の 7 問答を実運用版に拡張。
 
 ---
 
-## 15. Phase 1 → Phase 2 移行準備
+## 15. Phase 1 → Phase 2 移行準備(載せ替えで後悔しないために)
 
-### 15.1 AWS 移植可能性チェックリスト(設計時から厳守)
+ADR-018 の選択(Supabase + Vercel)で「Phase 2 載せ替えが大変」になる **最大の地雷は Supabase Auth**。これを後で剥がすには、JWT 形式 / Magic Link DB 列構造 / RLS の `auth.uid()` 依存 / メール送信ロジック の 4 点が全て書き換えになる。本章は **Phase 1 着手時から実装すべき「載せ替えを楽にする抽象化」** を具体化する。
 
-| 項目 | チェック内容 | 現状 |
+### 15.1 抽象化レイヤの設計(Phase 1 で実装必須)
+
+| レイヤ | 抽象化 | Phase 1 実装 | Phase 2 切替コスト |
+|---|---|---|---|
+| **AI** | `AIProvider` インタフェース(ADR-016) | `ollama` / `bedrock` / `mock` | env 1 行(切替済) |
+| **認証** | `AuthProvider` インタフェース(新規) | `supabase-auth` / `cognito` | 新ファイル 1 つ追加 |
+| **DB アクセス** | Repository パターン(新規) | `src/lib/db/repositories/*` | 接続文字列 + RLS 書き直し |
+| **Storage** | S3 互換 SDK(`aws-sdk` で統一) | `supabase-storage` / `r2` / `s3` | bucket 名と endpoint 切替のみ |
+| **メール** | `nodemailer` 経由(SMTP インタフェース) | Supabase SMTP → SES SMTP | 接続情報切替のみ |
+| **セッション** | JWT verify を抽象化(`src/lib/auth/verify.ts`) | Supabase JWT 検証 | Cognito JWT 検証実装追加 |
+
+#### 15.1.1 `AuthProvider` インタフェース(新規、Phase 1 で実装)
+
+```typescript
+// src/lib/auth/types.ts
+export interface AuthProvider {
+  readonly name: string;
+  sendMagicLink(email: string, redirectTo: string): Promise<void>;
+  verifySession(jwt: string): Promise<{ userId: string; email: string } | null>;
+  getCurrentUser(): Promise<{ userId: string } | null>;
+  signOut(): Promise<void>;
+}
+
+// src/lib/auth/supabase.ts
+export class SupabaseAuthProvider implements AuthProvider { ... }
+
+// src/lib/auth/cognito.ts(Phase 2 で追加)
+export class CognitoAuthProvider implements AuthProvider { ... }
+
+// src/lib/auth/index.ts
+export function getAuthProvider(): AuthProvider {
+  switch (process.env.AUTH_PROVIDER) {
+    case "cognito": return new CognitoAuthProvider();
+    default: return new SupabaseAuthProvider();
+  }
+}
+```
+
+#### 15.1.2 Repository パターン(新規、Phase 1 で実装)
+
+```typescript
+// src/lib/db/repositories/activity-log.ts
+export interface ActivityLogRepository {
+  listByUser(userId: string): Promise<ActivityLog[]>;
+  create(log: Omit<ActivityLog, "id">): Promise<ActivityLog>;
+  // ...
+}
+
+export class SupabaseActivityLogRepository implements ActivityLogRepository {
+  // RLS に依存(auth.uid())
+}
+
+// Phase 2 で追加
+export class RDSActivityLogRepository implements ActivityLogRepository {
+  // アプリ層で認可チェック(WHERE user_id = $1)
+}
+```
+
+#### 15.1.3 RLS の「載せ替えコスト」を下げる書き方
+
+**悪い例(Supabase 専用):**
+```sql
+CREATE POLICY activity_logs_select ON activity_logs FOR SELECT TO authenticated USING (
+  user_id = auth.uid()  -- Supabase 専用関数
+);
+```
+
+**良い例(Phase 1 から書く):**
+```sql
+-- 1. RLS は二重の安全網としてのみ使う(アプリ層で必ず認可済み前提)
+-- 2. auth.uid() への依存は最小化、PostgreSQL 標準の session variable で代替可能にする
+-- 3. アプリ層の Repository でも同等の WHERE 句を必ず書く(載せ替え時もこのまま動く)
+
+CREATE POLICY activity_logs_select ON activity_logs FOR SELECT TO authenticated USING (
+  user_id = current_setting('app.current_user_id', true)::uuid
+);
+
+-- アプリ層:接続後に SET LOCAL app.current_user_id = '...' を発行
+-- これで Supabase Auth / Cognito どちらでも同じ RLS が動く
+```
+
+### 15.2 載せ替え手順(段階的、ダウンタイム最小化)
+
+Phase 2 移行は **2-3 週間 × 7 ステップ** で計画的に実施:
+
+```
+Week 1: 並走準備
+  Day 1-2: AWS アカウント・VPC・サブネット構築
+  Day 3-4: RDS Postgres Tokyo 起動、Supabase からの初回 dump/restore で同期確認
+  Day 5-7: ECR にコンテナ push、App Runner デプロイテスト(本番未公開)
+
+Week 2: 認証・データ移行(ここが本番)
+  Day 8-9: Cognito User Pool 作成、Magic Link Lambda Trigger 実装
+  Day 10-11: 既存 Supabase users を Cognito にバルクインポート(パスワード持たないので Magic Link 再送)
+  Day 12-13: 認証層を AuthProvider 切替テスト(staging 環境で実隊員 3 名)
+  Day 14: 本番 DB の最終 dump → RDS に restore(差分のみ)
+
+Week 3: 切替・観察
+  Day 15: メンテナンスウィンドウ(深夜 1h)で DNS 切替
+    - Cloudflare DNS で kyoryokutai.example.jp の CNAME を Vercel → CloudFront に変更
+    - 隊員に「再ログイン(Magic Link 再送)」のお知らせを 1 週間前から告知
+  Day 16-21: 監視強化期間、問題なければ Supabase / Vercel を停止
+```
+
+#### 切替の核心:DNS 切替で Vercel → AWS
+
+```
+[隊員ブラウザ]
+   │
+   │ kyoryokutai.example.jp
+   ▼
+[Cloudflare DNS]
+   │
+   ├─ Phase 1: CNAME → cname.vercel-dns.com
+   └─ Phase 2: CNAME → xxx.cloudfront.net(切替)
+```
+
+DNS TTL を切替 24h 前に 60 秒に下げておけば、ロールバックは DNS 戻すだけで 60 秒以内に元に戻せる。
+
+### 15.3 認証移行の具体策(Supabase Auth → Cognito)
+
+**最大の地雷ポイントなので、ここを詳細化:**
+
+| 項目 | Supabase Auth | Cognito | 移行方法 |
+|---|---|---|---|
+| ユーザー DB | `auth.users` テーブル | User Pool | `aws cognito-idp admin-create-user --message-action SUPPRESS` で email のみバルクインポート |
+| パスワード | (Magic Link のみ、保存なし) | (Magic Link のみ、Lambda Trigger 実装) | 移行不要、隊員に再ログインを依頼 |
+| JWT 検証 | `supabase.auth.getUser(jwt)` | `aws-jwt-verify` で User Pool JWKS 検証 | `AuthProvider` 抽象で吸収 |
+| Magic Link メール | Supabase が SES 経由送信 | Cognito Custom Email Sender Lambda で SES 経由送信 | 既に AWS SES Tokyo なので送信元同じ、移行コスト低 |
+| RLS の `auth.uid()` | Supabase 提供 | なし | アプリ層で `SET LOCAL app.current_user_id` 発行(§15.1.3) |
+| セッション維持 | `sb-access-token` Cookie | `cognito-id-token` Cookie | Middleware で両対応する Cookie 名検出 |
+
+#### 隊員への影響を最小化する施策
+
+1. **1 週間前から告知**:アプリ内バナー + メール + 役場担当課からの周知依頼
+2. **切替後 30 日間は Supabase Auth と Cognito を併走**(`AuthProvider` で両方 try)
+3. **Magic Link メールに「これは予定された認証システム更新です」を明記**
+4. **役場担当課にコール対応窓口を用意**(運営チーム → 自治体 → 隊員 の連絡経路)
+
+### 15.4 ロールバック計画
+
+| 工程 | ロールバック方法 | 所要時間 |
 |---|---|---|
-| Next.js | `output: 'standalone'` + Dockerfile | ✅ ADR-017 で確保済 |
-| DB | Postgres 標準 SQL のみ使用(Supabase 固有関数を最小化) | △ RLS は `auth.uid()` に依存(Cognito 移行時に書換) |
-| ストレージ | S3 互換 API のみ使用(R2 / Supabase Storage / S3 で共通) | ✅ aws-sdk で抽象化 |
-| AI | プロバイダ抽象(ADR-016) | ✅ env 1 行で切替可 |
-| メール | `nodemailer` 経由(SES / SMTP 共通インタフェース) | ✅ |
-| 認証 | Supabase Auth → Cognito 移行時の差分メモを事前作成 | ⏳ Phase 1 末に作成 |
+| RDS にデータ同期失敗 | Supabase 継続使用、AWS 構築は破棄して再構築 | 即時 |
+| 認証移行で隊員のログイン失敗多発 | `AUTH_PROVIDER=supabase` に戻す + Cookie 削除依頼 | 5 分 |
+| DNS 切替後にエラー多発 | Cloudflare で CNAME を Vercel に戻す(TTL 60 秒) | 60 秒〜 |
+| App Runner で Bedrock 接続不可 | IAM ロール再確認、Vercel に戻す | 10-30 分 |
 
-### 15.2 Phase 2 移行のトリガー条件
+**全工程で本番データの破壊的操作を避ける**:Supabase は Phase 2 完了後 30 日間は読み取り専用で維持。
 
-以下の **2 つ以上**を満たしたら Phase 2 移行検討:
+### 15.5 移行を発火させる条件(更新版)
+
+以下の **2 つ以上**を満たしたら Phase 2 移行を開始:
 1. ARR 1,500 万円突破
-2. 県との共同調達が具体化(RFI / RFP 受領)
+2. 県との共同調達が具体化(RFI / RFP 受領、ISMAP 登録要求)
 3. 標準自治体から「ISMAP 登録 SaaS のみ」を要件として提示される
+4. Supabase Pro プランで DB サイズが 8GB を超え、Team プラン($599/月)が視野に入る
+
+### 15.6 Phase 1 着手時から必ずやる「移行を楽にする 10 か条」
+
+| # | やること | 目的 |
+|---|---|---|
+| 1 | `AuthProvider` インタフェース実装 + Supabase 実装(`src/lib/auth/`) | 認証層切替を 1 ファイル追加で済ませる |
+| 2 | Repository パターンで DB アクセスを抽象化(`src/lib/db/repositories/`) | Supabase Client への直接依存をゼロに |
+| 3 | RLS は `current_setting('app.current_user_id')` ベースで書く | Cognito 移行時に書き換え不要 |
+| 4 | Storage は `aws-sdk` の S3 互換 API で統一 | bucket と endpoint の env 切替のみで移行可 |
+| 5 | メールは `nodemailer` SMTP インタフェース経由 | Supabase SMTP → SES SMTP は接続情報のみ |
+| 6 | Supabase Edge Functions / Realtime / Database Webhooks **を使わない** | これらを使うと載せ替えで大幅書き直し |
+| 7 | Postgres 標準 SQL のみ使用(Supabase 拡張関数を最小化) | RDS でそのまま動く |
+| 8 | `output: 'standalone'` + Dockerfile を Phase 1 から維持 | Vercel → App Runner は Docker push だけ |
+| 9 | DNS は Cloudflare、TTL を移行前は 60 秒に下げる準備 | ロールバック 60 秒で可 |
+| 10 | 全 env 変数を Vercel / AWS Secrets Manager の両対応で書く | デプロイ先切替時の環境変数定義書を共通化 |
 
 ---
 
@@ -785,6 +942,18 @@ ADR-018 の 7 問答を実運用版に拡張。
 - [ ] Sentry プロジェクト + PII Scrub フック実装
 - [ ] 全 env 変数を Vercel に投入
 - [ ] `/api/health` で全プロバイダ疎通確認
+
+### 16.1.5 載せ替えを楽にする実装(§15.6 の 10 か条)
+- [ ] `AuthProvider` インタフェース実装(`src/lib/auth/types.ts` + `supabase.ts`)
+- [ ] Repository パターン導入(`src/lib/db/repositories/*`)、Supabase Client への直接依存をゼロに
+- [ ] RLS は `current_setting('app.current_user_id')` ベースで記述(`auth.uid()` 直接参照を避ける)
+- [ ] Storage は aws-sdk S3 互換 API で統一(Supabase Storage / R2 / S3 が同コードで動く)
+- [ ] メールは nodemailer SMTP インタフェース経由
+- [ ] Supabase Edge Functions / Realtime / Database Webhooks を使わない方針を明文化
+- [ ] Postgres 標準 SQL のみ使用(Supabase 拡張関数を最小化)
+- [ ] `output: 'standalone'` + Dockerfile を Phase 1 から維持
+- [ ] DNS TTL を通常 3600 秒、移行前は 60 秒に下げる手順を Runbook 化
+- [ ] env 変数を Vercel / AWS Secrets Manager 両対応のフォーマットで管理
 
 ### 16.2 セキュリティ面
 - [ ] TLS 1.3 / HSTS / Bot Fight Mode 有効化

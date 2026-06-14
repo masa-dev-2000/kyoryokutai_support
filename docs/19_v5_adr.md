@@ -549,8 +549,12 @@ v5「シンプル版・業務ツール調」で確定した設計判断のまと
 - **AWS 移植可能設計を最初から厳守**:`output: 'standalone'` + Dockerfile + Postgres 標準 SQL のみ使用 + プロバイダ抽象を全外部依存に適用 → Year 2 の県共同調達フェーズで Vercel + Supabase を捨てる時のスイッチングコスト最小
 - **段階的投資**: Year 1 ¥30,000(軽量版)から始めて、Year 2 でフル版(本提示)¥81,279、Year 3 でスタック ③ ¥124,229
 - **PLaMo Prime PoC** を Year 1 後半に並行実施し、品質許容なら AI レイヤだけ ¥57,000 → ¥14,000 に置換(年 ¥516,000 削減)
+- **Phase 2 載せ替えコストの最大の地雷は Supabase Auth**(JWT 形式 + Magic Link DB 列 + RLS の `auth.uid()` 依存 + メール送信ロジックの 4 点書き換え)。これを承知の上で C(Phase 1 はそのまま、計画的載せ替え)を選択した(2026-06-14)
+- **Phase 1 着手時から「載せ替えを楽にする 10 か条」(docs/24 §15.6)を厳守**:AuthProvider 抽象 / Repository パターン / RLS は `current_setting()` ベース / S3 互換 SDK / nodemailer / Supabase 固有機能(Edge Functions / Realtime / Webhooks)未使用
+- Phase 2 移行は **docs/24 §15 の段階計画(2-3 週間 × 7 ステップ)** に従い、ロールバック計画(DNS TTL 60 秒)込みで実施
 
 詳細・出典は `docs/23_infrastructure_cost_research_2026-06.md` 参照。
+Phase 2 移行手順は `docs/24_phase1_design.md` §15 参照。
 
 ---
 
