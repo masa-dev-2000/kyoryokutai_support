@@ -496,6 +496,64 @@ v5「シンプル版・業務ツール調」で確定した設計判断のまと
 
 ---
 
+## ADR-018: Year 1-2 本番スタックは Vercel + Supabase Tokyo + Bedrock Tokyo + AWS SES Tokyo
+
+**確定日:** 2026-06-14
+
+### Context
+- データ主権調査(docs/23)で「自治体は法的義務としてのデータ国内保管を課していない、ガイドラインも努力規定」が判明
+- ただし**自治体個別の調達仕様書(チェックシート 70-100 項目)**で実態としての国内保管圧力は発生
+- 戦略 v3.2 の段階性(PoC → Year 1 ヒアリング → Year 2 県共同調達 → Year 3 全国展開)に対応した、説明責任を果たせる本番スタックを確定する必要があった
+- 横須賀市 ChatGPT(2023)、三重県庁 Slack(2023)、宇都宮市 M365 等の前例から、「海外運営 + 国内 DC + ISMAP 登録」または「個人情報入力禁止 + 利用規約整理」のいずれかで自治体導入は通る
+- 候補は 4 構成(最安 / バランス / ISMAP 完全 / 国産)、本 ADR ではバランスを選定
+
+### Decision
+**Year 1-2 の本番スタックを以下に確定する(1 名 ¥163 / 月、ARR 比 3.2%):**
+
+| レイヤ | 選定 | 月額 | 根拠 |
+|---|---|---|---|
+| ホスト | Vercel Pro hnd1 Tokyo | ¥3,000 | Next.js 純正、Tokyo Edge、Year 2 で AWS App Runner に Docker 化移植可 |
+| DB | Supabase Pro Tokyo + PITR add-on | ¥18,750 | Postgres 標準、Auth 統合、PITR 14日、Year 2 で RDS Tokyo へ dump/restore で移植可 |
+| ストレージ | Supabase 100GB + Cloudflare R2 hybrid | ¥1,500 | ホット=Supabase(UI 統合)、コールド=R2(egress 無料、領収書アーカイブ) |
+| **AI** | **AWS Bedrock Tokyo**(Sonnet 4.6 + Haiku 4.5、prompt caching ON) | ¥57,000 | **jp 地理境界完結**(東京+大阪)、Anthropic と直接契約なし、ADR-016 のプロバイダ抽象で切替可 |
+| メール | AWS SES Tokyo | ¥750 | 圧倒的最安、ISMAP 登録 |
+| 認証 | Supabase Auth(50k MAU 無料)+ Auth.js v5 | ¥0 | LINE は Auth.js 公式 Provider で補完、SAML 必要時に WorkOS 1 接続(¥18,750)後付け |
+| 監視 | Sentry Developer(無料、PII scrub 必須)+ Cloudflare Web Analytics(無料、cookieless RUM) | ¥0 | Year 3 で New Relic Tokyo(2026/7 稼働)に拡張 |
+| DNS / CDN | Cloudflare(無料 or Pro $25) | ¥0-3,750 | データ経路に乗らない設計、DDoS 無料 |
+| ドメイン | ムームー .jp | ¥279 | 5 年 TCO 最安(¥14,366)、お名前.com の調整費 26% 罠回避 |
+| **合計** | | **¥81,279 / 月** | |
+
+**説明責任を果たす想定問答 7 件**(議会・情報政策課向け):
+1. データは国内保管か → AWS Tokyo / Supabase Tokyo で完結、Bedrock は `jp.*` CRIS で日本国内のみ
+2. 米国 SaaS リスクは → Anthropic と直接契約なし、AWS との契約のみ、AWS は ISMAP 登録・ガバクラ認定
+3. 個人情報は安全か → 3 重防御(構造化フィールドで住民個人情報の混入を UI で抑制 + Row Level Security + TLS 1.3 / AES-256)
+4. インシデント対応 → Sentry リアルタイム検知、Supabase 監査ログ 5 年、24h 以内に通知、SLA 99.9-99.99%
+5. AI 学習に使われないか → Bedrock 契約で明示的に非使用、横須賀市 ChatGPT と同じ整理
+6. ISMAP は → AWS は登録、Supabase / Vercel は未登録だが ISMAP 管理基準準拠でチェックシート対応、Year 3 で ISMAP-LIU 検討
+7. 越境移転規制 → 物理 DC が日本国内のため非該当(個人情報保護委員会 Q&A の解釈通り)
+
+**添付資料(調達時に必要):** データフロー図 / セキュリティチェックシート 70-100 項目記入版 / 個人情報取扱規程 / インシデント対応手順書 / 想定問答集 / データ削除手順書 / 先行自治体事例集(横須賀・三重・浜松・kintone 採用)
+
+### 採用しなかった選択肢
+- **Anthropic 直接 API**: 米国 DC 固定、データ主権説明で不利。開発時のみ使用、本番は Bedrock 経由
+- **Azure OpenAI Japan East**: GPT-4o は安いが Regional Standard 必須で配信モデル限定、Claude 不可
+- **GCP Vertex Tokyo Gemini**: Gemini は Tokyo 配信だが DRZ 契約不可、Claude は Tokyo 非対応
+- **PFN PLaMo Prime(国産)**: コスト 1/4(¥14,000)で魅力的だが、月報生成・経費判定の品質ベンチマーク未検証 → **Year 2 で再評価**(PoC 結果次第で AI のみ切替)
+- **AWS RDS Tokyo 単体**: Supabase の Auth / Storage / 開発速度の優位を Year 1 で捨てるのは時期尚早
+- **Cloudflare Workers + D1**: D1 のリージョン不指定がデータ主権で不利
+- **国産フル(さくらクラウド + さくら SendGrid + Auth0 JP)**: 月 ¥39,287 で安いが、開発速度と Bedrock 品質を取りに行く方が戦略 v3.2 に整合
+
+### Consequence
+- **AI コストが全体の 70% を占める** → Bedrock の prompt caching(30% OFF)+ Batch API(月報は月末バッチ生成で 50% OFF)併用で月額 ¥40,000-45,000 まで圧縮可能、トータル ¥65,000 程度まで下げ余地
+- **Supabase / Vercel は ISMAP 未登録** → Year 1-2 はチェックシートで同等性立証、Year 3 で必要なら ISMAP-LIU(1,000-2,000 万円)取得 or AWS App Runner + RDS への移植
+- **AWS 移植可能設計を最初から厳守**:`output: 'standalone'` + Dockerfile + Postgres 標準 SQL のみ使用 + プロバイダ抽象を全外部依存に適用 → Year 2 の県共同調達フェーズで Vercel + Supabase を捨てる時のスイッチングコスト最小
+- **段階的投資**: Year 1 ¥30,000(軽量版)から始めて、Year 2 でフル版(本提示)¥81,279、Year 3 でスタック ③ ¥124,229
+- **PLaMo Prime PoC** を Year 1 後半に並行実施し、品質許容なら AI レイヤだけ ¥57,000 → ¥14,000 に置換(年 ¥516,000 削減)
+
+詳細・出典は `docs/23_infrastructure_cost_research_2026-06.md` 参照。
+
+---
+
 ## 横断的な設計原則(v5 全体)
 
 1. **画面 = 仕様**(ドキュメント先行ではなく画面試作から逆方向にドキュメントを寄せる)
@@ -510,3 +568,4 @@ v5「シンプル版・業務ツール調」で確定した設計判断のまと
 10. **経費は二系統動線 + 親子構造**(現場の入力パターンの違いを吸収)
 11. **AI はプロバイダ抽象で差し替え可能**(ollama/anthropic/mock、env 1 行で切替)
 12. **ローカルはサーバ + SQLite で外部依存ゼロ**(本番は Supabase へ流用)
+13. **本番は国内 DC + ISMAP 認定ベンダー経由で説明責任を果たす**(Vercel + Supabase Tokyo + Bedrock Tokyo + AWS SES Tokyo、AWS 移植可能設計を厳守)
