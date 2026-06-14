@@ -1,9 +1,9 @@
-.data/
-out/
-.next/
+/.data/
+/out/
+/.next/
 node_modules/
-docs/
-mock/
+/docs/
+/mock/
 .env
 .env.local
 .env.*.local
