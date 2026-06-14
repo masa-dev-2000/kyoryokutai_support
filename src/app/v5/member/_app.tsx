@@ -27,6 +27,7 @@ import {
   Wallet,
   MessageSquare,
   Trash2,
+  Pencil,
 } from "lucide-react";
 
 /* ============================================================
@@ -216,7 +217,7 @@ const consultMeta: Record<Exclude<ConsultContext["kind"], "menu">, { title: stri
 type Notice = { id: string; title: string; body: string; date: string; kind: string; isPinned: boolean; sender: string };
 
 type Sheet =
-  | { kind: "activity-create" }
+  | { kind: "activity-create"; editing?: ActivityLog }
   | { kind: "activity-detail"; log: ActivityLog }
   | { kind: "report-detail"; report: Report }
   | { kind: "report-day"; date: string }
@@ -634,15 +635,35 @@ function formatDateShort(d: string) {
 
 function ReportTab() {
   const { pushSheet, reports } = useApp();
-  const [q, setQ] = React.useState("");
-  const filtered = reports.filter((r) => (q.trim() ? r.yearMonth.includes(q) : true));
+  // 年ドロップダウン:データから年を抽出 + 「すべて」
+  const years = React.useMemo(() => {
+    const ys = new Set<string>();
+    reports.forEach((r) => ys.add(r.ym.slice(0, 4)));
+    return ["すべて", ...Array.from(ys).sort((a, b) => (a < b ? 1 : -1))];
+  }, [reports]);
+  const [year, setYear] = React.useState<string>("すべて");
+  const filtered = reports.filter((r) => year === "すべて" || r.ym.startsWith(year));
 
   return (
     <div className="text-center">
       <h1 className="text-3xl font-bold tracking-tight">月報</h1>
       <p className="mt-1 text-[12px] text-slate-500">日々の活動から AI が自動生成します</p>
 
-      <SearchBox value={q} onChange={setQ} placeholder="月を指定 ・ 例:2026 年 6 月" />
+      {/* 年ドロップダウン(検索ボックスを置き換え)*/}
+      <div className="mx-auto mt-6 inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 shadow-[0_1px_0_rgba(0,0,0,0.04)] focus-within:border-slate-900">
+        <Calendar className="h-4 w-4 text-slate-400" />
+        <label htmlFor="report-year" className="text-[11px] text-slate-500">年で絞り込み</label>
+        <select
+          id="report-year"
+          value={year}
+          onChange={(e) => setYear(e.target.value)}
+          className="bg-transparent text-[13px] font-semibold text-slate-900 focus:outline-none"
+        >
+          {years.map((y) => (
+            <option key={y} value={y}>{y === "すべて" ? y : `${y} 年`}</option>
+          ))}
+        </select>
+      </div>
 
       {filtered.length === 0 ? (
         <EmptyState message="該当する月報がありません。" />
@@ -934,12 +955,29 @@ function SheetRoot() {
   const close = () => popSheet();
   const stackDepth = sheets.length;
 
+  // report-day は「ポップアップ」(中央ダイアログ)で表示する。
+  // 他は従来通り全画面シート。
+  if (sheet.kind === "report-day") {
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+        onClick={close}
+      >
+        <div
+          className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <ReportDaySheet date={sheet.date} onClose={close} depth={stackDepth} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-white">
-      {sheet.kind === "activity-create" && <ActivityCreateSheet onClose={close} />}
+      {sheet.kind === "activity-create" && <ActivityCreateSheet onClose={close} editing={sheet.editing} />}
       {sheet.kind === "activity-detail" && <ActivityDetailSheet log={sheet.log} onClose={close} />}
       {sheet.kind === "report-detail" && <ReportDetailSheet report={sheet.report} onClose={close} />}
-      {sheet.kind === "report-day" && <ReportDaySheet date={sheet.date} onClose={close} depth={stackDepth} />}
       {sheet.kind === "expense-detail" && <ExpenseDetailSheet item={sheet.item} onClose={close} />}
       {sheet.kind === "expense-create" && <ExpenseCreateSheet onClose={close} />}
       {sheet.kind === "expense-settle" && <ExpenseSettleSheet item={sheet.item} onClose={close} />}
@@ -967,13 +1005,14 @@ function SheetHeader({ title, onClose, right, backLabel }: { title: string; onCl
 
 /* -------- 活動報告 作成シート(入力ごとに相談ボタン)-------- */
 
-function ActivityCreateSheet({ onClose }: { onClose: () => void }) {
+function ActivityCreateSheet({ onClose, editing }: { onClose: () => void; editing?: ActivityLog }) {
   const { addLog, topics } = useApp();
-  const [type, setType] = React.useState<string | null>(null);
-  const [topic, setTopic] = React.useState<string | null>(null);
-  const [hours, setHours] = React.useState<string>("1");
-  const [distance, setDistance] = React.useState<string>("");
-  const [body, setBody] = React.useState("");
+  const isEdit = !!editing;
+  const [type, setType] = React.useState<string | null>(editing?.type ?? null);
+  const [topic, setTopic] = React.useState<string | null>(editing?.topic ?? null);
+  const [hours, setHours] = React.useState<string>(editing ? String(editing.hours) : "1");
+  const [distance, setDistance] = React.useState<string>(editing?.distanceKm != null ? String(editing.distanceKm) : "");
+  const [body, setBody] = React.useState(editing?.body ?? "");
   const [saving, setSaving] = React.useState(false);
 
   // メモのブラッシュアップ(押下 → AI が清書 → プレビュー → 採用 / やめる)
@@ -1045,14 +1084,20 @@ function ActivityCreateSheet({ onClose }: { onClose: () => void }) {
   return (
     <>
       <SheetHeader
-        title="活動報告を書く"
+        title={isEdit ? "活動報告を編集" : "活動報告を書く"}
         onClose={onClose}
         right={
           <button onClick={save} disabled={!canSave} className="text-[11px] font-bold text-slate-900 hover:underline disabled:cursor-not-allowed disabled:text-slate-300">
-            記録
+            {isEdit ? "更新" : "記録"}
           </button>
         }
       />
+      {isEdit && (
+        <div className="border-b border-amber-200 bg-amber-50 px-5 py-2 text-[11px] text-amber-800">
+          ※ 編集機能は試作中です。現在は同日に新しい記録として追加されます(古い記録は手動で削除してください)。
+          関連する月報が承認済の場合は提出済に戻ります(ADR 設計に基づく)。
+        </div>
+      )}
       <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
         <Label>活動の種類</Label>
         <div className="mt-1 flex flex-wrap gap-1.5">
@@ -1262,9 +1307,22 @@ function ActivityCreateSheet({ onClose }: { onClose: () => void }) {
 /* -------- 活動報告 詳細シート -------- */
 
 function ActivityDetailSheet({ log, onClose }: { log: ActivityLog; onClose: () => void }) {
+  const { pushSheet } = useApp();
   return (
     <>
-      <SheetHeader title="活動報告" onClose={onClose} />
+      <SheetHeader
+        title="活動報告"
+        onClose={onClose}
+        right={
+          <button
+            onClick={() => pushSheet({ kind: "activity-create", editing: log })}
+            className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:border-slate-900 hover:bg-slate-50"
+          >
+            <Pencil className="h-3 w-3" />
+            編集
+          </button>
+        }
+      />
       <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
         <div className="flex items-center gap-2 text-[11px] text-slate-500">
           <span>{formatDateShort(log.date)}</span>
@@ -1296,7 +1354,73 @@ function ActivityDetailSheet({ log, onClose }: { log: ActivityLog; onClose: () =
   );
 }
 
+/* -------- 計画フォームのフィールド -------- */
+function PlanField({
+  label, sub, value, placeholder, onChange,
+}: { label: string; sub: string; value: string; placeholder: string; onChange: (v: string) => void }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3">
+      <div className="flex items-baseline gap-2">
+        <div className="text-[11px] font-bold text-slate-900">{label}</div>
+        <div className="text-[10px] text-slate-500">{sub}</div>
+      </div>
+      <textarea
+        rows={2}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="mt-1 w-full resize-none rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12.5px] leading-relaxed focus:border-slate-900 focus:outline-none"
+      />
+    </div>
+  );
+}
+
+/* -------- 来月計画フォーム ヘルパ -------- */
+// 既存 plan(自由テキスト)を 3 セクション(継続/新規/振り返り)に分割する。
+// 既存セッション互換のため、見出し未検出の場合は全部「継続」に入れる。
+type PlanForm = { continueText: string; newText: string; reviewText: string };
+function parsePlan(text: string): PlanForm {
+  const t = text ?? "";
+  const re = /^[\s#\-・]*(継続|新規|振り返り)\s*[::]?\s*$/m;
+  if (!re.test(t)) return { continueText: t, newText: "", reviewText: "" };
+  const parts = t.split(/\n(?=[\s#\-・]*(?:継続|新規|振り返り)\s*[::]?\s*$)/m);
+  const out: PlanForm = { continueText: "", newText: "", reviewText: "" };
+  for (const part of parts) {
+    const m = part.match(/^[\s#\-・]*(継続|新規|振り返り)\s*[::]?\s*\n?([\s\S]*)$/m);
+    if (!m) continue;
+    const body = (m[2] ?? "").trim();
+    if (m[1] === "継続") out.continueText = body;
+    else if (m[1] === "新規") out.newText = body;
+    else if (m[1] === "振り返り") out.reviewText = body;
+  }
+  return out;
+}
+function formatPlan(f: PlanForm): string {
+  const sections: string[] = [];
+  if (f.continueText.trim()) sections.push(`継続:\n${f.continueText.trim()}`);
+  if (f.newText.trim()) sections.push(`新規:\n${f.newText.trim()}`);
+  if (f.reviewText.trim()) sections.push(`振り返り:\n${f.reviewText.trim()}`);
+  return sections.join("\n\n");
+}
+
 /* -------- 月報詳細(カレンダー + 経費表示)-------- */
+
+// 種類別カラー(積算バーで重ねる用)。色は限定的に増やさない方針(設計原則 3)に
+// 反するが、月報の積算グラフだけは識別性が必要なので slate トーンの濃淡で表現する。
+const TYPE_COLORS: Record<string, string> = {
+  会議:       "bg-slate-900",
+  出張:       "bg-slate-700",
+  現場訪問:   "bg-slate-500",
+  広報:       "bg-slate-400",
+  内勤:       "bg-slate-300",
+  イベント:   "bg-amber-500",
+  振り返り:   "bg-emerald-500",
+  その他:     "bg-slate-200",
+};
+
+// 月の最低活動時間(協力隊の活動基準:週 30h × 4 週 ≒ 120h を目安。自治体設定で上書き予定)
+const MIN_MONTHLY_HOURS = 120;
+const MONTHLY_BUDGET = 200000;
 
 function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () => void }) {
   const { logs, plan, setPlan, pushSheet } = useApp();
@@ -1324,8 +1448,25 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
   const byDate: Record<string, ActivityLog[]> = {};
   for (const l of monthLogs) (byDate[l.date] ??= []).push(l);
 
+  // 活動時間:種類別(積算棒に使う)
   const byType: Record<string, number> = {};
   for (const l of monthLogs) byType[l.type] = (byType[l.type] ?? 0) + l.hours;
+  // 表示順は ACTIVITY_TYPES 並び(値があるものだけ)
+  const typeOrder = ACTIVITY_TYPES.filter((t) => byType[t] > 0);
+  // 最低活動時間に対する進捗(超過分は「達成」、未達分は「残り」)
+  const hoursProgress = Math.min(totalHours / MIN_MONTHLY_HOURS, 1);
+  const hoursRemain = Math.max(MIN_MONTHLY_HOURS - totalHours, 0);
+  const hoursOver = Math.max(totalHours - MIN_MONTHLY_HOURS, 0);
+
+  // 経費:カテゴリ(= 活動内容 topic)別合計
+  const byCat: Record<string, number> = {};
+  for (const l of monthLogs) {
+    if (typeof l.expense === "number" && l.expense > 0) {
+      byCat[l.topic] = (byCat[l.topic] ?? 0) + l.expense;
+    }
+  }
+  const catOrder = Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([k]) => k);
+  const expBudgetPct = Math.min((totalExpense / MONTHLY_BUDGET) * 100, 100);
 
   const [yr, mo] = ym.split("-").map(Number);
   const startWeekday = new Date(yr, mo - 1, 1).getDay();
@@ -1335,6 +1476,35 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${ym}-${String(d).padStart(2, "0")}`;
     cells.push({ day: d, date: dateStr, logs: byDate[dateStr] ?? [] });
+  }
+
+  // 来月計画(フォーム化):継続 / 新規 / 振り返り の 3 セクション
+  // 既存 plan(自由テキスト)から見出し付きで分割、保存時に再結合
+  const parsed = React.useMemo(() => parsePlan(plan), [plan]);
+  const [planForm, setPlanForm] = React.useState(parsed);
+  React.useEffect(() => setPlanForm(parsePlan(plan)), [plan]);
+  function commitPlan(next: typeof planForm) {
+    setPlanForm(next);
+    setPlan(formatPlan(next));
+  }
+
+  // 計画ブラッシュアップ(フォーム全体を AI で清書 → プレビュー)
+  const [polishingPlan, setPolishingPlan] = React.useState(false);
+  const [polishedPlan, setPolishedPlan] = React.useState<string | null>(null);
+  async function brushUpPlan() {
+    if (polishingPlan) return;
+    setPolishingPlan(true);
+    try {
+      const r = await apiPost<{ reply: string }>("/api/ai/consult", {
+        context: "polish-memo",
+        payload: { current: formatPlan(planForm) },
+      });
+      setPolishedPlan(r.reply.trim());
+    } catch {
+      setPolishedPlan("(AI 接続失敗。少し時間をおいて再度お試しください)");
+    } finally {
+      setPolishingPlan(false);
+    }
   }
 
   return (
@@ -1394,53 +1564,173 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
           </div>
         </div>
 
-        {Object.keys(byType).length > 0 && (
+        {/* 活動時間:積算棒(種類別セグメント)+ 最低活動時間 120h との比較 */}
+        {typeOrder.length > 0 && (
           <div className="mt-6">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">種類別 活動時間</div>
-            <ul className="mt-2 space-y-1">
-              {Object.entries(byType).sort((a, b) => b[1] - a[1]).map(([type, h]) => {
-                const max = Math.max(...Object.values(byType));
-                const pct = (h / max) * 100;
-                return (
-                  <li key={type} className="flex items-center gap-2">
-                    <div className="w-16 text-[11px] text-slate-600">{type}</div>
-                    <div className="flex-1 overflow-hidden rounded-full bg-slate-100">
-                      <div className="h-3 rounded-full bg-slate-900 transition-all" style={{ width: `${pct}%` }} />
-                    </div>
-                    <div className="w-12 text-right text-[11px] font-bold text-slate-700">{h}h</div>
-                  </li>
-                );
-              })}
+            <div className="flex items-baseline justify-between">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">活動時間(積算)</div>
+              <div className="text-[10px] text-slate-500">
+                <span className="font-bold text-slate-900 text-[12px]">{totalHours}h</span>
+                <span className="mx-1 text-slate-400">/</span>
+                <span>基準 {MIN_MONTHLY_HOURS}h</span>
+                {hoursOver > 0 ? (
+                  <span className="ml-2 text-emerald-700">+{hoursOver}h 超過</span>
+                ) : (
+                  <span className="ml-2 text-amber-700">残り {hoursRemain}h</span>
+                )}
+              </div>
+            </div>
+
+            {/* 積算バー:基準 120h を 100% とし、種類別セグメントを左から積む */}
+            <div className="mt-2 relative">
+              <div className="flex h-5 w-full overflow-hidden rounded-full bg-slate-100">
+                {typeOrder.map((t) => {
+                  const w = (byType[t] / MIN_MONTHLY_HOURS) * 100;
+                  return (
+                    <div
+                      key={t}
+                      className={`${TYPE_COLORS[t] ?? "bg-slate-400"} h-full`}
+                      style={{ width: `${Math.min(w, 100)}%` }}
+                      title={`${t}: ${byType[t]}h`}
+                    />
+                  );
+                })}
+              </div>
+              {/* 100% ライン(基準到達点) */}
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center">
+                <div className="h-full w-px bg-slate-900" />
+              </div>
+              {/* 進捗パーセント */}
+              <div className="mt-1 flex justify-end text-[10px] text-slate-500">
+                {Math.round(hoursProgress * 100)}% 達成
+              </div>
+            </div>
+
+            {/* 凡例(値あるものだけ)*/}
+            <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
+              {typeOrder.map((t) => (
+                <li key={t} className="inline-flex items-center gap-1">
+                  <span className={`inline-block h-2 w-2 rounded-full ${TYPE_COLORS[t] ?? "bg-slate-400"}`} />
+                  <span className="text-slate-600">{t}</span>
+                  <span className="font-bold tabular-nums text-slate-800">{byType[t]}h</span>
+                </li>
+              ))}
             </ul>
           </div>
         )}
 
+        {/* 経費使用:カテゴリ(活動内容 topic)別の積算棒 + 月予算との比較 */}
         {totalExpense > 0 && (
           <div className="mt-6">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">今月の経費使用</div>
-            <div className="mt-2 overflow-hidden rounded-full bg-slate-100">
-              <div className="h-3 rounded-full bg-slate-900" style={{ width: `${Math.min((totalExpense / 200000) * 100, 100)}%` }} />
+            <div className="flex items-baseline justify-between">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">経費使用(カテゴリ別積算)</div>
+              <div className="text-[10px] text-slate-500">
+                <span className="font-bold text-slate-900 text-[12px]">¥{totalExpense.toLocaleString()}</span>
+                <span className="mx-1 text-slate-400">/</span>
+                <span>月予算 ¥{(MONTHLY_BUDGET / 10000).toFixed(0)}万</span>
+                <span className="ml-1 text-slate-400">({expBudgetPct.toFixed(1)}%)</span>
+              </div>
             </div>
-            <div className="mt-1 text-[11px] text-slate-600">¥{totalExpense.toLocaleString()} ・ 月予算想定 ¥200,000</div>
+
+            <div className="mt-2 relative">
+              <div className="flex h-5 w-full overflow-hidden rounded-full bg-slate-100">
+                {catOrder.map((cat, i) => {
+                  const w = (byCat[cat] / MONTHLY_BUDGET) * 100;
+                  // カテゴリ色:slate 系の濃淡で識別(色を増やさない方針の妥協)
+                  const tone = ["bg-slate-900", "bg-slate-700", "bg-slate-500", "bg-slate-400", "bg-slate-300", "bg-slate-200"][i % 6];
+                  return (
+                    <div
+                      key={cat}
+                      className={`${tone} h-full`}
+                      style={{ width: `${Math.min(w, 100)}%` }}
+                      title={`${cat}: ¥${byCat[cat].toLocaleString()}`}
+                    />
+                  );
+                })}
+              </div>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center">
+                <div className="h-full w-px bg-slate-900" />
+              </div>
+            </div>
+
+            <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
+              {catOrder.map((cat, i) => (
+                <li key={cat} className="inline-flex items-center gap-1">
+                  <span className={`inline-block h-2 w-2 rounded-full ${["bg-slate-900", "bg-slate-700", "bg-slate-500", "bg-slate-400", "bg-slate-300", "bg-slate-200"][i % 6]}`} />
+                  <span className="text-slate-600">{cat}</span>
+                  <span className="font-bold tabular-nums text-slate-800">¥{byCat[cat].toLocaleString()}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
-        <Label right={
-          <ConsultButton
-            context={{ kind: "report-plan", current: plan }}
-            label="計画を相談"
-            onAdopt={(t) => setPlan(t)}
-          />
-        }>
+        {/* 来月の計画(フォーム化:継続 / 新規 / 振り返り + AI ブラッシュアップ)*/}
+        <Label
+          right={
+            <button
+              type="button"
+              onClick={brushUpPlan}
+              disabled={polishingPlan}
+              title="3 セクションをまとめて 5W1H に沿った言い回しに整えます"
+              className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-900 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+            >
+              <Sparkles className="h-3 w-3" />
+              {polishingPlan ? "清書中…" : "計画をブラッシュアップ"}
+            </button>
+          }
+        >
           来月の計画
         </Label>
-        <textarea
-          rows={4}
-          value={plan}
-          onChange={(e) => setPlan(e.target.value)}
-          placeholder="来月やりたいこと・継続することを箇条書きで"
-          className="mt-1 w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none"
-        />
+        <p className="mt-1 text-[10px] text-slate-400">3 つの区分で書き分けると、役場が読みやすくなります。</p>
+
+        <div className="mt-2 space-y-2">
+          <PlanField
+            label="継続"
+            sub="進行中のプロジェクトのマイルストーン"
+            value={planForm.continueText}
+            placeholder="例:空き家バンク登録 累計 15 件を目標"
+            onChange={(v) => commitPlan({ ...planForm, continueText: v })}
+          />
+          <PlanField
+            label="新規"
+            sub="今月の手応えから次に試したい施策"
+            value={planForm.newText}
+            placeholder="例:移住者向け体験ツアー 初回開催(7/27)"
+            onChange={(v) => commitPlan({ ...planForm, newText: v })}
+          />
+          <PlanField
+            label="振り返り"
+            sub="中間レビュー / KPI 確認の予定"
+            value={planForm.reviewText}
+            placeholder="例:7 月末に Q2 振り返り 1on1(担当課)"
+            onChange={(v) => commitPlan({ ...planForm, reviewText: v })}
+          />
+        </div>
+
+        {polishedPlan && (
+          <div className="mt-3 rounded-xl border border-slate-300 bg-slate-50/60 p-3">
+            <div className="flex items-center justify-between">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">AI 清書プレビュー</div>
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => setPolishedPlan(null)} className="rounded-full border border-slate-300 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 hover:border-slate-500">やめる</button>
+                <button onClick={brushUpPlan} disabled={polishingPlan} className="rounded-full border border-slate-300 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 hover:border-slate-500">もう一度</button>
+                <button
+                  onClick={() => {
+                    commitPlan(parsePlan(polishedPlan));
+                    setPolishedPlan(null);
+                  }}
+                  className="inline-flex items-center gap-0.5 rounded-full bg-slate-900 px-2.5 py-0.5 text-[10px] font-bold text-white hover:bg-slate-800"
+                >
+                  <Check className="h-3 w-3" />
+                  採用する
+                </button>
+              </div>
+            </div>
+            <pre className="mt-2 whitespace-pre-wrap font-sans text-[12.5px] leading-relaxed text-slate-800">{polishedPlan}</pre>
+            <p className="mt-1 text-[9px] text-slate-400">※ 採用すると 3 区分のフォームを上書きします。事実は変えていません。</p>
+          </div>
+        )}
 
         <div className="mt-4 text-[10px] text-slate-400">※ AI が日々の活動から自動でまとめます。提出前に確認してください。</div>
       </div>
@@ -1480,24 +1770,25 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
 }
 
 function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () => void; depth: number }) {
-  const { logs } = useApp();
+  const { logs, pushSheet } = useApp();
   const items = logs.filter((l) => l.date === date);
   const totalHours = items.reduce((s, l) => s + l.hours, 0);
   const totalExpense = items.reduce((s, l) => s + (l.expense ?? 0), 0);
 
   return (
     <>
-      <SheetHeader
-        title={formatDateShort(date)}
-        onClose={onClose}
-        backLabel={depth > 1 ? "カレンダーに戻る" : undefined}
-      />
-      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+      <header className="flex items-center justify-between border-b border-slate-200 px-5 py-2.5">
+        <div className="text-[12px] font-bold text-slate-900">{formatDateShort(date)} の活動</div>
+        <button onClick={onClose} className="rounded-full p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900" aria-label="閉じる">
+          <X className="h-4 w-4" />
+        </button>
+      </header>
+      <div className="flex-1 overflow-y-auto px-5 py-4">
         <div className="text-[11px] text-slate-500">
           {items.length} 件 ・ {totalHours} 時間
           {totalExpense > 0 && ` ・ 経費 ¥${totalExpense.toLocaleString()}`}
         </div>
-        <ul className="mt-4 space-y-2">
+        <ul className="mt-3 space-y-2">
           {items.map((l) => (
             <li key={l.id} className="rounded-xl border border-slate-200 bg-white p-3">
               <div className="flex items-center gap-2">
@@ -1507,17 +1798,36 @@ function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () =>
                   <Clock className="h-3 w-3" />
                   {l.hours}h
                 </span>
+                {typeof l.distanceKm === "number" && (
+                  <span className="text-[10px] text-slate-500">{l.distanceKm}km</span>
+                )}
               </div>
-              <p className="mt-2 text-[12px] leading-relaxed text-slate-800">{l.body}</p>
-              {l.expense && (
-                <div className="mt-2 inline-flex items-center gap-1 text-[11px] text-slate-600">
-                  <Wallet className="h-3 w-3" />
-                  ¥{l.expense.toLocaleString()}
-                </div>
-              )}
+              <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-slate-800">{l.body}</p>
+              <div className="mt-2 flex items-center justify-between">
+                {l.expense ? (
+                  <div className="inline-flex items-center gap-1 text-[11px] text-slate-600">
+                    <Wallet className="h-3 w-3" />
+                    ¥{l.expense.toLocaleString()}
+                  </div>
+                ) : <span />}
+                <button
+                  onClick={() => pushSheet({ kind: "activity-create", editing: l })}
+                  className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:border-slate-900 hover:bg-slate-50"
+                >
+                  <Pencil className="h-3 w-3" />
+                  編集
+                </button>
+              </div>
             </li>
           ))}
         </ul>
+        {depth > 1 && (
+          <div className="mt-4 text-center">
+            <button onClick={onClose} className="text-[11px] text-slate-500 hover:underline">
+              カレンダーに戻る
+            </button>
+          </div>
+        )}
       </div>
     </>
   );
