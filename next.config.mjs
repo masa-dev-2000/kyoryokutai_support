@@ -11,7 +11,8 @@ const basePath = process.env.PAGES_BASE_PATH ?? "";
 const nextConfig = {
   reactStrictMode: true,
   typedRoutes: true,
-  ...(staticExport ? { output: "export" } : {}),
+  // 静的=export、それ以外=standalone(Docker / App Runner 移植可能、ADR-018 / 載せ替え #8)
+  output: staticExport ? "export" : "standalone",
   ...(basePath ? { basePath, assetPrefix: basePath } : {}),
   images: { unoptimized: true },
   trailingSlash: true,

@@ -4,6 +4,32 @@
 > 8 マイルストーン × 42 タスク。各タスクに ID / 優先度 / 見積もり / 依存 / 完了条件 を付記。
 > 進捗追跡用のチェックリストとしてそのまま使える形式。
 
+## 進捗(2026-06-14 更新)
+
+外部アカウント(AWS / Supabase / Vercel / ドメイン)を必要としない **コード・SQL タスクを先行実装**。
+
+### ✅ 完了(コードで verify 済 / tsc + next build standalone 成功)
+- **T-15/16/17 認証抽象**(`src/lib/auth/`、none / supabase、AuthProvider インタフェース)
+- **T-24 ストレージ抽象**(`src/lib/storage/`、local / s3 / r2 / supabase、S3 互換)
+- **T-25 メール抽象**(`src/lib/email/`、console / smtp、nodemailer 経由)
+- **T-26/27 Bedrock AI プロバイダ**(`src/lib/ai/bedrock.ts`、Sonnet/Haiku ルーティング、factory に追加)
+- **T-28 health 全プロバイダ対応**(`/api/health` で ai/auth/storage/email を疎通表示)
+- **T-22 RLS を current_setting ベースで記述**(`supabase/migrations/...009_rls.sql`)
+- **T-29 + T-34〜T-43 Postgres マイグレーション 10 ファイル**(`supabase/migrations/`)
+- **T-30/31 Dockerfile + output:standalone**(`Dockerfile` / `.dockerignore` / next.config)
+- **T-32 CONTRIBUTING.md**(載せ替え 10 か条 + 使わない Supabase 機能を明文化)
+- **T-44 マイグレーション Runbook**(`supabase/README.md`、RLS の SET LOCAL 使い方含む)
+
+### ⏳ 次にやる(コードで進められる)
+- **T-19/20/21 Repository パターン**(DB アクセス抽象化、10 か条 #2)── 23 ルートの段階的移行
+  - 現状: API Route は `@/lib/db` の all/get/run を直接利用(SQLite)
+  - 目標: `src/lib/db/repositories/` 経由にして DB_PROVIDER で sqlite / supabase 切替
+
+### ⛔ 外部アカウント待ち(コードでは進められない)
+- T-01〜T-14(ドメイン / Cloudflare / AWS / Supabase / Vercel の実アカウント)
+- T-45〜T-79(本番デプロイ・自治体折衝)を要する系
+- ※ 抽象レイヤは実装済みなので、アカウント取得後は env 投入だけで本番化できる
+
 ## 凡例
 
 | 記号 | 意味 |
