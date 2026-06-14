@@ -245,6 +245,8 @@ export type InlineExpense = {
 type Ctx = {
   logs: ActivityLog[];
   addLog: (l: Omit<ActivityLog, "id"> & { expenses?: InlineExpense[] }) => void | Promise<void>;
+  updateLog: (id: string, patch: Partial<Omit<ActivityLog, "id">>) => void | Promise<void>;
+  deleteLog: (id: string) => void | Promise<void>;
   topics: string[];
   addTopic: (t: string) => void;
   removeTopic: (t: string) => void;
@@ -349,6 +351,14 @@ export function MemberApp() {
           setExpenses(ex);
         } catch { /* noop */ }
       }
+    },
+    updateLog: async (id, patch) => {
+      const updated = await apiPatch<ActivityLog>(`/api/activity-logs/${id}`, patch);
+      setLogs((ls) => ls.map((l) => (l.id === id ? updated : l)));
+    },
+    deleteLog: async (id) => {
+      await apiDelete<null>(`/api/activity-logs/${id}`);
+      setLogs((ls) => ls.filter((l) => l.id !== id));
     },
     topics,
     addTopic: async (t) => {
@@ -1006,7 +1016,7 @@ function SheetHeader({ title, onClose, right, backLabel }: { title: string; onCl
 /* -------- 活動報告 作成シート(入力ごとに相談ボタン)-------- */
 
 function ActivityCreateSheet({ onClose, editing }: { onClose: () => void; editing?: ActivityLog }) {
-  const { addLog, topics } = useApp();
+  const { addLog, updateLog, topics } = useApp();
   const isEdit = !!editing;
   const [type, setType] = React.useState<string | null>(editing?.type ?? null);
   const [topic, setTopic] = React.useState<string | null>(editing?.topic ?? null);
@@ -1065,16 +1075,26 @@ function ActivityCreateSheet({ onClose, editing }: { onClose: () => void; editin
     if (!canSave) return;
     setSaving(true);
     try {
-      await addLog({
-        type: type!,
-        topic: topic!,
-        hours: parseFloat(hours),
-        distanceKm: distance ? parseFloat(distance) : undefined,
-        body: body.trim(),
-        date: todayKey(),
-        time: new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }),
-        expenses: validExpenses.length > 0 ? validExpenses : undefined,
-      });
+      if (editing) {
+        await updateLog(editing.id, {
+          type: type!,
+          topic: topic!,
+          hours: parseFloat(hours),
+          distanceKm: distance ? parseFloat(distance) : undefined,
+          body: body.trim(),
+        });
+      } else {
+        await addLog({
+          type: type!,
+          topic: topic!,
+          hours: parseFloat(hours),
+          distanceKm: distance ? parseFloat(distance) : undefined,
+          body: body.trim(),
+          date: todayKey(),
+          time: new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }),
+          expenses: validExpenses.length > 0 ? validExpenses : undefined,
+        });
+      }
       onClose();
     } catch {
       setSaving(false);
@@ -1092,12 +1112,6 @@ function ActivityCreateSheet({ onClose, editing }: { onClose: () => void; editin
           </button>
         }
       />
-      {isEdit && (
-        <div className="border-b border-amber-200 bg-amber-50 px-5 py-2 text-[11px] text-amber-800">
-          ※ 編集機能は試作中です。現在は同日に新しい記録として追加されます(古い記録は手動で削除してください)。
-          関連する月報が承認済の場合は提出済に戻ります(ADR 設計に基づく)。
-        </div>
-      )}
       <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
         <Label>活動の種類</Label>
         <div className="mt-1 flex flex-wrap gap-1.5">
@@ -1307,7 +1321,19 @@ function ActivityCreateSheet({ onClose, editing }: { onClose: () => void; editin
 /* -------- 活動報告 詳細シート -------- */
 
 function ActivityDetailSheet({ log, onClose }: { log: ActivityLog; onClose: () => void }) {
-  const { pushSheet } = useApp();
+  const { pushSheet, deleteLog, popSheet } = useApp();
+  const [deleting, setDeleting] = React.useState(false);
+
+  async function handleDelete() {
+    if (!confirm("この活動報告を削除しますか?")) return;
+    setDeleting(true);
+    try {
+      await deleteLog(log.id);
+      popSheet(); // 詳細を閉じる
+    } catch {
+      setDeleting(false);
+    }
+  }
   return (
     <>
       <SheetHeader
@@ -1349,6 +1375,16 @@ function ActivityDetailSheet({ log, onClose }: { log: ActivityLog; onClose: () =
             この活動で発生した経費:¥{log.expense.toLocaleString()}
           </div>
         )}
+
+        <div className="mt-8 border-t border-slate-100 pt-4">
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="text-[11px] text-red-500 hover:underline disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {deleting ? "削除中…" : "この活動報告を削除する"}
+          </button>
+        </div>
       </div>
     </>
   );

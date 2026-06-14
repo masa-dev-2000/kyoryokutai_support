@@ -213,6 +213,31 @@ export const sqliteRepos: Repos = {
       );
       return mapLog(all("SELECT * FROM activity_logs WHERE id=?", [id])[0]);
     },
+    async update(id, b) {
+      const existing = all("SELECT * FROM activity_logs WHERE id=?", [id])[0];
+      if (!existing) return undefined;
+      run(
+        `UPDATE activity_logs SET
+           activity_type=COALESCE(?,activity_type),
+           topic=COALESCE(?,topic),
+           hours=COALESCE(?,hours),
+           distance_km=CASE WHEN ? IS NOT NULL THEN ? ELSE distance_km END,
+           body=COALESCE(?,body),
+           log_date=COALESCE(?,log_date),
+           log_time=COALESCE(?,log_time)
+         WHERE id=?`,
+        [
+          b.type ?? null, b.topic ?? null, b.hours ?? null,
+          b.distanceKm !== undefined ? 1 : null, b.distanceKm ?? null,
+          b.body ?? null, b.date ?? null, b.time ?? null,
+          id,
+        ]
+      );
+      return mapLog(all("SELECT * FROM activity_logs WHERE id=?", [id])[0]);
+    },
+    async delete(id) {
+      run("DELETE FROM activity_logs WHERE id=?", [id]);
+    },
     async listForAI(userId, ym) {
       return all<LogForAI>(
         "SELECT activity_type,topic,hours,body,log_date,expense_amount FROM activity_logs WHERE user_id=? AND log_date LIKE ? ORDER BY log_date",

@@ -106,6 +106,16 @@ export interface Repos {
       time?: string;
       expense?: number;
     }): Promise<ActivityLogDTO>;
+    update(id: string, patch: {
+      type?: string;
+      topic?: string;
+      hours?: number;
+      distanceKm?: number | null;
+      body?: string;
+      date?: string;
+      time?: string;
+    }): Promise<ActivityLogDTO | undefined>;
+    delete(id: string): Promise<void>;
     listForAI(userId: string, ym: string): Promise<LogForAI[]>;
   };
   expenses: {
