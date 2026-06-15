@@ -1269,45 +1269,50 @@ function ActivityCreateSheet({ onClose, editing }: { onClose: () => void; editin
 /* -------- 日報作成シート(1日分 複数活動 + 日報全体の経費) -------- */
 
 type ActivityEntry = { id: string; type: string; topic: string; hours: string; body: string };
-type ExpenseEntry = { id: string; purpose: string; amount: string };
+type ExpenseEntry = { id: string; title: string; amount: string; purpose: string };
 
 function DailyCreateSheet({ onClose }: { onClose: () => void }) {
   const { addLog } = useApp();
   const [saving, setSaving] = React.useState(false);
+
   const [entries, setEntries] = React.useState<ActivityEntry[]>([
-    { id: "e0", type: "", topic: "", hours: "1", body: "" },
+    { id: "e1", type: "", topic: "", hours: "1", body: "" }
   ]);
+
   const [expenses, setExpenses] = React.useState<ExpenseEntry[]>([]);
 
   function addEntry() {
-    setEntries((es) => [...es, { id: `e${Date.now()}`, type: "", topic: "", hours: "1", body: "" }]);
-  }
-  function removeEntry(id: string) {
-    setEntries((es) => es.filter((e) => e.id !== id));
-  }
-  function updateEntry(id: string, patch: Partial<ActivityEntry>) {
-    setEntries((es) => es.map((e) => (e.id === id ? { ...e, ...patch } : e)));
-  }
-  function addExpense() {
-    setExpenses((es) => [...es, { id: `x${Date.now()}`, purpose: "", amount: "" }]);
-  }
-  function removeExpense(id: string) {
-    setExpenses((es) => es.filter((e) => e.id !== id));
-  }
-  function updateExpense(id: string, patch: Partial<ExpenseEntry>) {
-    setExpenses((es) => es.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+    setEntries(es => [...es, { id: `e${Date.now()}`, type: "", topic: "", hours: "1", body: "" }]);
   }
 
-  const validEntries = entries.filter((e) => e.type && e.topic && parseFloat(e.hours) > 0 && e.body.trim());
+  function removeEntry(id: string) {
+    setEntries(es => es.filter(e => e.id !== id));
+  }
+
+  function updateEntry(id: string, patch: Partial<ActivityEntry>) {
+    setEntries(es => es.map(e => e.id === id ? { ...e, ...patch } : e));
+  }
+
+  function addExpense() {
+    setExpenses(es => [...es, { id: `x${Date.now()}`, title: "", amount: "", purpose: "" }]);
+  }
+
+  function removeExpense(id: string) {
+    setExpenses(es => es.filter(e => e.id !== id));
+  }
+
+  function updateExpense(id: string, patch: Partial<ExpenseEntry>) {
+    setExpenses(es => es.map(e => e.id === id ? { ...e, ...patch } : e));
+  }
+
+  const validEntries = entries.filter(e => e.type && e.topic && parseFloat(e.hours) > 0 && e.body.trim());
   const canSave = validEntries.length > 0 && !saving;
 
   async function save() {
     if (!canSave) return;
     setSaving(true);
     try {
-      const validExp = expenses
-        .filter((e) => parseInt(e.amount) > 0 && e.purpose.trim())
-        .map((e) => ({ amount: parseInt(e.amount), purpose: e.purpose.trim(), title: e.purpose.slice(0, 15) }));
+      const validExp = expenses.filter(e => e.amount && parseInt(e.amount) > 0 && e.purpose.trim());
       for (let i = 0; i < validEntries.length; i++) {
         const entry = validEntries[i];
         await addLog({
@@ -1317,7 +1322,11 @@ function DailyCreateSheet({ onClose }: { onClose: () => void }) {
           body: entry.body.trim(),
           date: todayKey(),
           time: new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }),
-          expenses: i === 0 && validExp.length > 0 ? validExp : undefined,
+          expenses: i === 0 && validExp.length > 0 ? validExp.map(e => ({
+            amount: parseInt(e.amount),
+            purpose: e.purpose.trim(),
+            title: e.title.trim() || e.purpose.slice(0, 15),
+          })) : undefined,
         });
       }
       onClose();
@@ -1326,21 +1335,15 @@ function DailyCreateSheet({ onClose }: { onClose: () => void }) {
     }
   }
 
-  const TYPES = ["会議", "出張", "現場訪問", "広報", "内勤", "イベント", "振り返り", "その他"];
-  const HOURS = ["0.5", "1", "1.5", "2", "3", "4", "5", "6", "7", "8"];
-
   return (
     <>
       <SheetHeader
         title="日報を書く"
         onClose={onClose}
         right={
-          <button
-            onClick={save}
-            disabled={!canSave}
-            className="text-[11px] font-bold text-slate-900 hover:underline disabled:cursor-not-allowed disabled:text-slate-300"
-          >
-            {saving ? "記録中…" : "記録"}
+          <button onClick={save} disabled={!canSave}
+            className="text-[11px] font-bold text-slate-900 hover:underline disabled:cursor-not-allowed disabled:text-slate-300">
+            記録
           </button>
         }
       />
@@ -1350,13 +1353,14 @@ function DailyCreateSheet({ onClose }: { onClose: () => void }) {
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-slate-500">活動 {idx + 1}</span>
               {entries.length > 1 && (
-                <button onClick={() => removeEntry(entry.id)} className="text-[10px] text-slate-400 hover:text-red-500">削除</button>
+                <button onClick={() => removeEntry(entry.id)}
+                  className="text-[10px] text-slate-400 hover:text-red-500">削除</button>
               )}
             </div>
             <div>
               <div className="mb-1.5 text-[11px] font-semibold text-slate-600">種類</div>
               <div className="flex flex-wrap gap-1.5">
-                {TYPES.map((t) => (
+                {["会議", "出張", "現場訪問", "広報", "内勤", "イベント", "振り返り", "その他"].map(t => (
                   <button key={t} onClick={() => updateEntry(entry.id, { type: t })}
                     className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${entry.type === t ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-600 hover:border-slate-500"}`}>
                     {t}
@@ -1368,7 +1372,7 @@ function DailyCreateSheet({ onClose }: { onClose: () => void }) {
               <div className="mb-1 text-[11px] font-semibold text-slate-600">活動内容</div>
               <input
                 value={entry.topic}
-                onChange={(e) => updateEntry(entry.id, { topic: e.target.value })}
+                onChange={e => updateEntry(entry.id, { topic: e.target.value })}
                 placeholder="例: 空き家、移住相談、イベント準備…"
                 className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] text-slate-800 outline-none focus:border-slate-400"
               />
@@ -1376,7 +1380,7 @@ function DailyCreateSheet({ onClose }: { onClose: () => void }) {
             <div>
               <div className="mb-1 text-[11px] font-semibold text-slate-600">時間</div>
               <div className="flex flex-wrap gap-1.5">
-                {HOURS.map((h) => (
+                {["0.5", "1", "1.5", "2", "3", "4", "5", "6", "7", "8"].map(h => (
                   <button key={h} onClick={() => updateEntry(entry.id, { hours: h })}
                     className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${entry.hours === h ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-600 hover:border-slate-500"}`}>
                     {h}h
@@ -1389,7 +1393,7 @@ function DailyCreateSheet({ onClose }: { onClose: () => void }) {
               <textarea
                 rows={3}
                 value={entry.body}
-                onChange={(e) => updateEntry(entry.id, { body: e.target.value })}
+                onChange={e => updateEntry(entry.id, { body: e.target.value })}
                 placeholder="何をしたか、誰と、どんな結果だったか…"
                 className="w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] text-slate-800 outline-none focus:border-slate-400"
               />
@@ -1397,43 +1401,47 @@ function DailyCreateSheet({ onClose }: { onClose: () => void }) {
           </div>
         ))}
 
-        <button
-          onClick={addEntry}
-          className="flex w-full items-center justify-center gap-1 rounded-xl border border-dashed border-slate-300 py-3 text-[12px] font-semibold text-slate-500 hover:border-slate-500 hover:text-slate-700"
-        >
+        <button onClick={addEntry}
+          className="flex w-full items-center justify-center gap-1 rounded-xl border border-dashed border-slate-300 py-3 text-[12px] font-semibold text-slate-500 hover:border-slate-500 hover:text-slate-700">
           <Plus className="h-4 w-4" />
           活動を追加
         </button>
 
-        {/* 経費セクション */}
-        <div className="pt-2 border-t border-slate-100">
-          <div className="mb-2 flex items-center justify-between">
-            <div className="text-[12px] font-bold text-slate-700">経費・レシート</div>
-            <button onClick={addExpense} className="text-[11px] text-slate-400 hover:text-slate-700">+ 追加</button>
-          </div>
+        <div className="pt-2">
+          <div className="mb-2 text-[12px] font-bold text-slate-700">経費・レシート</div>
           {expenses.length === 0 ? (
-            <p className="text-[11px] text-slate-400">この日に経費があれば追加できます</p>
+            <button onClick={addExpense}
+              className="text-[11px] text-slate-400 hover:text-slate-700 hover:underline">
+              + 経費を追加する
+            </button>
           ) : (
             <div className="space-y-2">
-              {expenses.map((exp) => (
-                <div key={exp.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2.5">
+              {expenses.map(exp => (
+                <div key={exp.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2">
                   <input
                     value={exp.purpose}
-                    onChange={(e) => updateExpense(exp.id, { purpose: e.target.value })}
+                    onChange={e => updateExpense(exp.id, { purpose: e.target.value })}
                     placeholder="用途"
-                    className="min-w-0 flex-1 bg-transparent text-[12px] text-slate-800 outline-none placeholder:text-slate-400"
+                    className="flex-1 rounded border-0 bg-transparent text-[12px] text-slate-800 outline-none placeholder:text-slate-400"
                   />
-                  <span className="text-[12px] text-slate-400">¥</span>
-                  <input
-                    value={exp.amount}
-                    onChange={(e) => updateExpense(exp.id, { amount: e.target.value })}
-                    placeholder="0"
-                    type="number"
-                    className="w-20 bg-transparent text-right text-[12px] text-slate-800 outline-none"
-                  />
-                  <button onClick={() => removeExpense(exp.id)} className="text-[11px] text-slate-400 hover:text-red-500">×</button>
+                  <div className="flex items-center gap-0.5 text-[12px] text-slate-500">
+                    <span>¥</span>
+                    <input
+                      value={exp.amount}
+                      onChange={e => updateExpense(exp.id, { amount: e.target.value })}
+                      placeholder="0"
+                      type="number"
+                      className="w-20 border-0 bg-transparent text-right text-[12px] text-slate-800 outline-none"
+                    />
+                  </div>
+                  <button onClick={() => removeExpense(exp.id)}
+                    className="text-[10px] text-slate-400 hover:text-red-500">×</button>
                 </div>
               ))}
+              <button onClick={addExpense}
+                className="text-[11px] text-slate-400 hover:text-slate-700 hover:underline">
+                + さらに追加
+              </button>
             </div>
           )}
         </div>
