@@ -1589,10 +1589,10 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
   const [dayPopup, setDayPopup] = React.useState<string | null>(null);
 
   // 計画 AI 生成(今月の活動から来月計画たたき台を生成)
-  const [generatingPlan, setGeneratingPlan] = React.useState(false);
-  async function generatePlan() {
-    if (generatingPlan) return;
-    setGeneratingPlan(true);
+  const [polishingPlan, setPolishingPlan] = React.useState(false);
+  async function brushUpPlan() {
+    if (polishingPlan) return;
+    setPolishingPlan(true);
     try {
       const r = await apiPost<{ reply: string }>("/api/ai/consult", {
         context: "polish-memo",
@@ -1602,7 +1602,7 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
     } catch {
       /* noop */
     } finally {
-      setGeneratingPlan(false);
+      setPolishingPlan(false);
     }
   }
 
@@ -1820,28 +1820,28 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
           right={
             <button
               type="button"
-              onClick={generatePlan}
-              disabled={generatingPlan}
+              onClick={brushUpPlan}
+              disabled={polishingPlan}
               className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-900 hover:bg-slate-50 disabled:text-slate-300"
             >
               <Sparkles className="h-3 w-3" />
-              {generatingPlan ? "考え中…" : "AI に起こしてもらう"}
+              {polishingPlan ? "考え中…" : "AI に起こしてもらう"}
             </button>
           }
         >
           来月の計画
         </Label>
         <textarea
-          rows={5}
+          rows={4}
           value={plan}
           onChange={(e) => setPlan(e.target.value)}
-          placeholder={"完了したこと・継続すること・新しく始めることを自由に書いてください\n\n「AI に起こしてもらう」で今月の活動からたたき台を生成できます"}
+          placeholder={"完了したこと・継続すること・新しく取り組むことを自由に書いてください\n\nAI ボタンで今月の活動からたたき台を生成できます"}
           className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-slate-50/40 px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400"
         />
       </div>
 
       <div className="border-t border-slate-200 px-5 py-3">
-        <div className="mx-auto flex max-w-2xl items-center justify-end">
+        <div className="mx-auto flex max-w-2xl items-center justify-end gap-2">
           {report.status === "draft" ? (
             <button className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-4 py-1.5 text-[12px] font-bold text-white hover:bg-slate-800">
               <Check className="h-3.5 w-3.5" />
