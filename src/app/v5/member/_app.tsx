@@ -219,8 +219,8 @@ type Notice = { id: string; title: string; body: string; date: string; kind: str
 type Sheet =
   | { kind: "activity-create"; editing?: ActivityLog }
   | { kind: "activity-detail"; log: ActivityLog }
+  | { kind: "daily-create" }
   | { kind: "report-detail"; report: Report }
-  | { kind: "report-day"; date: string }
   | { kind: "expense-detail"; item: ExpenseRequest }
   | { kind: "expense-create" }
   | { kind: "expense-settle"; item: ExpenseRequest }
@@ -405,7 +405,6 @@ export function MemberApp() {
     <AppCtx.Provider value={ctx}>
       <main className="flex h-screen flex-col bg-white text-slate-900">
         <Header
-          onConsultMenu={() => setSheets([{ kind: "consult", context: { kind: "menu" } }])}
           onBell={() => setSheets([{ kind: "announcements" }])}
           unread={notices.length}
         />
@@ -429,7 +428,7 @@ export function MemberApp() {
 
 /* -------------------- Header / Tabs / Footer -------------------- */
 
-function Header({ onConsultMenu, onBell, unread }: { onConsultMenu: () => void; onBell: () => void; unread: number }) {
+function Header({ onBell, unread }: { onBell: () => void; unread: number }) {
   return (
     <header className="flex items-center justify-between border-b border-slate-100 px-5 py-2.5">
       <Link href="/v5" className="inline-flex items-center gap-0.5 text-[11px] text-slate-500 hover:text-slate-900">
@@ -437,29 +436,19 @@ function Header({ onConsultMenu, onBell, unread }: { onConsultMenu: () => void; 
         切替
       </Link>
       <div className="text-center text-[11px] text-slate-500">田中 あかり / 新温泉町</div>
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onBell}
-          className="relative inline-flex items-center gap-1 text-[11px] text-slate-700 hover:text-slate-900"
-          title="お知らせ・ルール"
-          aria-label="お知らせを開く"
-        >
-          <Bell className="h-3.5 w-3.5" />
-          {unread > 0 && (
-            <span className="absolute -right-1.5 -top-1.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-rose-600 px-0.5 text-[8px] font-bold text-white">
-              {unread}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={onConsultMenu}
-          className="inline-flex items-center gap-1 text-[11px] text-slate-700 hover:text-slate-900"
-          title="目的別の AI 相談"
-        >
-          <Sparkles className="h-3 w-3" />
-          相談
-        </button>
-      </div>
+      <button
+        onClick={onBell}
+        className="relative inline-flex items-center gap-1 text-[11px] text-slate-700 hover:text-slate-900"
+        title="お知らせ・ルール"
+        aria-label="お知らせを開く"
+      >
+        <Bell className="h-3.5 w-3.5" />
+        {unread > 0 && (
+          <span className="absolute -right-1.5 -top-1.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-rose-600 px-0.5 text-[8px] font-bold text-white">
+            {unread}
+          </span>
+        )}
+      </button>
     </header>
   );
 }
@@ -515,113 +504,78 @@ function DailyTab() {
 
   return (
     <div className="relative">
-      {/* ── ヘッダ(右上に新規ボタンを明示)── */}
-      <div className="relative text-center">
-        <h1 className="text-3xl font-bold tracking-tight">活動報告</h1>
-        <p className="mt-1 text-[12px] text-slate-500">活動のたびに 1 件、月末に AI が月報へまとめます</p>
-        <button
-          onClick={() => pushSheet({ kind: "activity-create" })}
-          className="absolute right-0 top-0 inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-bold text-white shadow-sm hover:bg-slate-800"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          新規
-        </button>
+      <div className="text-center">
+        <h1 className="text-3xl font-bold tracking-tight">日報</h1>
+        <p className="mt-1 text-[12px] text-slate-500">1 日の活動をまとめて記録できます</p>
       </div>
 
-      {/* ── 今日 ─ 太く目立たせる(主役) ── */}
+      {/* 今日 */}
       <section className="mt-7">
-        <div className="mb-2 flex items-center justify-between border-b-2 border-slate-900 pb-1">
-          <div className="flex items-baseline gap-2">
-            <h2 className="text-[15px] font-black tracking-tight text-slate-900">今日</h2>
-            <span className="text-[10px] text-slate-500">6 月 11 日(木)</span>
-          </div>
-          <button
-            onClick={() => pushSheet({ kind: "activity-create" })}
-            className="inline-flex items-center gap-0.5 rounded-full border border-slate-300 px-2 py-0.5 text-[10px] font-semibold text-slate-700 hover:border-slate-900 hover:bg-slate-50"
-          >
-            <Plus className="h-3 w-3" />
-            報告を追加
-          </button>
+        <div className="mb-2 flex items-center gap-2 border-b-2 border-slate-900 pb-1">
+          <h2 className="text-[15px] font-black tracking-tight text-slate-900">今日</h2>
+          <span className="text-[10px] text-slate-500">6 月 11 日(木)</span>
+          {today.length > 0 && (
+            <span className="ml-auto text-[11px] text-slate-500 tabular-nums">{today.length}件 ・ {todayHours}h</span>
+          )}
         </div>
 
         {today.length === 0 ? (
           <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-[12px] text-slate-500">
-            まだ記録がありません。上の「<strong>+ 報告を追加</strong>」または右下の <strong>+</strong> から作成
+            まだ記録がありません。右下の <strong>+</strong> から日報を追加できます
           </div>
         ) : (
-          <>
-            <div className="mb-2 flex items-baseline gap-4">
-              <div>
-                <span className="text-[28px] font-black leading-none text-slate-900">{today.length}</span>
-                <span className="ml-1 text-[11px] text-slate-500">件</span>
-              </div>
-              <div>
-                <span className="text-[28px] font-black leading-none text-slate-900">{todayHours}</span>
-                <span className="ml-1 text-[11px] text-slate-500">時間</span>
-              </div>
-            </div>
-            <ul className="divide-y divide-slate-100">
-              {today.map((l) => (
-                <li key={l.id}>
-                  <button
-                    onClick={() => pushSheet({ kind: "activity-detail", log: l })}
-                    className="flex w-full items-start gap-2.5 py-2.5 text-left hover:bg-slate-50/60"
-                  >
-                    <span className="mt-0.5 shrink-0 text-[10px] font-bold text-slate-400 tabular-nums">{l.time}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1">
-                        <span className="rounded-sm border border-slate-300 bg-white px-1 text-[10px] font-bold text-slate-700">
-                          {l.type}
-                        </span>
-                        <span className="rounded-sm border border-slate-200 bg-slate-50 px-1 text-[10px] font-semibold text-slate-600">
-                          {l.topic}
-                        </span>
-                        <span className="ml-auto text-[10px] tabular-nums text-slate-500">{l.hours}h</span>
-                      </div>
-                      <div className="mt-0.5 truncate text-[12.5px] text-slate-800">{l.body}</div>
+          <ul className="divide-y divide-slate-100">
+            {today.map((l) => (
+              <li key={l.id}>
+                <button
+                  onClick={() => pushSheet({ kind: "activity-create", editing: l })}
+                  className="flex w-full items-start gap-2.5 py-2.5 text-left hover:bg-slate-50/60"
+                >
+                  <span className="mt-0.5 shrink-0 text-[10px] font-bold text-slate-400 tabular-nums">{l.time}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1">
+                      <span className="rounded-sm border border-slate-300 bg-white px-1 text-[10px] font-bold text-slate-700">{l.type}</span>
+                      <span className="rounded-sm border border-slate-200 bg-slate-50 px-1 text-[10px] font-semibold text-slate-600">{l.topic}</span>
+                      <span className="ml-auto text-[10px] tabular-nums text-slate-500">{l.hours}h</span>
                     </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </>
+                    <div className="mt-0.5 truncate text-[12.5px] text-slate-800">{l.body}</div>
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 
-      {/* ── 過去 ─ 薄く控えめに(サブ) ── */}
+      {/* 過去(日報カード) */}
       <section className="mt-8">
         <div className="mb-2 border-b border-slate-200 pb-1">
-          <h2 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">過去</h2>
+          <h2 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">過去の日報</h2>
         </div>
         {sortedDates.length === 0 ? (
           <div className="text-[11px] text-slate-400">過去の記録はありません</div>
         ) : (
-          <ul className="divide-y divide-slate-100">
+          <ul className="space-y-2">
             {sortedDates.map((date) => {
               const items = grouped[date];
-              const totalHours = items.reduce((s, l) => s + l.hours, 0);
+              const dHours = items.reduce((s, l) => s + l.hours, 0);
+              const dExp = items.reduce((s, l) => s + (l.expense ?? 0), 0);
               return (
-                <li key={date} className="py-3">
-                  <div className="mb-1 flex items-baseline gap-2">
-                    <span className="text-[12px] font-bold tabular-nums text-slate-700">{formatDateShort(date)}</span>
-                    <span className="text-[10px] text-slate-400">
-                      {items.length} 件 ・ {totalHours}h
-                    </span>
+                <li key={date} className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="mb-2 flex items-baseline gap-2 border-b border-slate-100 pb-2">
+                    <span className="text-[13px] font-bold text-slate-900">{formatDateShort(date)}</span>
+                    <span className="text-[10px] text-slate-400">{items.length}件 ・ {dHours}h{dExp > 0 ? ` ・ ¥${dExp.toLocaleString()}` : ""}</span>
                   </div>
-                  <ul className="space-y-px">
+                  <ul className="space-y-1.5">
                     {items.map((l) => (
                       <li key={l.id}>
                         <button
-                          onClick={() => pushSheet({ kind: "activity-detail", log: l })}
-                          className="flex w-full items-start gap-2 py-1 text-left hover:bg-slate-50/60"
+                          onClick={() => pushSheet({ kind: "activity-create", editing: l })}
+                          className="flex w-full items-start gap-2 rounded-lg px-1 py-1 text-left hover:bg-slate-50"
                         >
-                          <span className="mt-0.5 shrink-0 rounded-sm border border-slate-200 bg-white px-1 text-[10px] font-semibold text-slate-600">
-                            {l.type}
-                          </span>
-                          <span className="mt-0.5 shrink-0 rounded-sm border border-slate-200 bg-slate-50 px-1 text-[10px] font-medium text-slate-500">
-                            {l.topic}
-                          </span>
-                          <span className="min-w-0 flex-1 truncate text-[12px] text-slate-600">{l.body}</span>
+                          <span className="mt-0.5 shrink-0 rounded-sm border border-slate-200 bg-white px-1 text-[10px] font-semibold text-slate-600">{l.type}</span>
+                          <span className="mt-0.5 shrink-0 rounded-sm border border-slate-200 bg-slate-50 px-1 text-[10px] font-medium text-slate-500">{l.topic}</span>
+                          <span className="min-w-0 flex-1 truncate text-[12px] text-slate-700">{l.body}</span>
                           <span className="shrink-0 text-[10px] tabular-nums text-slate-400">{l.hours}h</span>
                         </button>
                       </li>
@@ -636,9 +590,9 @@ function DailyTab() {
 
       {/* FAB */}
       <button
-        onClick={() => pushSheet({ kind: "activity-create" })}
+        onClick={() => pushSheet({ kind: "daily-create" })}
         className="fixed bottom-10 right-6 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg ring-4 ring-white transition hover:bg-slate-800 active:scale-95"
-        aria-label="活動報告を作成"
+        aria-label="日報を作成"
       >
         <Plus className="h-6 w-6" />
       </button>
@@ -975,28 +929,10 @@ function SheetRoot() {
   const close = () => popSheet();
   const stackDepth = sheets.length;
 
-  // report-day は「ポップアップ」(中央ダイアログ)で表示する。
-  // 他は従来通り全画面シート。
-  if (sheet.kind === "report-day") {
-    return (
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-        onClick={close}
-      >
-        <div
-          className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <ReportDaySheet date={sheet.date} onClose={close} depth={stackDepth} />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-white">
       {sheet.kind === "activity-create" && <ActivityCreateSheet onClose={close} editing={sheet.editing} />}
-      {sheet.kind === "activity-detail" && <ActivityDetailSheet log={sheet.log} onClose={close} />}
+      {sheet.kind === "daily-create" && <DailyCreateSheet onClose={close} />}
       {sheet.kind === "report-detail" && <ReportDetailSheet report={sheet.report} onClose={close} />}
       {sheet.kind === "expense-detail" && <ExpenseDetailSheet item={sheet.item} onClose={close} />}
       {sheet.kind === "expense-create" && <ExpenseCreateSheet onClose={close} />}
@@ -1330,6 +1266,182 @@ function ActivityCreateSheet({ onClose, editing }: { onClose: () => void; editin
 
 /* -------- 活動報告 詳細シート -------- */
 
+/* -------- 日報作成シート(1日分 複数活動 + 日報全体の経費) -------- */
+
+type ActivityEntry = { id: string; type: string; topic: string; hours: string; body: string };
+type ExpenseEntry = { id: string; purpose: string; amount: string };
+
+function DailyCreateSheet({ onClose }: { onClose: () => void }) {
+  const { addLog } = useApp();
+  const [saving, setSaving] = React.useState(false);
+  const [entries, setEntries] = React.useState<ActivityEntry[]>([
+    { id: "e0", type: "", topic: "", hours: "1", body: "" },
+  ]);
+  const [expenses, setExpenses] = React.useState<ExpenseEntry[]>([]);
+
+  function addEntry() {
+    setEntries((es) => [...es, { id: `e${Date.now()}`, type: "", topic: "", hours: "1", body: "" }]);
+  }
+  function removeEntry(id: string) {
+    setEntries((es) => es.filter((e) => e.id !== id));
+  }
+  function updateEntry(id: string, patch: Partial<ActivityEntry>) {
+    setEntries((es) => es.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  }
+  function addExpense() {
+    setExpenses((es) => [...es, { id: `x${Date.now()}`, purpose: "", amount: "" }]);
+  }
+  function removeExpense(id: string) {
+    setExpenses((es) => es.filter((e) => e.id !== id));
+  }
+  function updateExpense(id: string, patch: Partial<ExpenseEntry>) {
+    setExpenses((es) => es.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  }
+
+  const validEntries = entries.filter((e) => e.type && e.topic && parseFloat(e.hours) > 0 && e.body.trim());
+  const canSave = validEntries.length > 0 && !saving;
+
+  async function save() {
+    if (!canSave) return;
+    setSaving(true);
+    try {
+      const validExp = expenses
+        .filter((e) => parseInt(e.amount) > 0 && e.purpose.trim())
+        .map((e) => ({ amount: parseInt(e.amount), purpose: e.purpose.trim(), title: e.purpose.slice(0, 15) }));
+      for (let i = 0; i < validEntries.length; i++) {
+        const entry = validEntries[i];
+        await addLog({
+          type: entry.type,
+          topic: entry.topic,
+          hours: parseFloat(entry.hours),
+          body: entry.body.trim(),
+          date: todayKey(),
+          time: new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }),
+          expenses: i === 0 && validExp.length > 0 ? validExp : undefined,
+        });
+      }
+      onClose();
+    } catch {
+      setSaving(false);
+    }
+  }
+
+  const TYPES = ["会議", "出張", "現場訪問", "広報", "内勤", "イベント", "振り返り", "その他"];
+  const HOURS = ["0.5", "1", "1.5", "2", "3", "4", "5", "6", "7", "8"];
+
+  return (
+    <>
+      <SheetHeader
+        title="日報を書く"
+        onClose={onClose}
+        right={
+          <button
+            onClick={save}
+            disabled={!canSave}
+            className="text-[11px] font-bold text-slate-900 hover:underline disabled:cursor-not-allowed disabled:text-slate-300"
+          >
+            {saving ? "記録中…" : "記録"}
+          </button>
+        }
+      />
+      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-5 py-5 space-y-4">
+        {entries.map((entry, idx) => (
+          <div key={entry.id} className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-500">活動 {idx + 1}</span>
+              {entries.length > 1 && (
+                <button onClick={() => removeEntry(entry.id)} className="text-[10px] text-slate-400 hover:text-red-500">削除</button>
+              )}
+            </div>
+            <div>
+              <div className="mb-1.5 text-[11px] font-semibold text-slate-600">種類</div>
+              <div className="flex flex-wrap gap-1.5">
+                {TYPES.map((t) => (
+                  <button key={t} onClick={() => updateEntry(entry.id, { type: t })}
+                    className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${entry.type === t ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-600 hover:border-slate-500"}`}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="mb-1 text-[11px] font-semibold text-slate-600">活動内容</div>
+              <input
+                value={entry.topic}
+                onChange={(e) => updateEntry(entry.id, { topic: e.target.value })}
+                placeholder="例: 空き家、移住相談、イベント準備…"
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] text-slate-800 outline-none focus:border-slate-400"
+              />
+            </div>
+            <div>
+              <div className="mb-1 text-[11px] font-semibold text-slate-600">時間</div>
+              <div className="flex flex-wrap gap-1.5">
+                {HOURS.map((h) => (
+                  <button key={h} onClick={() => updateEntry(entry.id, { hours: h })}
+                    className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${entry.hours === h ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-600 hover:border-slate-500"}`}>
+                    {h}h
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="mb-1 text-[11px] font-semibold text-slate-600">メモ</div>
+              <textarea
+                rows={3}
+                value={entry.body}
+                onChange={(e) => updateEntry(entry.id, { body: e.target.value })}
+                placeholder="何をしたか、誰と、どんな結果だったか…"
+                className="w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] text-slate-800 outline-none focus:border-slate-400"
+              />
+            </div>
+          </div>
+        ))}
+
+        <button
+          onClick={addEntry}
+          className="flex w-full items-center justify-center gap-1 rounded-xl border border-dashed border-slate-300 py-3 text-[12px] font-semibold text-slate-500 hover:border-slate-500 hover:text-slate-700"
+        >
+          <Plus className="h-4 w-4" />
+          活動を追加
+        </button>
+
+        {/* 経費セクション */}
+        <div className="pt-2 border-t border-slate-100">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="text-[12px] font-bold text-slate-700">経費・レシート</div>
+            <button onClick={addExpense} className="text-[11px] text-slate-400 hover:text-slate-700">+ 追加</button>
+          </div>
+          {expenses.length === 0 ? (
+            <p className="text-[11px] text-slate-400">この日に経費があれば追加できます</p>
+          ) : (
+            <div className="space-y-2">
+              {expenses.map((exp) => (
+                <div key={exp.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2.5">
+                  <input
+                    value={exp.purpose}
+                    onChange={(e) => updateExpense(exp.id, { purpose: e.target.value })}
+                    placeholder="用途"
+                    className="min-w-0 flex-1 bg-transparent text-[12px] text-slate-800 outline-none placeholder:text-slate-400"
+                  />
+                  <span className="text-[12px] text-slate-400">¥</span>
+                  <input
+                    value={exp.amount}
+                    onChange={(e) => updateExpense(exp.id, { amount: e.target.value })}
+                    placeholder="0"
+                    type="number"
+                    className="w-20 bg-transparent text-right text-[12px] text-slate-800 outline-none"
+                  />
+                  <button onClick={() => removeExpense(exp.id)} className="text-[11px] text-slate-400 hover:text-red-500">×</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 function ActivityDetailSheet({ log, onClose }: { log: ActivityLog; onClose: () => void }) {
   const { pushSheet, deleteLog, popSheet } = useApp();
   const [deleting, setDeleting] = React.useState(false);
@@ -1469,21 +1581,28 @@ const MIN_MONTHLY_HOURS = 120;
 const MONTHLY_BUDGET = 200000;
 
 function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () => void }) {
-  const { logs, plan, setPlan, pushSheet } = useApp();
+  const { logs, plan, setPlan } = useApp();
   const ym = report.ym;
   const monthLogs = logs.filter((l) => l.date.startsWith(ym));
 
-  // AI 月報生成(再生成ボタンから呼び出し)
-  const [generated, setGenerated] = React.useState<string | null>(null);
-  const [genState, setGenState] = React.useState<"idle" | "loading" | "error">("idle");
-  async function regenerate() {
-    setGenState("loading");
+  // カレンダー日付クリックで開くローカルポップアップ
+  const [dayPopup, setDayPopup] = React.useState<string | null>(null);
+
+  // 計画 AI 生成(今月の活動から来月計画たたき台を生成)
+  const [generatingPlan, setGeneratingPlan] = React.useState(false);
+  async function generatePlan() {
+    if (generatingPlan) return;
+    setGeneratingPlan(true);
     try {
-      const r = await apiPost<{ markdown: string }>("/api/ai/monthly-report", { userId: "m1", ym });
-      setGenerated(r.markdown);
-      setGenState("idle");
+      const r = await apiPost<{ reply: string }>("/api/ai/consult", {
+        context: "polish-memo",
+        payload: { current: plan || `【${ym}月の活動まとめから来月の計画を作成してください】` },
+      });
+      setPlan(r.reply.trim());
     } catch {
-      setGenState("error");
+      /* noop */
+    } finally {
+      setGeneratingPlan(false);
     }
   }
 
@@ -1524,37 +1643,22 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
     cells.push({ day: d, date: dateStr, logs: byDate[dateStr] ?? [] });
   }
 
-  // 来月計画(フォーム化):継続 / 新規 / 振り返り の 3 セクション
-  // 既存 plan(自由テキスト)から見出し付きで分割、保存時に再結合
-  const parsed = React.useMemo(() => parsePlan(plan), [plan]);
-  const [planForm, setPlanForm] = React.useState(parsed);
-  React.useEffect(() => setPlanForm(parsePlan(plan)), [plan]);
-  function commitPlan(next: typeof planForm) {
-    setPlanForm(next);
-    setPlan(formatPlan(next));
-  }
-
-  // 計画ブラッシュアップ(フォーム全体を AI で清書 → プレビュー)
-  const [polishingPlan, setPolishingPlan] = React.useState(false);
-  const [polishedPlan, setPolishedPlan] = React.useState<string | null>(null);
-  async function brushUpPlan() {
-    if (polishingPlan) return;
-    setPolishingPlan(true);
-    try {
-      const r = await apiPost<{ reply: string }>("/api/ai/consult", {
-        context: "polish-memo",
-        payload: { current: formatPlan(planForm) },
-      });
-      setPolishedPlan(r.reply.trim());
-    } catch {
-      setPolishedPlan("(AI 接続失敗。少し時間をおいて再度お試しください)");
-    } finally {
-      setPolishingPlan(false);
-    }
-  }
-
   return (
-    <>
+    <div className="relative flex flex-1 flex-col overflow-hidden">
+      {/* カレンダー日クリックで開くローカルポップアップ(背景に月報詳細が見える) */}
+      {dayPopup && (
+        <div
+          className="absolute inset-0 z-10 flex items-end justify-center bg-slate-900/30"
+          onClick={() => setDayPopup(null)}
+        >
+          <div
+            className="flex max-h-[70vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ReportDaySheet date={dayPopup} onClose={() => setDayPopup(null)} depth={0} />
+          </div>
+        </div>
+      )}
       <SheetHeader title={report.yearMonth} onClose={onClose} />
       <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
         <div className="flex flex-wrap items-center gap-2">
@@ -1586,7 +1690,7 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
               c === null ? <div key={i} /> : (
                 <button
                   key={i}
-                  onClick={() => c.logs.length > 0 && pushSheet({ kind: "report-day", date: c.date })}
+                  onClick={() => c.logs.length > 0 && setDayPopup(c.date)}
                   disabled={c.logs.length === 0}
                   className={`relative aspect-square rounded-lg border p-1 text-left text-[10px] transition ${c.logs.length > 0 ? "border-slate-300 bg-white hover:border-slate-900 hover:shadow" : "border-slate-100 bg-slate-50/40 text-slate-300"}`}
                 >
@@ -1711,96 +1815,33 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
           </div>
         )}
 
-        {/* 来月の計画(フォーム化:継続 / 新規 / 振り返り + AI ブラッシュアップ)*/}
+        {/* 来月の計画 */}
         <Label
           right={
             <button
               type="button"
-              onClick={brushUpPlan}
-              disabled={polishingPlan}
-              title="3 セクションをまとめて 5W1H に沿った言い回しに整えます"
-              className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-900 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+              onClick={generatePlan}
+              disabled={generatingPlan}
+              className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-900 hover:bg-slate-50 disabled:text-slate-300"
             >
               <Sparkles className="h-3 w-3" />
-              {polishingPlan ? "清書中…" : "計画をブラッシュアップ"}
+              {generatingPlan ? "考え中…" : "AI に起こしてもらう"}
             </button>
           }
         >
           来月の計画
         </Label>
-        <p className="mt-1 text-[10px] text-slate-400">3 つの区分で書き分けると、役場が読みやすくなります。</p>
-
-        <div className="mt-2 space-y-2">
-          <PlanField
-            label="継続"
-            sub="進行中のプロジェクトのマイルストーン"
-            value={planForm.continueText}
-            placeholder="例:空き家バンク登録 累計 15 件を目標"
-            onChange={(v) => commitPlan({ ...planForm, continueText: v })}
-          />
-          <PlanField
-            label="新規"
-            sub="今月の手応えから次に試したい施策"
-            value={planForm.newText}
-            placeholder="例:移住者向け体験ツアー 初回開催(7/27)"
-            onChange={(v) => commitPlan({ ...planForm, newText: v })}
-          />
-          <PlanField
-            label="振り返り"
-            sub="中間レビュー / KPI 確認の予定"
-            value={planForm.reviewText}
-            placeholder="例:7 月末に Q2 振り返り 1on1(担当課)"
-            onChange={(v) => commitPlan({ ...planForm, reviewText: v })}
-          />
-        </div>
-
-        {polishedPlan && (
-          <div className="mt-3 rounded-xl border border-slate-300 bg-slate-50/60 p-3">
-            <div className="flex items-center justify-between">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">AI 清書プレビュー</div>
-              <div className="flex items-center gap-1.5">
-                <button onClick={() => setPolishedPlan(null)} className="rounded-full border border-slate-300 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 hover:border-slate-500">やめる</button>
-                <button onClick={brushUpPlan} disabled={polishingPlan} className="rounded-full border border-slate-300 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 hover:border-slate-500">もう一度</button>
-                <button
-                  onClick={() => {
-                    commitPlan(parsePlan(polishedPlan));
-                    setPolishedPlan(null);
-                  }}
-                  className="inline-flex items-center gap-0.5 rounded-full bg-slate-900 px-2.5 py-0.5 text-[10px] font-bold text-white hover:bg-slate-800"
-                >
-                  <Check className="h-3 w-3" />
-                  採用する
-                </button>
-              </div>
-            </div>
-            <pre className="mt-2 whitespace-pre-wrap font-sans text-[12.5px] leading-relaxed text-slate-800">{polishedPlan}</pre>
-            <p className="mt-1 text-[9px] text-slate-400">※ 採用すると 3 区分のフォームを上書きします。事実は変えていません。</p>
-          </div>
-        )}
-
-        <div className="mt-4 text-[10px] text-slate-400">※ AI が日々の活動から自動でまとめます。提出前に確認してください。</div>
+        <textarea
+          rows={5}
+          value={plan}
+          onChange={(e) => setPlan(e.target.value)}
+          placeholder={"完了したこと・継続すること・新しく始めることを自由に書いてください\n\n「AI に起こしてもらう」で今月の活動からたたき台を生成できます"}
+          className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-slate-50/40 px-3 py-2.5 text-[13px] text-slate-800 outline-none focus:border-slate-400"
+        />
       </div>
 
-      {(generated || genState === "loading" || genState === "error") && (
-        <div className="mx-auto w-full max-w-2xl px-6 pb-6">
-          <Label>AI 生成 月報(下書き)</Label>
-          <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/40 p-3 text-[12px] leading-relaxed text-slate-800">
-            {genState === "loading" && <p className="text-slate-500">活動ログから生成中…</p>}
-            {genState === "error" && <p className="text-rose-700">生成に失敗しました。AI プロバイダ(ollama/anthropic/mock)の設定を確認してください。</p>}
-            {generated && <pre className="whitespace-pre-wrap font-sans">{generated}</pre>}
-          </div>
-        </div>
-      )}
-
       <div className="border-t border-slate-200 px-5 py-3">
-        <div className="mx-auto flex max-w-2xl items-center justify-end gap-2">
-          <button
-            onClick={regenerate}
-            disabled={genState === "loading"}
-            className="rounded-full border border-slate-300 px-4 py-1.5 text-[12px] font-semibold text-slate-700 hover:border-slate-500 disabled:cursor-not-allowed disabled:text-slate-300"
-          >
-            {genState === "loading" ? "生成中…" : generated ? "再生成" : "AI 生成"}
-          </button>
+        <div className="mx-auto flex max-w-2xl items-center justify-end">
           {report.status === "draft" ? (
             <button className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-4 py-1.5 text-[12px] font-bold text-white hover:bg-slate-800">
               <Check className="h-3.5 w-3.5" />
@@ -1811,7 +1852,7 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
