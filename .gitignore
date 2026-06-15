@@ -41,3 +41,4 @@ Thumbs.db
 
 # local sqlite db
 .data/
+.claude/worktrees/
