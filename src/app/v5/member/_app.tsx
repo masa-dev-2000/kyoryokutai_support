@@ -233,7 +233,9 @@ type Sheet =
   | { kind: "consult"; context: ConsultContext; onAdopt?: (text: string) => void }
   | { kind: "topic-edit" }
   | { kind: "announcements" }
-  | { kind: "rules-panel" };
+  | { kind: "rules-panel" }
+  | { kind: "settings-menu" }
+  | { kind: "profile" };
 
 type TrendItem = { id: string; title: string; count: number };
 
@@ -409,7 +411,7 @@ export function MemberApp() {
   return (
     <AppCtx.Provider value={ctx}>
       <main className="flex h-screen flex-col bg-white text-slate-900">
-        <Header />
+        <Header onSettings={() => setSheets([{ kind: "settings-menu" }])} />
         <Tabs active={tab} onChange={setTab} unread={notices.length} />
 
         <div className="flex flex-1 flex-col overflow-y-auto px-6 pb-20">
@@ -430,7 +432,7 @@ export function MemberApp() {
 
 /* -------------------- Header / Tabs / Footer -------------------- */
 
-function Header() {
+function Header({ onSettings }: { onSettings: () => void }) {
   return (
     <header className="flex items-center justify-between border-b border-slate-100 px-5 py-2.5">
       <Link href="/v5" className="inline-flex items-center gap-0.5 text-[11px] text-slate-500 hover:text-slate-900">
@@ -438,7 +440,9 @@ function Header() {
         切替
       </Link>
       <div className="text-center text-[11px] text-slate-500">田中 あかり / 新温泉町</div>
-      <div className="w-10" />
+      <button onClick={onSettings} className="p-1 text-slate-500 hover:text-slate-900" aria-label="設定">
+        <SettingsIcon className="h-4 w-4" />
+      </button>
     </header>
   );
 }
@@ -620,7 +624,7 @@ function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) 
               <button
                 key={i}
                 onClick={() => onDayTap(c.date)}
-                className={`relative aspect-square rounded-lg border p-1 text-left text-[10px] transition ${c.logs.length > 0 ? "border-slate-300 bg-white hover:border-slate-900 hover:shadow" : "border-slate-100 bg-slate-50/40 text-slate-300 hover:border-slate-400 hover:bg-white"}`}
+                className={`relative aspect-square rounded-lg border p-1 text-left text-[10px] transition ${c.date === todayKey() ? "border-slate-900 bg-slate-50 ring-1 ring-slate-900" : c.logs.length > 0 ? "border-slate-300 bg-white hover:border-slate-900 hover:shadow" : "border-slate-100 bg-slate-50/40 text-slate-300 hover:border-slate-400 hover:bg-white"}`}
               >
                 <span className={`absolute left-1 top-0.5 font-bold ${c.logs.length > 0 ? "text-slate-700" : "text-slate-400"}`}>{c.day}</span>
                 {c.logs.length > 0 ? (
@@ -1065,6 +1069,8 @@ function SheetRoot() {
       {sheet.kind === "topic-edit" && <TopicEditSheet onClose={close} />}
       {sheet.kind === "announcements" && <AnnouncementsSheet onClose={close} />}
       {sheet.kind === "rules-panel" && <RulesPanelSheet onClose={close} />}
+      {sheet.kind === "settings-menu" && <SettingsMenuSheet onClose={close} />}
+      {sheet.kind === "profile" && <ProfileSheet onClose={close} />}
     </div>
   );
 }
@@ -1633,13 +1639,9 @@ function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () =>
 
   return (
     <>
-      <header className="flex items-center justify-between border-b border-slate-200 px-5 py-2.5">
-        <div className="text-[12px] font-bold text-slate-900">{formatDateShort(date)} の活動</div>
-        <button onClick={onClose} className="rounded-full p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-900" aria-label="閉じる">
-          <X className="h-4 w-4" />
-        </button>
-      </header>
-      <div className="flex-1 overflow-y-auto px-5 py-4">
+      <SheetHeader title={`${formatDateShort(date)} の活動`} onClose={onClose} backLabel={depth > 1 ? "カレンダー" : undefined} />
+      <div className="flex-1 overflow-y-auto">
+      <div className="mx-auto w-full max-w-2xl px-5 py-4">
         <div className="text-[11px] text-slate-500">
           {items.length} 件 ・ {totalHours} 時間
           {totalExpense > 0 && ` ・ 経費 ¥${totalExpense.toLocaleString()}`}
@@ -1695,13 +1697,7 @@ function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () =>
           この日の活動を追加
         </button>
 
-        {depth > 1 && (
-          <div className="mt-4 text-center">
-            <button onClick={onClose} className="text-[11px] text-slate-500 hover:underline">
-              カレンダーに戻る
-            </button>
-          </div>
-        )}
+      </div>
       </div>
     </>
   );
@@ -1833,15 +1829,7 @@ function ExpenseCreateSheet({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <SheetHeader
-        title="経費を申請(事前)"
-        onClose={onClose}
-        right={
-          <button onClick={submit} disabled={!canSubmit} className="text-[11px] font-bold text-slate-900 hover:underline disabled:cursor-not-allowed disabled:text-slate-300">
-            申請
-          </button>
-        }
-      />
+      <SheetHeader title="経費を申請(事前)" onClose={onClose} />
       <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
         <div className="flex items-center justify-between gap-2">
           <div className="text-[11px] text-slate-500">事前申請(支出前)</div>
@@ -1921,6 +1909,14 @@ function ExpenseCreateSheet({ onClose }: { onClose: () => void }) {
           <br />
           申請後に「これ通るかな?」を AI と過去事例で確認します。用途に迷ったら上の「用途を相談」を。
         </div>
+
+        <button
+          onClick={submit}
+          disabled={!canSubmit}
+          className="mt-6 w-full rounded-xl bg-slate-900 py-3 text-[13px] font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+        >
+          {saving ? "申請中…" : "申請する"}
+        </button>
       </div>
     </>
   );
@@ -2032,6 +2028,95 @@ function CaseDetailSheet({ item, onClose }: { item: CaseItem; onClose: () => voi
             自分の地域に翻案
           </button>
         </div>
+      </div>
+    </>
+  );
+}
+
+/* -------- 設定メニューシート -------- */
+
+function SettingsMenuSheet({ onClose }: { onClose: () => void }) {
+  const { pushSheet } = useApp();
+  const items = [
+    { label: "プロフィール", desc: "名前・自治体・自己紹介を編集", icon: <SettingsIcon className="h-4 w-4" />, action: () => pushSheet({ kind: "profile" }) },
+    { label: "活動内容を編集", desc: "活動テーマのカスタマイズ", icon: <Pencil className="h-4 w-4" />, action: () => pushSheet({ kind: "topic-edit" }) },
+  ];
+  return (
+    <>
+      <SheetHeader title="設定" onClose={onClose} />
+      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+        <ul className="space-y-2">
+          {items.map((item) => (
+            <li key={item.label}>
+              <button
+                onClick={item.action}
+                className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-slate-900 hover:bg-slate-50/60"
+              >
+                <span className="text-slate-400">{item.icon}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-semibold text-slate-900">{item.label}</div>
+                  <div className="text-[11px] text-slate-500">{item.desc}</div>
+                </div>
+                <ArrowRight className="h-3.5 w-3.5 text-slate-300" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </>
+  );
+}
+
+/* -------- プロフィールシート -------- */
+
+function ProfileSheet({ onClose }: { onClose: () => void }) {
+  const [name, setName] = React.useState("田中 あかり");
+  const [municipality, setMunicipality] = React.useState("新温泉町");
+  const [startDate, setStartDate] = React.useState("2026-04-01");
+  const [bio, setBio] = React.useState("");
+  const [goal, setGoal] = React.useState("");
+
+  return (
+    <>
+      <SheetHeader title="プロフィール" onClose={onClose} />
+      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+        <div className="flex flex-col items-center gap-2 pb-6 border-b border-slate-100">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-[28px]">
+            🧑‍🌾
+          </div>
+          <div className="text-[15px] font-bold text-slate-900">{name || "—"}</div>
+          <div className="text-[12px] text-slate-500">{municipality} 地域おこし協力隊</div>
+        </div>
+
+        <div className="mt-5 space-y-4">
+          <div>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">名前</label>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">自治体</label>
+            <input type="text" value={municipality} onChange={(e) => setMunicipality(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">着任日</label>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">自己紹介</label>
+            <textarea rows={3} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="活動の背景や得意なことを書いてみましょう" className="mt-1 w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">目標</label>
+            <textarea rows={3} value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="任期中に達成したいことを書いてみましょう" className="mt-1 w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
+          </div>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="mt-8 w-full rounded-xl bg-slate-900 py-3 text-[13px] font-bold text-white transition hover:bg-slate-800"
+        >
+          保存
+        </button>
       </div>
     </>
   );
