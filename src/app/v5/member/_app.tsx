@@ -7,7 +7,6 @@ import {
   Search,
   ChevronLeft,
   Sparkles,
-  Bell,
   Pin,
   X,
   ArrowRight,
@@ -43,8 +42,8 @@ import {
    - ヘッダー相談ボタンを「相談メニュー」化(カテゴリ別エントリ)
    ============================================================ */
 
-// ADR-020: 日報タブを廃止し「月報・経費・事例」の3タブに統合
-type Tab = "report" | "expense" | "case";
+// ADR-020: 日報タブを廃止し「活動記録・経費・お知らせ・事例」の4タブに統合
+type Tab = "report" | "expense" | "announce" | "case";
 
 /* -------------------- 活動分類 -------------------- */
 
@@ -410,16 +409,14 @@ export function MemberApp() {
   return (
     <AppCtx.Provider value={ctx}>
       <main className="flex h-screen flex-col bg-white text-slate-900">
-        <Header
-          onBell={() => setSheets([{ kind: "announcements" }])}
-          unread={notices.length}
-        />
-        <Tabs active={tab} onChange={setTab} />
+        <Header />
+        <Tabs active={tab} onChange={setTab} unread={notices.length} />
 
         <div className="flex flex-1 flex-col overflow-y-auto px-6 pb-20">
           <div className="mx-auto w-full max-w-2xl flex-1 py-4">
             {tab === "report" && <ReportTab />}
             {tab === "expense" && <ExpenseTab />}
+            {tab === "announce" && <AnnounceTab />}
             {tab === "case" && <CaseTab />}
           </div>
         </div>
@@ -433,7 +430,7 @@ export function MemberApp() {
 
 /* -------------------- Header / Tabs / Footer -------------------- */
 
-function Header({ onBell, unread }: { onBell: () => void; unread: number }) {
+function Header() {
   return (
     <header className="flex items-center justify-between border-b border-slate-100 px-5 py-2.5">
       <Link href="/v5" className="inline-flex items-center gap-0.5 text-[11px] text-slate-500 hover:text-slate-900">
@@ -441,37 +438,31 @@ function Header({ onBell, unread }: { onBell: () => void; unread: number }) {
         切替
       </Link>
       <div className="text-center text-[11px] text-slate-500">田中 あかり / 新温泉町</div>
-      <button
-        onClick={onBell}
-        className="relative inline-flex items-center gap-1 text-[11px] text-slate-700 hover:text-slate-900"
-        title="お知らせ・ルール"
-        aria-label="お知らせを開く"
-      >
-        <Bell className="h-3.5 w-3.5" />
-        {unread > 0 && (
-          <span className="absolute -right-1.5 -top-1.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-rose-600 px-0.5 text-[8px] font-bold text-white">
-            {unread}
-          </span>
-        )}
-      </button>
+      <div className="w-10" />
     </header>
   );
 }
 
-function Tabs({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
+function Tabs({ active, onChange, unread }: { active: Tab; onChange: (t: Tab) => void; unread: number }) {
   return (
     <nav className="flex items-center justify-center gap-1 border-b border-slate-100 px-5 py-1.5">
-      <TabBtn label="月報" active={active === "report"} onClick={() => onChange("report")} />
+      <TabBtn label="活動記録" active={active === "report"} onClick={() => onChange("report")} />
       <TabBtn label="経費" active={active === "expense"} onClick={() => onChange("expense")} />
+      <TabBtn label="お知らせ" active={active === "announce"} onClick={() => onChange("announce")} badge={unread > 0 ? unread : undefined} />
       <TabBtn label="事例" active={active === "case"} onClick={() => onChange("case")} />
     </nav>
   );
 }
 
-function TabBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function TabBtn({ label, active, onClick, badge }: { label: string; active: boolean; onClick: () => void; badge?: number }) {
   return (
     <button onClick={onClick} className={`relative px-4 py-1.5 text-[12px] font-semibold transition ${active ? "text-slate-900" : "text-slate-500 hover:text-slate-700"}`}>
       {label}
+      {badge !== undefined && (
+        <span className="absolute -right-1 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-0.5 text-[9px] font-bold text-white">
+          {badge}
+        </span>
+      )}
       {active && <span className="absolute bottom-[-7px] left-1/2 h-[2px] w-6 -translate-x-1/2 bg-slate-900" />}
     </button>
   );
@@ -519,11 +510,8 @@ function formatDateShort(d: string) {
 
 // ADR-020: 月報タブをカレンダー起点に。日付タップで活動の閲覧/作成へ。
 function ReportTab() {
-  const { pushSheet, reports, logs } = useApp();
+  const { pushSheet, logs } = useApp();
   const [ym, setYm] = React.useState<string>(currentYm());
-
-  const monthReport = reports.find((r) => r.ym === ym);
-  const monthLogCount = logs.filter((l) => l.date.startsWith(ym)).length;
 
   // カレンダー日付タップ:記録があれば一覧、なければ当日含めて作成シート
   function onDayTap(date: string) {
@@ -535,8 +523,8 @@ function ReportTab() {
   return (
     <div className="relative">
       <div className="text-center">
-        <h1 className="text-3xl font-bold tracking-tight">月報</h1>
-        <p className="mt-1 text-[12px] text-slate-500">日付をタップして活動を記録 ・ AI が月報を自動生成</p>
+        <h1 className="text-3xl font-bold tracking-tight">活動記録</h1>
+        <p className="mt-1 text-[12px] text-slate-500">日付をタップして活動を記録・閲覧</p>
       </div>
 
       {/* 月セレクタ */}
@@ -565,35 +553,6 @@ function ReportTab() {
       {/* サマリー + カレンダー + グラフ */}
       <MonthOverview ym={ym} onDayTap={onDayTap} />
 
-      {/* この月の月報ドキュメント */}
-      <section className="mt-8">
-        <div className="mb-2 border-b border-slate-200 pb-1">
-          <h2 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">月報ドキュメント</h2>
-        </div>
-        {monthReport ? (
-          <button
-            onClick={() => pushSheet({ kind: "report-detail", report: monthReport })}
-            className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-left transition hover:border-slate-900 hover:bg-slate-50/60"
-          >
-            <FileText className="h-4 w-4 shrink-0 text-slate-400" />
-            <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-semibold text-slate-900">{monthReport.yearMonth} の月報</div>
-              <div className="mt-0.5 text-[11px] text-slate-500">{monthReport.statusLabel}</div>
-            </div>
-            <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${monthReport.status === "draft" ? "border-slate-300 bg-slate-50 text-slate-700" : monthReport.status === "submitted" ? "border-slate-300 bg-white text-slate-700" : "border-slate-300 bg-slate-900 text-white"}`}>
-              {monthReport.status === "draft" ? "下書き" : monthReport.status === "submitted" ? "提出済" : "承認済"}
-            </span>
-            <ArrowRight className="h-3 w-3 shrink-0 text-slate-300" />
-          </button>
-        ) : (
-          <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-5 text-center text-[12px] text-slate-500">
-            {monthLogCount === 0
-              ? "この月の活動記録がありません。日付をタップして記録を追加できます。"
-              : "この月の月報はまだ生成されていません。活動が貯まると AI が自動生成します。"}
-          </div>
-        )}
-      </section>
-
       {/* FAB: 当日の活動を追加(セカンダリ動線) */}
       <button
         onClick={() => pushSheet({ kind: "activity-create" })}
@@ -613,8 +572,6 @@ function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) 
 
   const totalHours = monthLogs.reduce((s, l) => s + l.hours, 0);
   const totalExpense = monthLogs.reduce((s, l) => s + (l.expense ?? 0), 0);
-  const totalCount = monthLogs.length;
-
   const byDate: Record<string, ActivityLog[]> = {};
   for (const l of monthLogs) (byDate[l.date] ??= []).push(l);
 
@@ -648,12 +605,6 @@ function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) 
 
   return (
     <div className="mt-4 text-left">
-      <div className="grid grid-cols-3 gap-2">
-        <SummaryCell icon={<FileText className="h-3.5 w-3.5" />} value={`${totalCount}`} label="活動件数" />
-        <SummaryCell icon={<Clock className="h-3.5 w-3.5" />} value={`${totalHours}`} label="活動時間" suffix="h" />
-        <SummaryCell icon={<Wallet className="h-3.5 w-3.5" />} value={`¥${(totalExpense / 1000).toFixed(0)}k`} label="経費使用" />
-      </div>
-
       {/* カレンダー(日付タップで活動の閲覧/作成) */}
       <div className="mt-5">
         <div className="flex items-baseline justify-between">
@@ -920,6 +871,47 @@ function statusClass(s: ExpenseRequest["status"]) {
     case "未精算": return "border-amber-200 bg-amber-50 text-amber-800";
     case "精算済": return "border-slate-300 bg-slate-900 text-white";
   }
+}
+
+/* -------------------- 3. お知らせタブ -------------------- */
+
+function AnnounceTab() {
+  const { notices, rules } = useApp();
+  const all = [...notices, ...rules].sort((a, b) => b.date.localeCompare(a.date));
+
+  if (all.length === 0) {
+    return (
+      <div className="py-16 text-center text-[13px] text-slate-400">
+        役場からのお知らせはまだありません
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-4 text-center">
+        <h1 className="text-3xl font-bold tracking-tight">お知らせ</h1>
+        <p className="mt-1 text-[12px] text-slate-500">役場・担当課からのお知らせ</p>
+      </div>
+      <ul className="space-y-2">
+        {all.map((n) => (
+          <li key={n.id} className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+            <div className="flex items-start gap-2">
+              {n.isPinned && <Pin className="mt-0.5 h-3 w-3 shrink-0 text-slate-500" />}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-slate-400">{n.date}</span>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] text-slate-500">{n.sender}</span>
+                </div>
+                <div className="mt-1 text-[13px] font-semibold text-slate-900">{n.title}</div>
+                {n.body && <div className="mt-1 text-[12px] text-slate-600 whitespace-pre-wrap">{n.body}</div>}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 /* -------------------- 4. 事例タブ(相談ボタン追加)-------------------- */
