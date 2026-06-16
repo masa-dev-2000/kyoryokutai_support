@@ -5,10 +5,10 @@ import { expandRoute } from "@/lib/workflow";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MUNI = "muni_shinonsen";
+const MUNI = process.env.NEXT_PUBLIC_DEMO_MUNI_ID ?? "10000000-0000-4000-8000-000000000001";
 
 export async function GET(req: Request) {
-  const userId = new URL(req.url).searchParams.get("userId") ?? "m1";
+  const userId = new URL(req.url).searchParams.get("userId") ?? process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-0000-4000-8000-000000000001";
   return ok(await getRepos().expenses.listByUser(userId));
 }
 
@@ -27,7 +27,7 @@ type CreateBody = {
 export async function POST(req: Request) {
   const b = await readJson<CreateBody>(req);
   const repos = getRepos();
-  const userId = b.userId ?? "m1";
+  const userId = b.userId ?? process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-0000-4000-8000-000000000001";
 
   // ADR-021: daily_log_id の解決 — 明示指定 > 当日 upsert
   let dailyLogId = b.dailyLogId;

@@ -5,10 +5,11 @@ import { expandRoute } from "@/lib/workflow";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MUNI = "muni_shinonsen";
+const MUNI = process.env.NEXT_PUBLIC_DEMO_MUNI_ID ?? "10000000-0000-4000-8000-000000000001";
+const DEFAULT_USER = process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-0000-4000-8000-000000000001";
 
 export async function GET(req: Request) {
-  const userId = new URL(req.url).searchParams.get("userId") ?? "m1";
+  const userId = new URL(req.url).searchParams.get("userId") ?? DEFAULT_USER;
   return ok(await getRepos().activityLogs.listByUser(userId));
 }
 
@@ -34,7 +35,7 @@ type CreateBody = {
 
 export async function POST(req: Request) {
   const b = await readJson<CreateBody>(req);
-  const userId = b.userId ?? "m1";
+  const userId = b.userId ?? DEFAULT_USER;
   const repos = getRepos();
 
   // 経費明細の合計を activity_logs.expense_amount に集約(月報集計の表示用キャッシュ)

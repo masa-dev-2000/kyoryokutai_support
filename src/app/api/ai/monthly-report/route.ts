@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 type Body = { userId?: string; ym?: string };
 
 export async function POST(req: Request) {
-  const { userId = "m1", ym } = await readJson<Body>(req);
+  const { userId = process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-0000-4000-8000-000000000001", ym } = await readJson<Body>(req);
   if (!ym) return bad("ym(YYYY-MM)が必要です");
 
   const logs = await getRepos().activityLogs.listForAI(userId, ym);

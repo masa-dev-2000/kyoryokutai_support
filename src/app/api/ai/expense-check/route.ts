@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 type Body = { title?: string; amount?: number; purpose?: string; municipalityId?: string };
 
 export async function POST(req: Request) {
-  const { title = "", amount, purpose = "", municipalityId = "muni_shinonsen" } = await readJson<Body>(req);
+  const { title = "", amount, purpose = "", municipalityId = process.env.NEXT_PUBLIC_DEMO_MUNI_ID ?? "10000000-0000-4000-8000-000000000001" } = await readJson<Body>(req);
   if (!purpose.trim()) return bad("purpose が必要です");
 
   // 簡易 RAG: 自治体ガイドラインを文脈に渡す(Year 2 で pgvector 化)

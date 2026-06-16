@@ -4,7 +4,7 @@ import { getRepos } from "@/lib/db/repositories";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MUNI = "muni_shinonsen";
+const MUNI = process.env.NEXT_PUBLIC_DEMO_MUNI_ID ?? "10000000-0000-4000-8000-000000000001";
 
 export async function GET(req: Request) {
   const sp = new URL(req.url).searchParams;

@@ -61,7 +61,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    await getRepos().consultations.log({ userId: body.userId ?? "m1", contextKind: body.context, input: cur, output: reply });
+    await getRepos().consultations.log({ userId: body.userId ?? process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-0000-4000-8000-000000000001", contextKind: body.context, input: cur, output: reply });
   } catch {
     /* ログ失敗は無視 */
   }

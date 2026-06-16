@@ -27,13 +27,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const updated = await repos.activityLogs.update(id, b);
   if (!updated) return bad("Not found", 404);
   // 同月に承認済み月報があれば「提出済」に差し戻す(ADR 設計)
-  await revertMonthlyReport(repos, b.userId ?? "m1", updated.date);
+  await revertMonthlyReport(repos, b.userId ?? process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-0000-4000-8000-000000000001", updated.date);
   return ok(updated);
 }
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const userId = new URL(req.url).searchParams.get("userId") ?? "m1";
+  const userId = new URL(req.url).searchParams.get("userId") ?? process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-0000-4000-8000-000000000001";
   const repos = getRepos();
   // 削除前に date を取得して差し戻し判定
   const logs = await repos.activityLogs.listByUser(userId);
