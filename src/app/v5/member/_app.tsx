@@ -1654,34 +1654,36 @@ function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () =>
         </div>
         <ul className="mt-3 space-y-2">
           {items.map((l) => (
-            <li key={l.id} className="rounded-xl border border-slate-200 bg-white p-3">
-              <div className="flex items-center gap-2">
-                <span className="rounded-full border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-700">{l.type}</span>
-                <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{l.topic}</span>
-                <span className="ml-auto inline-flex items-center gap-0.5 text-[10px] text-slate-500">
-                  <Clock className="h-3 w-3" />
-                  {l.hours}h
-                </span>
-                {typeof l.distanceKm === "number" && (
-                  <span className="text-[10px] text-slate-500">{l.distanceKm}km</span>
-                )}
-              </div>
-              <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-slate-800">{l.body}</p>
-              <div className="mt-2 flex items-center justify-between">
-                {l.expense ? (
-                  <div className="inline-flex items-center gap-1 text-[11px] text-slate-600">
-                    <Wallet className="h-3 w-3" />
-                    ¥{l.expense.toLocaleString()}
-                  </div>
-                ) : <span />}
-                <button
-                  onClick={() => pushSheet({ kind: "activity-create", editing: l })}
-                  className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:border-slate-900 hover:bg-slate-50"
-                >
-                  <Pencil className="h-3 w-3" />
-                  編集
-                </button>
-              </div>
+            <li key={l.id}>
+              <button
+                onClick={() => pushSheet({ kind: "activity-create", editing: l })}
+                className="group w-full rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-slate-900 hover:bg-slate-50/60"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-700">{l.type}</span>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{l.topic}</span>
+                  <span className="ml-auto inline-flex items-center gap-0.5 text-[10px] text-slate-500">
+                    <Clock className="h-3 w-3" />
+                    {l.hours}h
+                  </span>
+                  {typeof l.distanceKm === "number" && (
+                    <span className="text-[10px] text-slate-500">{l.distanceKm}km</span>
+                  )}
+                </div>
+                <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-slate-800">{l.body}</p>
+                <div className="mt-2 flex items-center justify-between">
+                  {l.expense ? (
+                    <div className="inline-flex items-center gap-1 text-[11px] text-slate-600">
+                      <Wallet className="h-3 w-3" />
+                      ¥{l.expense.toLocaleString()}
+                    </div>
+                  ) : <span />}
+                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400 transition group-hover:text-slate-700">
+                    <Pencil className="h-3 w-3" />
+                    タップで編集
+                  </span>
+                </div>
+              </button>
             </li>
           ))}
         </ul>
