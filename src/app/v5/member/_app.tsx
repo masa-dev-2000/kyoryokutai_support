@@ -423,7 +423,7 @@ export function MemberApp() {
           </div>
         </div>
 
-        <Footer onTopicEdit={() => setSheets([{ kind: "topic-edit" }])} />
+        <Footer />
         <SheetRoot />
       </main>
     </AppCtx.Provider>
@@ -472,14 +472,10 @@ function TabBtn({ label, active, onClick, badge }: { label: string; active: bool
   );
 }
 
-function Footer({ onTopicEdit }: { onTopicEdit: () => void }) {
+function Footer() {
   return (
-    <footer className="flex items-center justify-between border-t border-slate-100 px-5 py-2 text-[10px] text-slate-400">
-      <span>地域おこし協力隊サポートシステム ・ v5 lab</span>
-      <button onClick={onTopicEdit} className="inline-flex items-center gap-0.5 text-slate-500 hover:text-slate-900">
-        <SettingsIcon className="h-3 w-3" />
-        活動内容を編集
-      </button>
+    <footer className="border-t border-slate-100 px-5 py-2 text-center text-[10px] text-slate-400">
+      地域おこし協力隊サポートシステム ・ v5 lab
     </footer>
   );
 }
