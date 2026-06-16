@@ -366,6 +366,12 @@ export const sqliteRepos: Repos = {
       );
       return mapNotice(all("SELECT a.*, 0 AS read_count FROM announcements a WHERE a.id=?", [id])[0]);
     },
+    async markRead(announcementId, userId) {
+      run(
+        `INSERT OR IGNORE INTO announcement_reads (announcement_id, user_id) VALUES (?, ?)`,
+        [announcementId, userId]
+      );
+    },
   },
 
   cases: {

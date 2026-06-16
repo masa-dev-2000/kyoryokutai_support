@@ -605,6 +605,11 @@ export const supabaseRepos: Repos = {
         .single();
       return mapNotice({ ...data!, read_count: 0 });
     },
+    async markRead(announcementId, userId) {
+      await supabase()
+        .from("announcement_reads")
+        .upsert({ announcement_id: announcementId, user_id: userId }, { onConflict: "announcement_id,user_id", ignoreDuplicates: true });
+    },
   },
 
   cases: {

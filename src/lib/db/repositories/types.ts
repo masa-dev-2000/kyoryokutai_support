@@ -171,6 +171,7 @@ export interface Repos {
       body: string;
       targets?: number;
     }): Promise<NoticeDTO>;
+    markRead(announcementId: string, userId: string): Promise<void>;
   };
   cases: {
     listWithTrend(): Promise<{ cases: CaseDTO[]; trend: TrendDTO[] }>;

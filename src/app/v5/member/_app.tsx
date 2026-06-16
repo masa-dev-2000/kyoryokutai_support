@@ -273,7 +273,8 @@ type Ctx = {
   setPlan: (p: string) => void;
 };
 
-const MEMBER_ID = "m1";
+// デモユーザー UUID(Supabase seed migration 012 で投入済み)
+const MEMBER_ID = process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-0000-4000-8000-000000000001";
 
 const AppCtx = React.createContext<Ctx | null>(null);
 const useApp = () => {
@@ -877,7 +878,14 @@ function statusClass(s: ExpenseRequest["status"]) {
 
 function AnnounceTab() {
   const { notices, rules } = useApp();
+  const [readIds, setReadIds] = React.useState<Set<string>>(new Set());
   const all = [...notices, ...rules].sort((a, b) => b.date.localeCompare(a.date));
+
+  const handleRead = async (id: string) => {
+    if (readIds.has(id)) return;
+    setReadIds((s) => new Set([...s, id]));
+    await apiPost(`/api/announcements/${id}/read`, { userId: MEMBER_ID });
+  };
 
   if (all.length === 0) {
     return (
@@ -895,13 +903,20 @@ function AnnounceTab() {
       </div>
       <ul className="space-y-2">
         {all.map((n) => (
-          <li key={n.id} className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+          <li
+            key={n.id}
+            className="rounded-xl border border-slate-200 bg-white px-4 py-3 cursor-pointer active:bg-slate-50"
+            onClick={() => handleRead(n.id)}
+          >
             <div className="flex items-start gap-2">
               {n.isPinned && <Pin className="mt-0.5 h-3 w-3 shrink-0 text-slate-500" />}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] text-slate-400">{n.date}</span>
                   <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] text-slate-500">{n.sender}</span>
+                  {!readIds.has(n.id) && (
+                    <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                  )}
                 </div>
                 <div className="mt-1 text-[13px] font-semibold text-slate-900">{n.title}</div>
                 {n.body && <div className="mt-1 text-[12px] text-slate-600 whitespace-pre-wrap">{n.body}</div>}
