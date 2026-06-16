@@ -271,10 +271,10 @@ type Ctx = {
   closeAllSheets: () => void;
   plan: string;
   setPlan: (p: string) => void;
+  memberId: string;
 };
 
-// デモユーザー UUID(Supabase seed migration 012 で投入済み)
-const MEMBER_ID = process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-0000-4000-8000-000000000001";
+const DEMO_MEMBER_ID = process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-0000-4000-8000-000000000001";
 
 const AppCtx = React.createContext<Ctx | null>(null);
 const useApp = () => {
@@ -285,6 +285,8 @@ const useApp = () => {
 
 export function MemberApp() {
   const [tab, setTab] = React.useState<Tab>("report");
+  const [memberId, setMemberId] = React.useState(DEMO_MEMBER_ID);
+  const [memberName, setMemberName] = React.useState<string | null>(null);
   // 初期値はシード(即描画)→ マウント後にバックエンドの実データで置換
   const [logs, setLogs] = React.useState<ActivityLog[]>(seedLogs);
   const [topics, setTopics] = React.useState<string[]>(DEFAULT_TOPICS);
@@ -299,16 +301,28 @@ export function MemberApp() {
     "・夏祭り当日の運営(7/14)\n・移住者向け体験ツアー初回開催(7/27)\n・空き家バンク累計 15 件を目標"
   );
 
-  // バックエンドから初期データ取得(SQLite + API Routes)
+  // セッションからログインユーザーの app userId を取得
+  React.useEffect(() => {
+    apiGet<{ authenticated: boolean; userId?: string; name?: string }>("/api/auth/me")
+      .then((me) => {
+        if (me.authenticated && me.userId) {
+          setMemberId(me.userId);
+          setMemberName(me.name ?? null);
+        }
+      })
+      .catch(() => { /* 未ログイン or ネットワークエラー → デモ UUID のまま */ });
+  }, []);
+
+  // バックエンドから初期データ取得(Supabase + API Routes)
   React.useEffect(() => {
     let alive = true;
     (async () => {
       try {
         const [lg, tp, ex, rp, cs, ns, rl] = await Promise.all([
-          apiGet<ActivityLog[]>(`/api/activity-logs?userId=${MEMBER_ID}`),
-          apiGet<string[]>(`/api/topics?userId=${MEMBER_ID}`),
-          apiGet<ExpenseRequest[]>(`/api/expenses?userId=${MEMBER_ID}`),
-          apiGet<Report[]>(`/api/monthly-reports?userId=${MEMBER_ID}`),
+          apiGet<ActivityLog[]>(`/api/activity-logs?userId=${memberId}`),
+          apiGet<string[]>(`/api/topics?userId=${memberId}`),
+          apiGet<ExpenseRequest[]>(`/api/expenses?userId=${memberId}`),
+          apiGet<Report[]>(`/api/monthly-reports?userId=${memberId}`),
           apiGet<{ cases: CaseItem[]; trend: TrendItem[] }>(`/api/cases`),
           apiGet<Notice[]>(`/api/announcements`),
           apiGet<Notice[]>(`/api/announcements?kinds=rule,qa`),
@@ -329,7 +343,7 @@ export function MemberApp() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [memberId]);
 
   const ctx: Ctx = {
     logs,
@@ -337,7 +351,7 @@ export function MemberApp() {
       // 経費明細は receiptDataUrl(クライアント表示専用)を落として送る
       const { expenses, ...rest } = l;
       const payload = {
-        userId: MEMBER_ID,
+        userId: memberId,
         ...rest,
         ...(expenses && expenses.length > 0
           ? {
@@ -355,41 +369,41 @@ export function MemberApp() {
       if (expenses && expenses.length > 0) {
         // 同時登録した経費を経費一覧にも反映(取り直し)
         try {
-          const ex = await apiGet<ExpenseRequest[]>(`/api/expenses?userId=${MEMBER_ID}`);
+          const ex = await apiGet<ExpenseRequest[]>(`/api/expenses?userId=${memberId}`);
           setExpenses(ex);
         } catch { /* noop */ }
       }
     },
     updateLog: async (id, patch) => {
-      const updated = await apiPatch<ActivityLog>(`/api/activity-logs/${id}`, { ...patch, userId: MEMBER_ID });
+      const updated = await apiPatch<ActivityLog>(`/api/activity-logs/${id}`, { ...patch, userId: memberId });
       setLogs((ls) => ls.map((l) => (l.id === id ? updated : l)));
       // 同月の月報が差し戻された可能性があるため再取得
       try {
-        const rp = await apiGet<Report[]>(`/api/monthly-reports?userId=${MEMBER_ID}`);
+        const rp = await apiGet<Report[]>(`/api/monthly-reports?userId=${memberId}`);
         setReports(rp);
       } catch { /* noop */ }
     },
     deleteLog: async (id) => {
-      await apiDelete<null>(`/api/activity-logs/${id}?userId=${MEMBER_ID}`);
+      await apiDelete<null>(`/api/activity-logs/${id}?userId=${memberId}`);
       setLogs((ls) => ls.filter((l) => l.id !== id));
       // 同月の月報が差し戻された可能性があるため再取得
       try {
-        const rp = await apiGet<Report[]>(`/api/monthly-reports?userId=${MEMBER_ID}`);
+        const rp = await apiGet<Report[]>(`/api/monthly-reports?userId=${memberId}`);
         setReports(rp);
       } catch { /* noop */ }
     },
     topics,
     addTopic: async (t) => {
-      const next = await apiPost<string[]>("/api/topics", { userId: MEMBER_ID, name: t });
+      const next = await apiPost<string[]>("/api/topics", { userId: memberId, name: t });
       setTopics(next);
     },
     removeTopic: async (t) => {
-      const next = await apiDelete<string[]>(`/api/topics?userId=${MEMBER_ID}&name=${encodeURIComponent(t)}`);
+      const next = await apiDelete<string[]>(`/api/topics?userId=${memberId}&name=${encodeURIComponent(t)}`);
       setTopics(next);
     },
     expenses,
     addExpense: async (e) => {
-      const created = await apiPost<ExpenseRequest>("/api/expenses", { userId: MEMBER_ID, ...e });
+      const created = await apiPost<ExpenseRequest>("/api/expenses", { userId: memberId, ...e });
       setExpenses((es) => [created, ...es]);
     },
     markSettled: async (id) => {
@@ -407,12 +421,13 @@ export function MemberApp() {
     closeAllSheets: () => setSheets([]),
     plan,
     setPlan,
+    memberId,
   };
 
   return (
     <AppCtx.Provider value={ctx}>
       <main className="flex h-screen flex-col bg-white text-slate-900">
-        <Header onSettings={() => setSheets([{ kind: "settings-menu" }])} />
+        <Header onSettings={() => setSheets([{ kind: "settings-menu" }])} userName={memberName} />
         <Tabs active={tab} onChange={setTab} unread={notices.length} />
 
         <div className="flex flex-1 flex-col overflow-y-auto px-6 pb-20">
@@ -433,17 +448,30 @@ export function MemberApp() {
 
 /* -------------------- Header / Tabs / Footer -------------------- */
 
-function Header({ onSettings }: { onSettings: () => void }) {
+function Header({ onSettings, userName }: { onSettings: () => void; userName?: string | null }) {
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    location.href = "/v5/login";
+  }
   return (
     <header className="flex items-center justify-between border-b border-slate-100 px-5 py-2.5">
       <Link href="/v5" className="inline-flex items-center gap-0.5 text-[11px] text-slate-500 hover:text-slate-900">
         <ChevronLeft className="h-3 w-3" />
         切替
       </Link>
-      <div className="text-center text-[11px] text-slate-500">田中 あかり / 新温泉町</div>
-      <button onClick={onSettings} className="p-1 text-slate-500 hover:text-slate-900" aria-label="設定">
-        <SettingsIcon className="h-4 w-4" />
-      </button>
+      <div className="text-center text-[11px] text-slate-500">
+        {userName ?? "田中 さくら"} / 新温泉町
+      </div>
+      <div className="flex items-center gap-1">
+        <button onClick={onSettings} className="p-1 text-slate-500 hover:text-slate-900" aria-label="設定">
+          <SettingsIcon className="h-4 w-4" />
+        </button>
+        <button onClick={handleLogout} className="p-1 text-slate-400 hover:text-slate-700" aria-label="ログアウト" title="ログアウト">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+        </button>
+      </div>
     </header>
   );
 }
@@ -877,14 +905,14 @@ function statusClass(s: ExpenseRequest["status"]) {
 /* -------------------- 3. お知らせタブ -------------------- */
 
 function AnnounceTab() {
-  const { notices, rules } = useApp();
+  const { notices, rules, memberId } = useApp();
   const [readIds, setReadIds] = React.useState<Set<string>>(new Set());
   const all = [...notices, ...rules].sort((a, b) => b.date.localeCompare(a.date));
 
   const handleRead = async (id: string) => {
     if (readIds.has(id)) return;
     setReadIds((s) => new Set([...s, id]));
-    await apiPost(`/api/announcements/${id}/read`, { userId: MEMBER_ID });
+    await apiPost(`/api/announcements/${id}/read`, { userId: memberId });
   };
 
   if (all.length === 0) {
