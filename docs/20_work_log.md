@@ -64,3 +64,44 @@
 
 ### 関連
 - Issue #35(open)、#33・#34・#36・#37(クローズ済)
+
+---
+
+## 2026-06-16(続2)
+
+### 完了
+- **Supabase 接続 + デモシードデータ整備**
+  - `supabase/migrations/014_demo_activity_logs.sql` 相当を直接 Supabase に適用
+    - `daily_logs` 2件(6/10・6/12)、`activity_logs` 3件(調査・ミーティング・イベント準備)、`expenses` 1件(現地調査交通費 ¥2,400)
+  - Supabase でのテーブルスキーマ確認: `expenses.amount` → `amount_requested`、`municipality_id NOT NULL` に対応
+- **全 API ルートの Demo ID 統一**
+  - `"m1"` / `"muni_shinonsen"` のハードコードを全廃
+  - `process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-..."` / `NEXT_PUBLIC_DEMO_MUNI_ID ?? "10000000-..."` に置換(11ファイル)
+- **動作確認(Vercel)**
+  - `/api/health` → `db.users=3`(Supabase ✅)
+  - `/api/announcements` → 2件取得 ✅
+  - `/api/cases` → 3件取得 ✅
+  - `/api/expenses` → 1件取得 ✅
+  - `/api/activity-logs` → Supabase DB に3件確認 ✅
+
+### 変更ファイル
+- `src/app/api/activity-logs/route.ts`: MUNI / DEFAULT_USER を env var 化
+- `src/app/api/activity-logs/[id]/route.ts`: userId fallback を env var 化
+- `src/app/api/expenses/route.ts`: MUNI / userId fallback を env var 化
+- `src/app/api/announcements/route.ts`: MUNI を env var 化
+- `src/app/api/approvals/route.ts`: MUNI を env var 化
+- `src/app/api/daily-logs/route.ts`: userId fallback を env var 化
+- `src/app/api/monthly-reports/route.ts`: userId fallback を env var 化
+- `src/app/api/topics/route.ts`: userId fallback を env var 化
+- `src/app/api/ai/monthly-report/route.ts`: userId fallback を env var 化
+- `src/app/api/ai/consult/route.ts`: userId fallback を env var 化
+- `src/app/api/ai/expense-check/route.ts`: municipalityId fallback を env var 化
+
+### 次のアクション
+- ANTHROPIC_API_KEY を Vercel に設定 → AI 機能(月報生成・経費チェック・AI 壁打ち)を有効化
+- `/v5/member` の UI 実機確認(活動記録タブにデータが表示されるか)
+- Issue #35: ReportDaySheet レイアウト修正
+- 役場側月報ドキュメント生成 UI(ADR-022 / Year 1)
+
+### 関連
+- Issue #35(open)
