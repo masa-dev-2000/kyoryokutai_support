@@ -128,12 +128,16 @@ const seedReports: Report[] = [
   { id: "r-2026-04", yearMonth: "2026 年 4 月", ym: "2026-04", status: "approved", statusLabel: "役場承認 4/30" },
 ];
 
+// ADR-021: 経費カテゴリ(活動費・備品・通信費 等)。活動に紐づかない経費も第一級で扱う。
+const EXPENSE_CATEGORIES = ["活動費", "旅費", "備品", "消耗品", "通信費", "謝金", "その他"];
+
 type ExpenseRequest = {
   id: string;
   title: string;
   amount: number;
   purpose: string;
   status: "申請中" | "承認" | "差戻し" | "未精算" | "精算済";
+  category?: string;
   aiNote: string;
   citation: { source: string; quote: string };
   createdAt: string;
@@ -871,9 +875,12 @@ function ExpenseTab() {
                 >
                   <Receipt className="h-4 w-4 shrink-0 text-slate-400" />
                   <div className="min-w-0 flex-1 px-1">
-                    <div className="text-[13px] font-semibold text-slate-900">
-                      {e.title}
-                      <span className="ml-1.5 text-[11px] font-normal text-slate-500">¥{e.amount.toLocaleString()}</span>
+                    <div className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-900">
+                      {e.category && (
+                        <span className="shrink-0 rounded-sm border border-slate-200 bg-slate-50 px-1 text-[10px] font-semibold text-slate-600">{e.category}</span>
+                      )}
+                      <span className="truncate">{e.title}</span>
+                      <span className="ml-0.5 shrink-0 text-[11px] font-normal text-slate-500">¥{e.amount.toLocaleString()}</span>
                     </div>
                     <div className="mt-0.5 truncate text-[11px] text-slate-500">{e.purpose}</div>
                   </div>
@@ -1814,6 +1821,7 @@ function ExpenseCreateSheet({ onClose }: { onClose: () => void }) {
   const [title, setTitle] = React.useState("");
   const [amount, setAmount] = React.useState("");
   const [purpose, setPurpose] = React.useState("");
+  const [category, setCategory] = React.useState<string>(EXPENSE_CATEGORIES[0]);
   const [saving, setSaving] = React.useState(false);
   const amountNum = parseInt(amount.replace(/[^0-9]/g, ""), 10);
   const canSubmit = !!title.trim() && amountNum > 0 && purpose.trim().length >= 5 && !saving;
@@ -1822,7 +1830,7 @@ function ExpenseCreateSheet({ onClose }: { onClose: () => void }) {
     if (!canSubmit) return;
     setSaving(true);
     try {
-      await addExpense({ title: title.trim(), amount: amountNum, purpose: purpose.trim(), status: "申請中" });
+      await addExpense({ title: title.trim(), amount: amountNum, purpose: purpose.trim(), status: "申請中", category });
       onClose();
     } catch {
       setSaving(false);
@@ -1878,6 +1886,21 @@ function ExpenseCreateSheet({ onClose }: { onClose: () => void }) {
           タイトル
         </Label>
         <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="用途を書いてから「AI でタイトル生成」、または直接入力" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
+
+        <Label>カテゴリ</Label>
+        <div className="mt-1 flex flex-wrap gap-1.5">
+          {EXPENSE_CATEGORIES.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setCategory(c)}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${category === c ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-600 hover:border-slate-500"}`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1 text-[10px] text-slate-400">活動に紐づかない経費(備品・通信費など)もここから申請できます。</p>
 
         <Label>金額(円)</Label>
         <input type="text" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="例:12800" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
