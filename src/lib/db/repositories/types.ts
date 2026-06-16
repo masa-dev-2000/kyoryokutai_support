@@ -58,6 +58,7 @@ export type ApprovalRaw = {
 };
 
 export type GuidelineRow = { source: string; section: string; body: string };
+export type DailyLogDTO = { id: string; date: string; note: string };
 
 export interface Repos {
   users: {
@@ -176,6 +177,10 @@ export interface Repos {
   };
   guidelines: {
     listByMuni(muni: string): Promise<GuidelineRow[]>;
+  };
+  dailyLogs: {
+    upsert(userId: string, date: string, note?: string): Promise<DailyLogDTO>;
+    getByDate(userId: string, date: string): Promise<DailyLogDTO | undefined>;
   };
   consultations: {
     log(c: { userId: string; contextKind: string; input: string; output: string }): Promise<void>;

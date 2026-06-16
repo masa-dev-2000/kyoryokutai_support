@@ -9,7 +9,7 @@ import {
   mapMember,
   mapStaff,
 } from "@/lib/api/mappers";
-import type { Repos, RouteDTO, HostOrgDTO, LogForAI, ApprovalRaw, GuidelineRow, RouteStepDTO } from "./types";
+import type { Repos, RouteDTO, HostOrgDTO, LogForAI, ApprovalRaw, GuidelineRow, RouteStepDTO, DailyLogDTO } from "./types";
 
 // SQLite 実装(ローカル / Vercel デモ)。SQL はここに集約し、Route からは追放する。
 const MUNI = "muni_shinonsen";
@@ -36,6 +36,14 @@ function loadRoutes(): RouteDTO[] {
       hostOrganizationId: (s.host_organization_id as string) ?? undefined,
     })),
   }));
+}
+
+function mapDailyLog(r: Record<string, unknown>): DailyLogDTO {
+  return {
+    id: r.id as string,
+    date: r.log_date as string,
+    note: (r.note as string) ?? "",
+  };
 }
 
 function mapHost(r: Record<string, unknown>): HostOrgDTO {
@@ -206,10 +214,18 @@ export const sqliteRepos: Repos = {
       const id = genId("log");
       const date = b.date ?? new Date().toISOString().slice(0, 10);
       const time = b.time ?? new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+      // ADR-021: 活動作成時に当日の daily_log を自動 upsert し daily_log_id を結線する
+      const dlId = genId("dl");
       run(
-        `INSERT INTO activity_logs (id,user_id,municipality_id,activity_type,topic,hours,distance_km,body,log_date,log_time,expense_amount)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, b.userId, MUNI, b.type, b.topic, b.hours, b.distanceKm ?? null, b.body, date, time, b.expense ?? null]
+        `INSERT INTO daily_logs (id,user_id,municipality_id,log_date) VALUES (?,?,?,?)
+         ON CONFLICT(user_id,log_date) DO NOTHING`,
+        [dlId, b.userId, MUNI, date]
+      );
+      const dl = get<{ id: string }>("SELECT id FROM daily_logs WHERE user_id=? AND log_date=?", [b.userId, date]);
+      run(
+        `INSERT INTO activity_logs (id,user_id,municipality_id,daily_log_id,activity_type,topic,hours,distance_km,body,log_date,log_time,expense_amount)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [id, b.userId, MUNI, dl?.id ?? null, b.type, b.topic, b.hours, b.distanceKm ?? null, b.body, date, time, b.expense ?? null]
       );
       return mapLog(all("SELECT * FROM activity_logs WHERE id=?", [id])[0]);
     },
@@ -365,6 +381,28 @@ export const sqliteRepos: Repos = {
   guidelines: {
     async listByMuni(muni) {
       return all<GuidelineRow>("SELECT source,section,body FROM guidelines WHERE municipality_id=?", [muni]);
+    },
+  },
+
+  dailyLogs: {
+    async upsert(userId, date, note) {
+      const existing = get<{ id: string }>("SELECT id FROM daily_logs WHERE user_id=? AND log_date=?", [userId, date]);
+      if (existing) {
+        if (note !== undefined) {
+          run("UPDATE daily_logs SET note=?, updated_at=datetime('now') WHERE id=?", [note, existing.id]);
+        }
+        return mapDailyLog(all("SELECT * FROM daily_logs WHERE id=?", [existing.id])[0]);
+      }
+      const id = genId("dl");
+      run(
+        `INSERT INTO daily_logs (id,user_id,municipality_id,log_date,note) VALUES (?,?,?,?,?)`,
+        [id, userId, MUNI, date, note ?? null]
+      );
+      return mapDailyLog(all("SELECT * FROM daily_logs WHERE id=?", [id])[0]);
+    },
+    async getByDate(userId, date) {
+      const row = all("SELECT * FROM daily_logs WHERE user_id=? AND log_date=?", [userId, date])[0];
+      return row ? mapDailyLog(row) : undefined;
     },
   },
 
