@@ -1656,7 +1656,7 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
       {/* カレンダー日クリックで開くローカルポップアップ(背景に月報詳細が見える) */}
       {dayPopup && (
         <div
-          className="absolute inset-0 z-10 flex items-end justify-center bg-slate-900/30"
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/40"
           onClick={() => setDayPopup(null)}
         >
           <div
