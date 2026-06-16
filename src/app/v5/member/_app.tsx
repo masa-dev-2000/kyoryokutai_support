@@ -7,7 +7,6 @@ import {
   Search,
   ChevronLeft,
   Sparkles,
-  Bell,
   Pin,
   X,
   ArrowRight,
@@ -43,7 +42,8 @@ import {
    - ヘッダー相談ボタンを「相談メニュー」化(カテゴリ別エントリ)
    ============================================================ */
 
-type Tab = "daily" | "report" | "expense" | "case";
+// ADR-020: 日報タブを廃止し「活動記録・経費・お知らせ・事例」の4タブに統合
+type Tab = "report" | "expense" | "announce" | "case";
 
 /* -------------------- 活動分類 -------------------- */
 
@@ -127,12 +127,16 @@ const seedReports: Report[] = [
   { id: "r-2026-04", yearMonth: "2026 年 4 月", ym: "2026-04", status: "approved", statusLabel: "役場承認 4/30" },
 ];
 
+// ADR-021: 経費カテゴリ(活動費・備品・通信費 等)。活動に紐づかない経費も第一級で扱う。
+const EXPENSE_CATEGORIES = ["活動費", "旅費", "備品", "消耗品", "通信費", "謝金", "その他"];
+
 type ExpenseRequest = {
   id: string;
   title: string;
   amount: number;
   purpose: string;
   status: "申請中" | "承認" | "差戻し" | "未精算" | "精算済";
+  category?: string;
   aiNote: string;
   citation: { source: string; quote: string };
   createdAt: string;
@@ -217,9 +221,10 @@ const consultMeta: Record<Exclude<ConsultContext["kind"], "menu">, { title: stri
 type Notice = { id: string; title: string; body: string; date: string; kind: string; isPinned: boolean; sender: string };
 
 type Sheet =
-  | { kind: "activity-create"; editing?: ActivityLog }
+  // ADR-020: date を指定するとその日付の活動として作成(カレンダー日付タップ起点)
+  | { kind: "activity-create"; editing?: ActivityLog; date?: string }
   | { kind: "activity-detail"; log: ActivityLog }
-  | { kind: "daily-create" }
+  | { kind: "report-day"; date: string }
   | { kind: "report-detail"; report: Report }
   | { kind: "expense-detail"; item: ExpenseRequest }
   | { kind: "expense-create" }
@@ -276,7 +281,7 @@ const useApp = () => {
 };
 
 export function MemberApp() {
-  const [tab, setTab] = React.useState<Tab>("daily");
+  const [tab, setTab] = React.useState<Tab>("report");
   // 初期値はシード(即描画)→ マウント後にバックエンドの実データで置換
   const [logs, setLogs] = React.useState<ActivityLog[]>(seedLogs);
   const [topics, setTopics] = React.useState<string[]>(DEFAULT_TOPICS);
@@ -404,17 +409,14 @@ export function MemberApp() {
   return (
     <AppCtx.Provider value={ctx}>
       <main className="flex h-screen flex-col bg-white text-slate-900">
-        <Header
-          onBell={() => setSheets([{ kind: "announcements" }])}
-          unread={notices.length}
-        />
-        <Tabs active={tab} onChange={setTab} />
+        <Header />
+        <Tabs active={tab} onChange={setTab} unread={notices.length} />
 
         <div className="flex flex-1 flex-col overflow-y-auto px-6 pb-20">
           <div className="mx-auto w-full max-w-2xl flex-1 py-4">
-            {tab === "daily" && <DailyTab />}
             {tab === "report" && <ReportTab />}
             {tab === "expense" && <ExpenseTab />}
+            {tab === "announce" && <AnnounceTab />}
             {tab === "case" && <CaseTab />}
           </div>
         </div>
@@ -428,7 +430,7 @@ export function MemberApp() {
 
 /* -------------------- Header / Tabs / Footer -------------------- */
 
-function Header({ onBell, unread }: { onBell: () => void; unread: number }) {
+function Header() {
   return (
     <header className="flex items-center justify-between border-b border-slate-100 px-5 py-2.5">
       <Link href="/v5" className="inline-flex items-center gap-0.5 text-[11px] text-slate-500 hover:text-slate-900">
@@ -436,38 +438,31 @@ function Header({ onBell, unread }: { onBell: () => void; unread: number }) {
         切替
       </Link>
       <div className="text-center text-[11px] text-slate-500">田中 あかり / 新温泉町</div>
-      <button
-        onClick={onBell}
-        className="relative inline-flex items-center gap-1 text-[11px] text-slate-700 hover:text-slate-900"
-        title="お知らせ・ルール"
-        aria-label="お知らせを開く"
-      >
-        <Bell className="h-3.5 w-3.5" />
-        {unread > 0 && (
-          <span className="absolute -right-1.5 -top-1.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-rose-600 px-0.5 text-[8px] font-bold text-white">
-            {unread}
-          </span>
-        )}
-      </button>
+      <div className="w-10" />
     </header>
   );
 }
 
-function Tabs({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
+function Tabs({ active, onChange, unread }: { active: Tab; onChange: (t: Tab) => void; unread: number }) {
   return (
     <nav className="flex items-center justify-center gap-1 border-b border-slate-100 px-5 py-1.5">
-      <TabBtn label="活動報告" active={active === "daily"} onClick={() => onChange("daily")} />
-      <TabBtn label="月報" active={active === "report"} onClick={() => onChange("report")} />
+      <TabBtn label="活動記録" active={active === "report"} onClick={() => onChange("report")} />
       <TabBtn label="経費" active={active === "expense"} onClick={() => onChange("expense")} />
+      <TabBtn label="お知らせ" active={active === "announce"} onClick={() => onChange("announce")} badge={unread > 0 ? unread : undefined} />
       <TabBtn label="事例" active={active === "case"} onClick={() => onChange("case")} />
     </nav>
   );
 }
 
-function TabBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function TabBtn({ label, active, onClick, badge }: { label: string; active: boolean; onClick: () => void; badge?: number }) {
   return (
     <button onClick={onClick} className={`relative px-4 py-1.5 text-[12px] font-semibold transition ${active ? "text-slate-900" : "text-slate-500 hover:text-slate-700"}`}>
       {label}
+      {badge !== undefined && (
+        <span className="absolute -right-1 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-0.5 text-[9px] font-bold text-white">
+          {badge}
+        </span>
+      )}
       {active && <span className="absolute bottom-[-7px] left-1/2 h-[2px] w-6 -translate-x-1/2 bg-slate-900" />}
     </button>
   );
@@ -485,119 +480,25 @@ function Footer({ onTopicEdit }: { onTopicEdit: () => void }) {
   );
 }
 
-/* -------------------- 1. 活動報告タブ(レイアウト整理版)-------------------- */
+/* -------------------- 日付ユーティリティ -------------------- */
 
 function todayKey() {
   return "2026-06-11";
 }
 
-function DailyTab() {
-  const { logs, pushSheet } = useApp();
-  const today = logs.filter((l) => l.date === todayKey());
-  const past = logs.filter((l) => l.date !== todayKey());
+function currentYm() {
+  return todayKey().slice(0, 7);
+}
 
-  const grouped: Record<string, ActivityLog[]> = {};
-  for (const l of past) (grouped[l.date] ??= []).push(l);
-  const sortedDates = Object.keys(grouped).sort((a, b) => (a < b ? 1 : -1));
+function shiftYm(ym: string, delta: number) {
+  const [y, m] = ym.split("-").map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
 
-  const todayHours = today.reduce((s, l) => s + l.hours, 0);
-
-  return (
-    <div className="relative">
-      <div className="text-center">
-        <h1 className="text-3xl font-bold tracking-tight">日報</h1>
-        <p className="mt-1 text-[12px] text-slate-500">1 日の活動をまとめて記録できます</p>
-      </div>
-
-      {/* 今日 */}
-      <section className="mt-7">
-        <div className="mb-2 flex items-center gap-2 border-b-2 border-slate-900 pb-1">
-          <h2 className="text-[15px] font-black tracking-tight text-slate-900">今日</h2>
-          <span className="text-[10px] text-slate-500">6 月 11 日(木)</span>
-          {today.length > 0 && (
-            <span className="ml-auto text-[11px] text-slate-500 tabular-nums">{today.length}件 ・ {todayHours}h</span>
-          )}
-        </div>
-
-        {today.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-[12px] text-slate-500">
-            まだ記録がありません。右下の <strong>+</strong> から日報を追加できます
-          </div>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {today.map((l) => (
-              <li key={l.id}>
-                <button
-                  onClick={() => pushSheet({ kind: "activity-create", editing: l })}
-                  className="flex w-full items-start gap-2.5 py-2.5 text-left hover:bg-slate-50/60"
-                >
-                  <span className="mt-0.5 shrink-0 text-[10px] font-bold text-slate-400 tabular-nums">{l.time}</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1">
-                      <span className="rounded-sm border border-slate-300 bg-white px-1 text-[10px] font-bold text-slate-700">{l.type}</span>
-                      <span className="rounded-sm border border-slate-200 bg-slate-50 px-1 text-[10px] font-semibold text-slate-600">{l.topic}</span>
-                      <span className="ml-auto text-[10px] tabular-nums text-slate-500">{l.hours}h</span>
-                    </div>
-                    <div className="mt-0.5 truncate text-[12.5px] text-slate-800">{l.body}</div>
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* 過去(日報カード) */}
-      <section className="mt-8">
-        <div className="mb-2 border-b border-slate-200 pb-1">
-          <h2 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">過去の日報</h2>
-        </div>
-        {sortedDates.length === 0 ? (
-          <div className="text-[11px] text-slate-400">過去の記録はありません</div>
-        ) : (
-          <ul className="space-y-2">
-            {sortedDates.map((date) => {
-              const items = grouped[date];
-              const dHours = items.reduce((s, l) => s + l.hours, 0);
-              const dExp = items.reduce((s, l) => s + (l.expense ?? 0), 0);
-              return (
-                <li key={date} className="rounded-xl border border-slate-200 bg-white p-3">
-                  <div className="mb-2 flex items-baseline gap-2 border-b border-slate-100 pb-2">
-                    <span className="text-[13px] font-bold text-slate-900">{formatDateShort(date)}</span>
-                    <span className="text-[10px] text-slate-400">{items.length}件 ・ {dHours}h{dExp > 0 ? ` ・ ¥${dExp.toLocaleString()}` : ""}</span>
-                  </div>
-                  <ul className="space-y-1.5">
-                    {items.map((l) => (
-                      <li key={l.id}>
-                        <button
-                          onClick={() => pushSheet({ kind: "activity-create", editing: l })}
-                          className="flex w-full items-start gap-2 rounded-lg px-1 py-1 text-left hover:bg-slate-50"
-                        >
-                          <span className="mt-0.5 shrink-0 rounded-sm border border-slate-200 bg-white px-1 text-[10px] font-semibold text-slate-600">{l.type}</span>
-                          <span className="mt-0.5 shrink-0 rounded-sm border border-slate-200 bg-slate-50 px-1 text-[10px] font-medium text-slate-500">{l.topic}</span>
-                          <span className="min-w-0 flex-1 truncate text-[12px] text-slate-700">{l.body}</span>
-                          <span className="shrink-0 text-[10px] tabular-nums text-slate-400">{l.hours}h</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-
-      {/* FAB */}
-      <button
-        onClick={() => pushSheet({ kind: "daily-create" })}
-        className="fixed bottom-10 right-6 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg ring-4 ring-white transition hover:bg-slate-800 active:scale-95"
-        aria-label="日報を作成"
-      >
-        <Plus className="h-6 w-6" />
-      </button>
-    </div>
-  );
+function formatYm(ym: string) {
+  const [y, m] = ym.split("-").map(Number);
+  return `${y} 年 ${m} 月`;
 }
 
 function formatDateShort(d: string) {
@@ -607,58 +508,236 @@ function formatDateShort(d: string) {
 
 /* -------------------- 2. 月報タブ -------------------- */
 
+// ADR-020: 月報タブをカレンダー起点に。日付タップで活動の閲覧/作成へ。
 function ReportTab() {
-  const { pushSheet, reports } = useApp();
-  // 年ドロップダウン:データから年を抽出 + 「すべて」
-  const years = React.useMemo(() => {
-    const ys = new Set<string>();
-    reports.forEach((r) => ys.add(r.ym.slice(0, 4)));
-    return ["すべて", ...Array.from(ys).sort((a, b) => (a < b ? 1 : -1))];
-  }, [reports]);
-  const [year, setYear] = React.useState<string>("すべて");
-  const filtered = reports.filter((r) => year === "すべて" || r.ym.startsWith(year));
+  const { pushSheet, logs } = useApp();
+  const [ym, setYm] = React.useState<string>(currentYm());
+
+  // カレンダー日付タップ:記録があれば一覧、なければ当日含めて作成シート
+  function onDayTap(date: string) {
+    const hasLogs = logs.some((l) => l.date === date);
+    if (hasLogs) pushSheet({ kind: "report-day", date });
+    else pushSheet({ kind: "activity-create", date });
+  }
 
   return (
-    <div className="text-center">
-      <h1 className="text-3xl font-bold tracking-tight">月報</h1>
-      <p className="mt-1 text-[12px] text-slate-500">日々の活動から AI が自動生成します</p>
-
-      {/* 年ドロップダウン(検索ボックスを置き換え)*/}
-      <div className="mx-auto mt-6 inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 shadow-[0_1px_0_rgba(0,0,0,0.04)] focus-within:border-slate-900">
-        <Calendar className="h-4 w-4 text-slate-400" />
-        <label htmlFor="report-year" className="text-[11px] text-slate-500">年で絞り込み</label>
-        <select
-          id="report-year"
-          value={year}
-          onChange={(e) => setYear(e.target.value)}
-          className="bg-transparent text-[13px] font-semibold text-slate-900 focus:outline-none"
-        >
-          {years.map((y) => (
-            <option key={y} value={y}>{y === "すべて" ? y : `${y} 年`}</option>
-          ))}
-        </select>
+    <div className="relative">
+      <div className="text-center">
+        <h1 className="text-3xl font-bold tracking-tight">活動記録</h1>
+        <p className="mt-1 text-[12px] text-slate-500">日付をタップして活動を記録・閲覧</p>
       </div>
 
-      {filtered.length === 0 ? (
-        <EmptyState message="該当する月報がありません。" />
-      ) : (
-        <ul className="mt-6 space-y-px text-left">
-          {filtered.map((r) => (
-            <li key={r.id} className="border-b border-slate-100 last:border-b-0">
-              <button onClick={() => pushSheet({ kind: "report-detail", report: r })} className="flex w-full items-center gap-3 py-3 text-left transition hover:bg-slate-50/60">
-                <FileText className="h-4 w-4 shrink-0 text-slate-400" />
-                <div className="min-w-0 flex-1 px-1">
-                  <div className="text-[13px] font-semibold text-slate-900">{r.yearMonth}</div>
-                  <div className="mt-0.5 text-[11px] text-slate-500">{r.statusLabel}</div>
-                </div>
-                <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${r.status === "draft" ? "border-slate-300 bg-slate-50 text-slate-700" : r.status === "submitted" ? "border-slate-300 bg-white text-slate-700" : "border-slate-300 bg-slate-900 text-white"}`}>
-                  {r.status === "draft" ? "下書き" : r.status === "submitted" ? "提出済" : "承認済"}
-                </span>
-                <ArrowRight className="h-3 w-3 shrink-0 text-slate-300" />
+      {/* 月セレクタ */}
+      <div className="mt-5 flex items-center justify-center gap-2">
+        <button
+          onClick={() => setYm(shiftYm(ym, -1))}
+          className="rounded-full border border-slate-300 bg-white p-1.5 text-slate-600 transition hover:border-slate-900 hover:text-slate-900"
+          aria-label="前の月"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <div className="inline-flex min-w-32 items-center justify-center gap-1.5 text-[15px] font-bold text-slate-900">
+          <Calendar className="h-4 w-4 text-slate-400" />
+          {formatYm(ym)}
+        </div>
+        <button
+          onClick={() => setYm(shiftYm(ym, 1))}
+          disabled={ym >= currentYm()}
+          className="rounded-full border border-slate-300 bg-white p-1.5 text-slate-600 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:border-slate-100 disabled:text-slate-300"
+          aria-label="次の月"
+        >
+          <ArrowRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* サマリー + カレンダー + グラフ */}
+      <MonthOverview ym={ym} onDayTap={onDayTap} />
+
+      {/* FAB: 当日の活動を追加(セカンダリ動線) */}
+      <button
+        onClick={() => pushSheet({ kind: "activity-create" })}
+        className="fixed bottom-10 right-6 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg ring-4 ring-white transition hover:bg-slate-800 active:scale-95"
+        aria-label="今日の活動を追加"
+      >
+        <Plus className="h-6 w-6" />
+      </button>
+    </div>
+  );
+}
+
+// ADR-020: サマリー→カレンダー→グラフの月次オーバービュー(月報タブ・月報詳細で共有)
+function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) => void }) {
+  const { logs } = useApp();
+  const monthLogs = logs.filter((l) => l.date.startsWith(ym));
+
+  const totalHours = monthLogs.reduce((s, l) => s + l.hours, 0);
+  const totalExpense = monthLogs.reduce((s, l) => s + (l.expense ?? 0), 0);
+  const byDate: Record<string, ActivityLog[]> = {};
+  for (const l of monthLogs) (byDate[l.date] ??= []).push(l);
+
+  // 活動時間:種類別(積算棒)
+  const byType: Record<string, number> = {};
+  for (const l of monthLogs) byType[l.type] = (byType[l.type] ?? 0) + l.hours;
+  const typeOrder = ACTIVITY_TYPES.filter((t) => byType[t] > 0);
+  const hoursProgress = Math.min(totalHours / MIN_MONTHLY_HOURS, 1);
+  const hoursRemain = Math.max(MIN_MONTHLY_HOURS - totalHours, 0);
+  const hoursOver = Math.max(totalHours - MIN_MONTHLY_HOURS, 0);
+
+  // 経費:カテゴリ(= 活動内容 topic)別合計
+  const byCat: Record<string, number> = {};
+  for (const l of monthLogs) {
+    if (typeof l.expense === "number" && l.expense > 0) {
+      byCat[l.topic] = (byCat[l.topic] ?? 0) + l.expense;
+    }
+  }
+  const catOrder = Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([k]) => k);
+  const expBudgetPct = Math.min((totalExpense / MONTHLY_BUDGET) * 100, 100);
+
+  const [yr, mo] = ym.split("-").map(Number);
+  const startWeekday = new Date(yr, mo - 1, 1).getDay();
+  const daysInMonth = new Date(yr, mo, 0).getDate();
+  const cells: ({ day: number; date: string; logs: ActivityLog[] } | null)[] = [];
+  for (let i = 0; i < startWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${ym}-${String(d).padStart(2, "0")}`;
+    cells.push({ day: d, date: dateStr, logs: byDate[dateStr] ?? [] });
+  }
+
+  return (
+    <div className="mt-4 text-left">
+      {/* カレンダー(日付タップで活動の閲覧/作成) */}
+      <div className="mt-5">
+        <div className="flex items-baseline justify-between">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">活動カレンダー</div>
+          <div className="text-[9px] text-slate-400">日付タップで記録 / 右上=件数</div>
+        </div>
+        <div className="mt-2 grid grid-cols-7 gap-1 text-center text-[9px] font-bold text-slate-400">
+          {["日", "月", "火", "水", "木", "金", "土"].map((d) => <div key={d}>{d}</div>)}
+        </div>
+        <div className="mt-1 grid grid-cols-7 gap-1">
+          {cells.map((c, i) =>
+            c === null ? <div key={i} /> : (
+              <button
+                key={i}
+                onClick={() => onDayTap(c.date)}
+                className={`relative aspect-square rounded-lg border p-1 text-left text-[10px] transition ${c.logs.length > 0 ? "border-slate-300 bg-white hover:border-slate-900 hover:shadow" : "border-slate-100 bg-slate-50/40 text-slate-300 hover:border-slate-400 hover:bg-white"}`}
+              >
+                <span className={`absolute left-1 top-0.5 font-bold ${c.logs.length > 0 ? "text-slate-700" : "text-slate-400"}`}>{c.day}</span>
+                {c.logs.length > 0 ? (
+                  <>
+                    <span className="absolute right-1 top-0.5 text-[9px] font-bold text-slate-500">{c.logs.length}件</span>
+                    <span className="absolute bottom-3 left-1 right-1 text-[9px] font-semibold text-slate-700">
+                      {c.logs.reduce((s, l) => s + l.hours, 0)}h
+                    </span>
+                    {c.logs.some((l) => l.expense) && (
+                      <span className="absolute bottom-0.5 left-1 right-1 truncate text-[8px] text-slate-500">
+                        ¥{Math.round(c.logs.reduce((s, l) => s + (l.expense ?? 0), 0) / 100) / 10}k
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <Plus className="absolute bottom-1 right-1 h-2.5 w-2.5 text-slate-300" />
+                )}
               </button>
-            </li>
-          ))}
-        </ul>
+            )
+          )}
+        </div>
+      </div>
+
+      {/* 活動時間:積算棒(種類別)+ 最低活動時間との比較 */}
+      {typeOrder.length > 0 && (
+        <div className="mt-6">
+          <div className="flex items-baseline justify-between">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">活動時間(積算)</div>
+            <div className="text-[10px] text-slate-500">
+              <span className="font-bold text-slate-900 text-[12px]">{totalHours}h</span>
+              <span className="mx-1 text-slate-400">/</span>
+              <span>基準 {MIN_MONTHLY_HOURS}h</span>
+              {hoursOver > 0 ? (
+                <span className="ml-2 font-semibold text-slate-700">+{hoursOver}h 超過</span>
+              ) : (
+                <span className="ml-2 text-slate-500">残り {hoursRemain}h</span>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-2 relative">
+            <div className="flex h-5 w-full overflow-hidden rounded-full bg-slate-100">
+              {typeOrder.map((t) => {
+                const w = (byType[t] / MIN_MONTHLY_HOURS) * 100;
+                return (
+                  <div
+                    key={t}
+                    className={`${TYPE_COLORS[t] ?? "bg-slate-400"} h-full`}
+                    style={{ width: `${Math.min(w, 100)}%` }}
+                    title={`${t}: ${byType[t]}h`}
+                  />
+                );
+              })}
+            </div>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center">
+              <div className="h-full w-px bg-slate-900" />
+            </div>
+            <div className="mt-1 flex justify-end text-[10px] text-slate-500">
+              {Math.round(hoursProgress * 100)}% 達成
+            </div>
+          </div>
+
+          <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
+            {typeOrder.map((t) => (
+              <li key={t} className="inline-flex items-center gap-1">
+                <span className={`inline-block h-2 w-2 rounded-full ${TYPE_COLORS[t] ?? "bg-slate-400"}`} />
+                <span className="text-slate-600">{t}</span>
+                <span className="font-bold tabular-nums text-slate-800">{byType[t]}h</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* 経費使用:カテゴリ別積算棒 + 月予算との比較 */}
+      {totalExpense > 0 && (
+        <div className="mt-6">
+          <div className="flex items-baseline justify-between">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">経費使用(カテゴリ別積算)</div>
+            <div className="text-[10px] text-slate-500">
+              <span className="font-bold text-slate-900 text-[12px]">¥{totalExpense.toLocaleString()}</span>
+              <span className="mx-1 text-slate-400">/</span>
+              <span>月予算 ¥{(MONTHLY_BUDGET / 10000).toFixed(0)}万</span>
+              <span className="ml-1 text-slate-400">({expBudgetPct.toFixed(1)}%)</span>
+            </div>
+          </div>
+
+          <div className="mt-2 relative">
+            <div className="flex h-5 w-full overflow-hidden rounded-full bg-slate-100">
+              {catOrder.map((cat, i) => {
+                const w = (byCat[cat] / MONTHLY_BUDGET) * 100;
+                const tone = ["bg-slate-900", "bg-slate-700", "bg-slate-500", "bg-slate-400", "bg-slate-300", "bg-slate-200"][i % 6];
+                return (
+                  <div
+                    key={cat}
+                    className={`${tone} h-full`}
+                    style={{ width: `${Math.min(w, 100)}%` }}
+                    title={`${cat}: ¥${byCat[cat].toLocaleString()}`}
+                  />
+                );
+              })}
+            </div>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center">
+              <div className="h-full w-px bg-slate-900" />
+            </div>
+          </div>
+
+          <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
+            {catOrder.map((cat, i) => (
+              <li key={cat} className="inline-flex items-center gap-1">
+                <span className={`inline-block h-2 w-2 rounded-full ${["bg-slate-900", "bg-slate-700", "bg-slate-500", "bg-slate-400", "bg-slate-300", "bg-slate-200"][i % 6]}`} />
+                <span className="text-slate-600">{cat}</span>
+                <span className="font-bold tabular-nums text-slate-800">¥{byCat[cat].toLocaleString()}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );
@@ -747,9 +826,12 @@ function ExpenseTab() {
                 >
                   <Receipt className="h-4 w-4 shrink-0 text-slate-400" />
                   <div className="min-w-0 flex-1 px-1">
-                    <div className="text-[13px] font-semibold text-slate-900">
-                      {e.title}
-                      <span className="ml-1.5 text-[11px] font-normal text-slate-500">¥{e.amount.toLocaleString()}</span>
+                    <div className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-900">
+                      {e.category && (
+                        <span className="shrink-0 rounded-sm border border-slate-200 bg-slate-50 px-1 text-[10px] font-semibold text-slate-600">{e.category}</span>
+                      )}
+                      <span className="truncate">{e.title}</span>
+                      <span className="ml-0.5 shrink-0 text-[11px] font-normal text-slate-500">¥{e.amount.toLocaleString()}</span>
                     </div>
                     <div className="mt-0.5 truncate text-[11px] text-slate-500">{e.purpose}</div>
                   </div>
@@ -789,6 +871,47 @@ function statusClass(s: ExpenseRequest["status"]) {
     case "未精算": return "border-amber-200 bg-amber-50 text-amber-800";
     case "精算済": return "border-slate-300 bg-slate-900 text-white";
   }
+}
+
+/* -------------------- 3. お知らせタブ -------------------- */
+
+function AnnounceTab() {
+  const { notices, rules } = useApp();
+  const all = [...notices, ...rules].sort((a, b) => b.date.localeCompare(a.date));
+
+  if (all.length === 0) {
+    return (
+      <div className="py-16 text-center text-[13px] text-slate-400">
+        役場からのお知らせはまだありません
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-4 text-center">
+        <h1 className="text-3xl font-bold tracking-tight">お知らせ</h1>
+        <p className="mt-1 text-[12px] text-slate-500">役場・担当課からのお知らせ</p>
+      </div>
+      <ul className="space-y-2">
+        {all.map((n) => (
+          <li key={n.id} className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+            <div className="flex items-start gap-2">
+              {n.isPinned && <Pin className="mt-0.5 h-3 w-3 shrink-0 text-slate-500" />}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-slate-400">{n.date}</span>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[9px] text-slate-500">{n.sender}</span>
+                </div>
+                <div className="mt-1 text-[13px] font-semibold text-slate-900">{n.title}</div>
+                {n.body && <div className="mt-1 text-[12px] text-slate-600 whitespace-pre-wrap">{n.body}</div>}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 /* -------------------- 4. 事例タブ(相談ボタン追加)-------------------- */
@@ -931,8 +1054,8 @@ function SheetRoot() {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-white">
-      {sheet.kind === "activity-create" && <ActivityCreateSheet onClose={close} editing={sheet.editing} />}
-      {sheet.kind === "daily-create" && <DailyCreateSheet onClose={close} />}
+      {sheet.kind === "activity-create" && <ActivityCreateSheet onClose={close} editing={sheet.editing} date={sheet.date} />}
+      {sheet.kind === "report-day" && <ReportDaySheet date={sheet.date} onClose={close} depth={stackDepth} />}
       {sheet.kind === "report-detail" && <ReportDetailSheet report={sheet.report} onClose={close} />}
       {sheet.kind === "expense-detail" && <ExpenseDetailSheet item={sheet.item} onClose={close} />}
       {sheet.kind === "expense-create" && <ExpenseCreateSheet onClose={close} />}
@@ -961,9 +1084,11 @@ function SheetHeader({ title, onClose, right, backLabel }: { title: string; onCl
 
 /* -------- 活動報告 作成シート(入力ごとに相談ボタン)-------- */
 
-function ActivityCreateSheet({ onClose, editing }: { onClose: () => void; editing?: ActivityLog }) {
+function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; editing?: ActivityLog; date?: string }) {
   const { addLog, updateLog, topics } = useApp();
   const isEdit = !!editing;
+  // ADR-020: カレンダー日付タップ起点の場合は date を、当日FAB起点は todayKey を使う
+  const targetDate = editing?.date ?? date ?? todayKey();
   const [type, setType] = React.useState<string | null>(editing?.type ?? null);
   const [topic, setTopic] = React.useState<string | null>(editing?.topic ?? null);
   const [hours, setHours] = React.useState<string>(editing ? String(editing.hours) : "1");
@@ -1036,7 +1161,7 @@ function ActivityCreateSheet({ onClose, editing }: { onClose: () => void; editin
           hours: parseFloat(hours),
           distanceKm: distance ? parseFloat(distance) : undefined,
           body: body.trim(),
-          date: todayKey(),
+          date: targetDate,
           time: new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }),
           expenses: validExpenses.length > 0 ? validExpenses : undefined,
         });
@@ -1050,7 +1175,7 @@ function ActivityCreateSheet({ onClose, editing }: { onClose: () => void; editin
   return (
     <>
       <SheetHeader
-        title={isEdit ? "活動報告を編集" : "活動報告を書く"}
+        title={isEdit ? "活動報告を編集" : `${formatDateShort(targetDate)} の活動を書く`}
         onClose={onClose}
         right={
           <button onClick={save} disabled={!canSave} className="text-[11px] font-bold text-slate-900 hover:underline disabled:cursor-not-allowed disabled:text-slate-300">
@@ -1266,190 +1391,6 @@ function ActivityCreateSheet({ onClose, editing }: { onClose: () => void; editin
 
 /* -------- 活動報告 詳細シート -------- */
 
-/* -------- 日報作成シート(1日分 複数活動 + 日報全体の経費) -------- */
-
-type ActivityEntry = { id: string; type: string; topic: string; hours: string; body: string };
-type ExpenseEntry = { id: string; title: string; amount: string; purpose: string };
-
-function DailyCreateSheet({ onClose }: { onClose: () => void }) {
-  const { addLog } = useApp();
-  const [saving, setSaving] = React.useState(false);
-
-  const [entries, setEntries] = React.useState<ActivityEntry[]>([
-    { id: "e1", type: "", topic: "", hours: "1", body: "" }
-  ]);
-
-  const [expenses, setExpenses] = React.useState<ExpenseEntry[]>([]);
-
-  function addEntry() {
-    setEntries(es => [...es, { id: `e${Date.now()}`, type: "", topic: "", hours: "1", body: "" }]);
-  }
-
-  function removeEntry(id: string) {
-    setEntries(es => es.filter(e => e.id !== id));
-  }
-
-  function updateEntry(id: string, patch: Partial<ActivityEntry>) {
-    setEntries(es => es.map(e => e.id === id ? { ...e, ...patch } : e));
-  }
-
-  function addExpense() {
-    setExpenses(es => [...es, { id: `x${Date.now()}`, title: "", amount: "", purpose: "" }]);
-  }
-
-  function removeExpense(id: string) {
-    setExpenses(es => es.filter(e => e.id !== id));
-  }
-
-  function updateExpense(id: string, patch: Partial<ExpenseEntry>) {
-    setExpenses(es => es.map(e => e.id === id ? { ...e, ...patch } : e));
-  }
-
-  const validEntries = entries.filter(e => e.type && e.topic && parseFloat(e.hours) > 0 && e.body.trim());
-  const canSave = validEntries.length > 0 && !saving;
-
-  async function save() {
-    if (!canSave) return;
-    setSaving(true);
-    try {
-      const validExp = expenses.filter(e => e.amount && parseInt(e.amount) > 0 && e.purpose.trim());
-      for (let i = 0; i < validEntries.length; i++) {
-        const entry = validEntries[i];
-        await addLog({
-          type: entry.type,
-          topic: entry.topic,
-          hours: parseFloat(entry.hours),
-          body: entry.body.trim(),
-          date: todayKey(),
-          time: new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }),
-          expenses: i === 0 && validExp.length > 0 ? validExp.map(e => ({
-            amount: parseInt(e.amount),
-            purpose: e.purpose.trim(),
-            title: e.title.trim() || e.purpose.slice(0, 15),
-          })) : undefined,
-        });
-      }
-      onClose();
-    } catch {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <>
-      <SheetHeader
-        title="日報を書く"
-        onClose={onClose}
-        right={
-          <button onClick={save} disabled={!canSave}
-            className="text-[11px] font-bold text-slate-900 hover:underline disabled:cursor-not-allowed disabled:text-slate-300">
-            記録
-          </button>
-        }
-      />
-      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-5 py-5 space-y-4">
-        {entries.map((entry, idx) => (
-          <div key={entry.id} className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-500">活動 {idx + 1}</span>
-              {entries.length > 1 && (
-                <button onClick={() => removeEntry(entry.id)}
-                  className="text-[10px] text-slate-400 hover:text-red-500">削除</button>
-              )}
-            </div>
-            <div>
-              <div className="mb-1.5 text-[11px] font-semibold text-slate-600">種類</div>
-              <div className="flex flex-wrap gap-1.5">
-                {["会議", "出張", "現場訪問", "広報", "内勤", "イベント", "振り返り", "その他"].map(t => (
-                  <button key={t} onClick={() => updateEntry(entry.id, { type: t })}
-                    className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${entry.type === t ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-600 hover:border-slate-500"}`}>
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <div className="mb-1 text-[11px] font-semibold text-slate-600">活動内容</div>
-              <input
-                value={entry.topic}
-                onChange={e => updateEntry(entry.id, { topic: e.target.value })}
-                placeholder="例: 空き家、移住相談、イベント準備…"
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] text-slate-800 outline-none focus:border-slate-400"
-              />
-            </div>
-            <div>
-              <div className="mb-1 text-[11px] font-semibold text-slate-600">時間</div>
-              <div className="flex flex-wrap gap-1.5">
-                {["0.5", "1", "1.5", "2", "3", "4", "5", "6", "7", "8"].map(h => (
-                  <button key={h} onClick={() => updateEntry(entry.id, { hours: h })}
-                    className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${entry.hours === h ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-600 hover:border-slate-500"}`}>
-                    {h}h
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <div className="mb-1 text-[11px] font-semibold text-slate-600">メモ</div>
-              <textarea
-                rows={3}
-                value={entry.body}
-                onChange={e => updateEntry(entry.id, { body: e.target.value })}
-                placeholder="何をしたか、誰と、どんな結果だったか…"
-                className="w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] text-slate-800 outline-none focus:border-slate-400"
-              />
-            </div>
-          </div>
-        ))}
-
-        <button onClick={addEntry}
-          className="flex w-full items-center justify-center gap-1 rounded-xl border border-dashed border-slate-300 py-3 text-[12px] font-semibold text-slate-500 hover:border-slate-500 hover:text-slate-700">
-          <Plus className="h-4 w-4" />
-          活動を追加
-        </button>
-
-        <div className="pt-2">
-          <div className="mb-2 text-[12px] font-bold text-slate-700">経費・レシート</div>
-          {expenses.length === 0 ? (
-            <button onClick={addExpense}
-              className="text-[11px] text-slate-400 hover:text-slate-700 hover:underline">
-              + 経費を追加する
-            </button>
-          ) : (
-            <div className="space-y-2">
-              {expenses.map(exp => (
-                <div key={exp.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2">
-                  <input
-                    value={exp.purpose}
-                    onChange={e => updateExpense(exp.id, { purpose: e.target.value })}
-                    placeholder="用途"
-                    className="flex-1 rounded border-0 bg-transparent text-[12px] text-slate-800 outline-none placeholder:text-slate-400"
-                  />
-                  <div className="flex items-center gap-0.5 text-[12px] text-slate-500">
-                    <span>¥</span>
-                    <input
-                      value={exp.amount}
-                      onChange={e => updateExpense(exp.id, { amount: e.target.value })}
-                      placeholder="0"
-                      type="number"
-                      className="w-20 border-0 bg-transparent text-right text-[12px] text-slate-800 outline-none"
-                    />
-                  </div>
-                  <button onClick={() => removeExpense(exp.id)}
-                    className="text-[10px] text-slate-400 hover:text-red-500">×</button>
-                </div>
-              ))}
-              <button onClick={addExpense}
-                className="text-[11px] text-slate-400 hover:text-slate-700 hover:underline">
-                + さらに追加
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </>
-  );
-}
-
 function ActivityDetailSheet({ log, onClose }: { log: ActivityLog; onClose: () => void }) {
   const { pushSheet, deleteLog, popSheet } = useApp();
   const [deleting, setDeleting] = React.useState(false);
@@ -1589,9 +1530,8 @@ const MIN_MONTHLY_HOURS = 120;
 const MONTHLY_BUDGET = 200000;
 
 function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () => void }) {
-  const { logs, plan, setPlan } = useApp();
+  const { plan, setPlan } = useApp();
   const ym = report.ym;
-  const monthLogs = logs.filter((l) => l.date.startsWith(ym));
 
   // カレンダー日付クリックで開くローカルポップアップ
   const [dayPopup, setDayPopup] = React.useState<string | null>(null);
@@ -1612,43 +1552,6 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
     } finally {
       setPolishingPlan(false);
     }
-  }
-
-  const totalHours = monthLogs.reduce((s, l) => s + l.hours, 0);
-  const totalExpense = monthLogs.reduce((s, l) => s + (l.expense ?? 0), 0);
-  const totalCount = monthLogs.length;
-
-  const byDate: Record<string, ActivityLog[]> = {};
-  for (const l of monthLogs) (byDate[l.date] ??= []).push(l);
-
-  // 活動時間:種類別(積算棒に使う)
-  const byType: Record<string, number> = {};
-  for (const l of monthLogs) byType[l.type] = (byType[l.type] ?? 0) + l.hours;
-  // 表示順は ACTIVITY_TYPES 並び(値があるものだけ)
-  const typeOrder = ACTIVITY_TYPES.filter((t) => byType[t] > 0);
-  // 最低活動時間に対する進捗(超過分は「達成」、未達分は「残り」)
-  const hoursProgress = Math.min(totalHours / MIN_MONTHLY_HOURS, 1);
-  const hoursRemain = Math.max(MIN_MONTHLY_HOURS - totalHours, 0);
-  const hoursOver = Math.max(totalHours - MIN_MONTHLY_HOURS, 0);
-
-  // 経費:カテゴリ(= 活動内容 topic)別合計
-  const byCat: Record<string, number> = {};
-  for (const l of monthLogs) {
-    if (typeof l.expense === "number" && l.expense > 0) {
-      byCat[l.topic] = (byCat[l.topic] ?? 0) + l.expense;
-    }
-  }
-  const catOrder = Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([k]) => k);
-  const expBudgetPct = Math.min((totalExpense / MONTHLY_BUDGET) * 100, 100);
-
-  const [yr, mo] = ym.split("-").map(Number);
-  const startWeekday = new Date(yr, mo - 1, 1).getDay();
-  const daysInMonth = new Date(yr, mo, 0).getDate();
-  const cells: ({ day: number; date: string; logs: ActivityLog[] } | null)[] = [];
-  for (let i = 0; i < startWeekday; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${ym}-${String(d).padStart(2, "0")}`;
-    cells.push({ day: d, date: dateStr, logs: byDate[dateStr] ?? [] });
   }
 
   return (
@@ -1678,150 +1581,8 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
 
         <h1 className="mt-3 text-2xl font-bold tracking-tight">{report.yearMonth}</h1>
 
-        <div className="mt-4 grid grid-cols-3 gap-2">
-          <SummaryCell icon={<FileText className="h-3.5 w-3.5" />} value={`${totalCount}`} label="活動件数" />
-          <SummaryCell icon={<Clock className="h-3.5 w-3.5" />} value={`${totalHours}`} label="活動時間" suffix="h" />
-          <SummaryCell icon={<Wallet className="h-3.5 w-3.5" />} value={`¥${(totalExpense / 1000).toFixed(0)}k`} label="経費使用" />
-        </div>
-
-        {/* カレンダー(凡例 + 経費表示) */}
-        <div className="mt-5">
-          <div className="flex items-baseline justify-between">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">活動カレンダー</div>
-            <div className="text-[9px] text-slate-400">右上=件数 / 下=時間・経費</div>
-          </div>
-          <div className="mt-2 grid grid-cols-7 gap-1 text-center text-[9px] font-bold text-slate-400">
-            {["日", "月", "火", "水", "木", "金", "土"].map((d) => <div key={d}>{d}</div>)}
-          </div>
-          <div className="mt-1 grid grid-cols-7 gap-1">
-            {cells.map((c, i) =>
-              c === null ? <div key={i} /> : (
-                <button
-                  key={i}
-                  onClick={() => c.logs.length > 0 && setDayPopup(c.date)}
-                  disabled={c.logs.length === 0}
-                  className={`relative aspect-square rounded-lg border p-1 text-left text-[10px] transition ${c.logs.length > 0 ? "border-slate-300 bg-white hover:border-slate-900 hover:shadow" : "border-slate-100 bg-slate-50/40 text-slate-300"}`}
-                >
-                  <span className="absolute left-1 top-0.5 font-bold text-slate-700">{c.day}</span>
-                  {c.logs.length > 0 && (
-                    <>
-                      <span className="absolute right-1 top-0.5 text-[9px] font-bold text-slate-500">{c.logs.length}件</span>
-                      <span className="absolute bottom-3 left-1 right-1 text-[9px] font-semibold text-slate-700">
-                        {c.logs.reduce((s, l) => s + l.hours, 0)}h
-                      </span>
-                      {c.logs.some((l) => l.expense) && (
-                        <span className="absolute bottom-0.5 left-1 right-1 truncate text-[8px] text-slate-500">
-                          ¥{Math.round(c.logs.reduce((s, l) => s + (l.expense ?? 0), 0) / 100) / 10}k
-                        </span>
-                      )}
-                    </>
-                  )}
-                </button>
-              )
-            )}
-          </div>
-        </div>
-
-        {/* 活動時間:積算棒(種類別セグメント)+ 最低活動時間 120h との比較 */}
-        {typeOrder.length > 0 && (
-          <div className="mt-6">
-            <div className="flex items-baseline justify-between">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">活動時間(積算)</div>
-              <div className="text-[10px] text-slate-500">
-                <span className="font-bold text-slate-900 text-[12px]">{totalHours}h</span>
-                <span className="mx-1 text-slate-400">/</span>
-                <span>基準 {MIN_MONTHLY_HOURS}h</span>
-                {hoursOver > 0 ? (
-                  <span className="ml-2 font-semibold text-slate-700">+{hoursOver}h 超過</span>
-                ) : (
-                  <span className="ml-2 text-slate-500">残り {hoursRemain}h</span>
-                )}
-              </div>
-            </div>
-
-            {/* 積算バー:基準 120h を 100% とし、種類別セグメントを左から積む */}
-            <div className="mt-2 relative">
-              <div className="flex h-5 w-full overflow-hidden rounded-full bg-slate-100">
-                {typeOrder.map((t) => {
-                  const w = (byType[t] / MIN_MONTHLY_HOURS) * 100;
-                  return (
-                    <div
-                      key={t}
-                      className={`${TYPE_COLORS[t] ?? "bg-slate-400"} h-full`}
-                      style={{ width: `${Math.min(w, 100)}%` }}
-                      title={`${t}: ${byType[t]}h`}
-                    />
-                  );
-                })}
-              </div>
-              {/* 100% ライン(基準到達点) */}
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center">
-                <div className="h-full w-px bg-slate-900" />
-              </div>
-              {/* 進捗パーセント */}
-              <div className="mt-1 flex justify-end text-[10px] text-slate-500">
-                {Math.round(hoursProgress * 100)}% 達成
-              </div>
-            </div>
-
-            {/* 凡例(値あるものだけ)*/}
-            <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
-              {typeOrder.map((t) => (
-                <li key={t} className="inline-flex items-center gap-1">
-                  <span className={`inline-block h-2 w-2 rounded-full ${TYPE_COLORS[t] ?? "bg-slate-400"}`} />
-                  <span className="text-slate-600">{t}</span>
-                  <span className="font-bold tabular-nums text-slate-800">{byType[t]}h</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* 経費使用:カテゴリ(活動内容 topic)別の積算棒 + 月予算との比較 */}
-        {totalExpense > 0 && (
-          <div className="mt-6">
-            <div className="flex items-baseline justify-between">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">経費使用(カテゴリ別積算)</div>
-              <div className="text-[10px] text-slate-500">
-                <span className="font-bold text-slate-900 text-[12px]">¥{totalExpense.toLocaleString()}</span>
-                <span className="mx-1 text-slate-400">/</span>
-                <span>月予算 ¥{(MONTHLY_BUDGET / 10000).toFixed(0)}万</span>
-                <span className="ml-1 text-slate-400">({expBudgetPct.toFixed(1)}%)</span>
-              </div>
-            </div>
-
-            <div className="mt-2 relative">
-              <div className="flex h-5 w-full overflow-hidden rounded-full bg-slate-100">
-                {catOrder.map((cat, i) => {
-                  const w = (byCat[cat] / MONTHLY_BUDGET) * 100;
-                  // カテゴリ色:slate 系の濃淡で識別(色を増やさない方針の妥協)
-                  const tone = ["bg-slate-900", "bg-slate-700", "bg-slate-500", "bg-slate-400", "bg-slate-300", "bg-slate-200"][i % 6];
-                  return (
-                    <div
-                      key={cat}
-                      className={`${tone} h-full`}
-                      style={{ width: `${Math.min(w, 100)}%` }}
-                      title={`${cat}: ¥${byCat[cat].toLocaleString()}`}
-                    />
-                  );
-                })}
-              </div>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center">
-                <div className="h-full w-px bg-slate-900" />
-              </div>
-            </div>
-
-            <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
-              {catOrder.map((cat, i) => (
-                <li key={cat} className="inline-flex items-center gap-1">
-                  <span className={`inline-block h-2 w-2 rounded-full ${["bg-slate-900", "bg-slate-700", "bg-slate-500", "bg-slate-400", "bg-slate-300", "bg-slate-200"][i % 6]}`} />
-                  <span className="text-slate-600">{cat}</span>
-                  <span className="font-bold tabular-nums text-slate-800">¥{byCat[cat].toLocaleString()}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {/* サマリー + カレンダー + グラフ(月報タブと共通) */}
+        <MonthOverview ym={ym} onDayTap={(d) => setDayPopup(d)} />
 
         {/* 来月の計画 */}
         <Label
@@ -1885,37 +1646,55 @@ function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () =>
         </div>
         <ul className="mt-3 space-y-2">
           {items.map((l) => (
-            <li key={l.id} className="rounded-xl border border-slate-200 bg-white p-3">
-              <div className="flex items-center gap-2">
-                <span className="rounded-full border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-700">{l.type}</span>
-                <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{l.topic}</span>
-                <span className="ml-auto inline-flex items-center gap-0.5 text-[10px] text-slate-500">
-                  <Clock className="h-3 w-3" />
-                  {l.hours}h
-                </span>
-                {typeof l.distanceKm === "number" && (
-                  <span className="text-[10px] text-slate-500">{l.distanceKm}km</span>
-                )}
-              </div>
-              <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-slate-800">{l.body}</p>
-              <div className="mt-2 flex items-center justify-between">
-                {l.expense ? (
-                  <div className="inline-flex items-center gap-1 text-[11px] text-slate-600">
-                    <Wallet className="h-3 w-3" />
-                    ¥{l.expense.toLocaleString()}
-                  </div>
-                ) : <span />}
-                <button
-                  onClick={() => pushSheet({ kind: "activity-create", editing: l })}
-                  className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-0.5 text-[10px] font-semibold text-slate-700 hover:border-slate-900 hover:bg-slate-50"
-                >
-                  <Pencil className="h-3 w-3" />
-                  編集
-                </button>
-              </div>
+            <li key={l.id}>
+              <button
+                onClick={() => pushSheet({ kind: "activity-create", editing: l })}
+                className="group w-full rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-slate-900 hover:bg-slate-50/60"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-700">{l.type}</span>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{l.topic}</span>
+                  <span className="ml-auto inline-flex items-center gap-0.5 text-[10px] text-slate-500">
+                    <Clock className="h-3 w-3" />
+                    {l.hours}h
+                  </span>
+                  {typeof l.distanceKm === "number" && (
+                    <span className="text-[10px] text-slate-500">{l.distanceKm}km</span>
+                  )}
+                </div>
+                <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-slate-800">{l.body}</p>
+                <div className="mt-2 flex items-center justify-between">
+                  {l.expense ? (
+                    <div className="inline-flex items-center gap-1 text-[11px] text-slate-600">
+                      <Wallet className="h-3 w-3" />
+                      ¥{l.expense.toLocaleString()}
+                    </div>
+                  ) : <span />}
+                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400 transition group-hover:text-slate-700">
+                    <Pencil className="h-3 w-3" />
+                    タップで編集
+                  </span>
+                </div>
+              </button>
             </li>
           ))}
         </ul>
+
+        {items.length === 0 && (
+          <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-5 text-center text-[12px] text-slate-500">
+            この日の記録はまだありません
+          </div>
+        )}
+
+        {/* ADR-020: ReportDaySheet から当該日付の活動を追加 */}
+        <button
+          onClick={() => pushSheet({ kind: "activity-create", date })}
+          className="mt-3 flex w-full items-center justify-center gap-1 rounded-xl border border-dashed border-slate-300 py-3 text-[12px] font-semibold text-slate-600 transition hover:border-slate-900 hover:text-slate-900"
+        >
+          <Plus className="h-4 w-4" />
+          この日の活動を追加
+        </button>
+
         {depth > 1 && (
           <div className="mt-4 text-center">
             <button onClick={onClose} className="text-[11px] text-slate-500 hover:underline">
@@ -2036,6 +1815,7 @@ function ExpenseCreateSheet({ onClose }: { onClose: () => void }) {
   const [title, setTitle] = React.useState("");
   const [amount, setAmount] = React.useState("");
   const [purpose, setPurpose] = React.useState("");
+  const [category, setCategory] = React.useState<string>(EXPENSE_CATEGORIES[0]);
   const [saving, setSaving] = React.useState(false);
   const amountNum = parseInt(amount.replace(/[^0-9]/g, ""), 10);
   const canSubmit = !!title.trim() && amountNum > 0 && purpose.trim().length >= 5 && !saving;
@@ -2044,7 +1824,7 @@ function ExpenseCreateSheet({ onClose }: { onClose: () => void }) {
     if (!canSubmit) return;
     setSaving(true);
     try {
-      await addExpense({ title: title.trim(), amount: amountNum, purpose: purpose.trim(), status: "申請中" });
+      await addExpense({ title: title.trim(), amount: amountNum, purpose: purpose.trim(), status: "申請中", category });
       onClose();
     } catch {
       setSaving(false);
@@ -2100,6 +1880,21 @@ function ExpenseCreateSheet({ onClose }: { onClose: () => void }) {
           タイトル
         </Label>
         <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="用途を書いてから「AI でタイトル生成」、または直接入力" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
+
+        <Label>カテゴリ</Label>
+        <div className="mt-1 flex flex-wrap gap-1.5">
+          {EXPENSE_CATEGORIES.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setCategory(c)}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${category === c ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-600 hover:border-slate-500"}`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1 text-[10px] text-slate-400">活動に紐づかない経費(備品・通信費など)もここから申請できます。</p>
 
         <Label>金額(円)</Label>
         <input type="text" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="例:12800" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />

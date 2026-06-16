@@ -46,6 +46,7 @@ export function mapExpense(r: Row) {
     amount: r.amount_requested as number,
     purpose: r.purpose as string,
     status: r.status as string,
+    category: (r.category as string | null) ?? "活動費",  // ADR-021
     aiNote: (r.ai_note as string) ?? "",
     citation: citations[0] ?? { source: "", quote: "" },
     createdAt: (r.created_at as string)?.slice(0, 10) ?? "",

@@ -59,11 +59,24 @@ CREATE TABLE IF NOT EXISTS activity_topics (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- ADR-021: 日報(1日のまとめ)。活動記録・経費の上位エンティティ。
+CREATE TABLE IF NOT EXISTS daily_logs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  municipality_id TEXT NOT NULL,
+  log_date TEXT NOT NULL,
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(user_id, log_date)
+);
+
 CREATE TABLE IF NOT EXISTS activity_logs (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
   municipality_id TEXT NOT NULL,
   project_id TEXT,
+  daily_log_id TEXT,                       -- ADR-021: 所属する日報(nullable)
   activity_type TEXT NOT NULL,
   topic TEXT NOT NULL,
   hours REAL NOT NULL DEFAULT 0,
@@ -96,8 +109,10 @@ CREATE TABLE IF NOT EXISTS expenses (
   municipality_id TEXT NOT NULL,
   project_id TEXT,
   expense_kind TEXT NOT NULL DEFAULT 'single',  -- single | trip_parent | trip_receipt
+  category TEXT NOT NULL DEFAULT '活動費',       -- ADR-021: 経費カテゴリ(活動費/備品/通信費 等)
   parent_expense_id TEXT,
-  source_activity_log_id TEXT,
+  source_activity_log_id TEXT,                  -- ADR-021: 活動に紐づく経費(nullable)
+  daily_log_id TEXT,                            -- ADR-021: 日報に紐づく経費(nullable)
   source_receipt_index INTEGER,
   title TEXT NOT NULL,
   amount_requested INTEGER NOT NULL DEFAULT 0,
@@ -217,6 +232,7 @@ CREATE TABLE IF NOT EXISTS consultations (
 );
 
 CREATE INDEX IF NOT EXISTS idx_logs_user_date ON activity_logs(user_id, log_date DESC);
+CREATE INDEX IF NOT EXISTS idx_daily_logs_user_date ON daily_logs(user_id, log_date DESC);
 CREATE INDEX IF NOT EXISTS idx_expenses_user ON expenses(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_approvals_muni ON approvals(municipality_id, status);
 CREATE INDEX IF NOT EXISTS idx_ann_muni ON announcements(municipality_id, sent_at DESC);

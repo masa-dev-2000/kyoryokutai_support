@@ -12,14 +12,14 @@ export async function GET(req: Request) {
   return ok(await getRepos().expenses.listByUser(userId));
 }
 
-type CreateBody = { userId?: string; title: string; amount: number; purpose: string; status?: string };
+type CreateBody = { userId?: string; title: string; amount: number; purpose: string; status?: string; category?: string };
 
 export async function POST(req: Request) {
   const b = await readJson<CreateBody>(req);
   const repos = getRepos();
   const userId = b.userId ?? "m1";
 
-  const created = await repos.expenses.create({ userId, title: b.title, amount: b.amount, purpose: b.purpose, status: b.status });
+  const created = await repos.expenses.create({ userId, title: b.title, amount: b.amount, purpose: b.purpose, status: b.status, category: b.category });
 
   // 役場側の承認キューに投入(隊員申請 → 役場が見える、ADR-012)
   const memberName = (await repos.users.nameOf(userId)) ?? "隊員";

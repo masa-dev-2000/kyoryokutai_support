@@ -120,7 +120,7 @@ export interface Repos {
   };
   expenses: {
     listByUser(userId: string): Promise<ExpenseDTO[]>;
-    create(e: { userId: string; title: string; amount: number; purpose: string; status?: string }): Promise<ExpenseDTO>;
+    create(e: { userId: string; title: string; amount: number; purpose: string; status?: string; category?: string }): Promise<ExpenseDTO>;
     /** 日報経由(ADR-014 動線①):activity_log と source_receipt_index で紐付け、二重申請防止 */
     createFromLog(e: {
       userId: string;

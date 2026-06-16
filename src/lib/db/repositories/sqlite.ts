@@ -253,9 +253,9 @@ export const sqliteRepos: Repos = {
     async create(b) {
       const id = genId("exp");
       run(
-        `INSERT INTO expenses (id,user_id,municipality_id,expense_kind,title,amount_requested,purpose,status,ai_note,citations,has_receipt,created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, b.userId, MUNI, "single", b.title, b.amount, b.purpose, b.status ?? "申請中", "AI 判定材料は申請後に表示されます。", JSON.stringify([]), 0, new Date().toISOString().slice(0, 10)]
+        `INSERT INTO expenses (id,user_id,municipality_id,expense_kind,category,title,amount_requested,purpose,status,ai_note,citations,has_receipt,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [id, b.userId, MUNI, "single", b.category ?? "活動費", b.title, b.amount, b.purpose, b.status ?? "申請中", "AI 判定材料は申請後に表示されます。", JSON.stringify([]), 0, new Date().toISOString().slice(0, 10)]
       );
       return mapExpense(all("SELECT * FROM expenses WHERE id=?", [id])[0]);
     },
