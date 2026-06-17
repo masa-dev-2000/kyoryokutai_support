@@ -2,7 +2,6 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 const PROTECTED = ["/v5/member", "/v5/manager", "/v5/admin"];
-const DEMO_TOKEN = process.env.DEMO_BYPASS_TOKEN;
 
 export async function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
@@ -10,8 +9,8 @@ export async function middleware(request: NextRequest) {
 
   if (!isProtected) return NextResponse.next({ request });
 
-  // デモバイパス: ?demo=<DEMO_BYPASS_TOKEN> でログインをスキップ
-  if (DEMO_TOKEN && searchParams.get("demo") === DEMO_TOKEN) {
+  // デモバイパス: ?demo=true でログインをスキップ(デモユーザーとして誰でもアクセス可)
+  if (searchParams.get("demo") === "true") {
     return NextResponse.next({ request });
   }
 
