@@ -40,7 +40,7 @@ export async function GET() {
     .eq("auth_id", user.id)
     .single();
 
-  // auth_id 未紐付けの場合 email で検索してリンク
+  // auth_id 未紐付けの場合 email で検索してリンク、なければ自動作成
   if (!appUser) {
     const { data: byEmail } = await admin
       .from("users")
@@ -51,6 +51,20 @@ export async function GET() {
     if (byEmail) {
       await admin.from("users").update({ auth_id: user.id }).eq("id", byEmail.id);
       return ok({ authenticated: true, userId: byEmail.id, name: byEmail.name, role: byEmail.role });
+    }
+
+    // 新規サインアップユーザー: メタデータから public.users を自動作成
+    const meta = user.user_metadata ?? {};
+    const newName = (meta.name as string | undefined) ?? user.email ?? "未設定";
+    const newMuni = (meta.municipality as string | undefined) ?? null;
+    const { data: created } = await admin
+      .from("users")
+      .insert({ name: newName, email: user.email, role: "member", auth_id: user.id, municipality_id: newMuni })
+      .select("id, name, role")
+      .single();
+
+    if (created) {
+      return ok({ authenticated: true, userId: created.id, name: created.name, role: created.role });
     }
 
     return NextResponse.json({ authenticated: true, userId: null, email: user.email }, { status: 200 });
