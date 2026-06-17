@@ -90,9 +90,9 @@ export interface Repos {
     remove(id: string): Promise<void>;
   };
   topics: {
-    list(userId: string): Promise<string[]>;
-    add(userId: string, name: string): Promise<string[]>;
-    remove(userId: string, name: string): Promise<string[]>;
+    list(userId: string, kind?: string): Promise<string[]>;
+    add(userId: string, name: string, kind?: string): Promise<string[]>;
+    remove(userId: string, name: string, kind?: string): Promise<string[]>;
   };
   activityLogs: {
     listByUser(userId: string): Promise<ActivityLogDTO[]>;

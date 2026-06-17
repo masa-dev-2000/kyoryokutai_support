@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS activity_topics (
   municipality_id TEXT NOT NULL,
   name TEXT NOT NULL,
   sort_order INTEGER NOT NULL DEFAULT 0,
+  kind TEXT NOT NULL DEFAULT 'topic',
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

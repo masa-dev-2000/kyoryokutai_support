@@ -189,20 +189,20 @@ export const sqliteRepos: Repos = {
   },
 
   topics: {
-    async list(userId) {
-      return all<{ name: string }>("SELECT name FROM activity_topics WHERE user_id=? ORDER BY sort_order", [userId]).map((r) => r.name);
+    async list(userId, kind = "topic") {
+      return all<{ name: string }>("SELECT name FROM activity_topics WHERE user_id=? AND kind=? ORDER BY sort_order", [userId, kind]).map((r) => r.name);
     },
-    async add(userId, name) {
-      const exists = all("SELECT 1 FROM activity_topics WHERE user_id=? AND name=?", [userId, name]);
+    async add(userId, name, kind = "topic") {
+      const exists = all("SELECT 1 FROM activity_topics WHERE user_id=? AND kind=? AND name=?", [userId, kind, name]);
       if (exists.length === 0) {
-        const n = all<{ c: number }>("SELECT COUNT(*) c FROM activity_topics WHERE user_id=?", [userId])[0].c;
-        run("INSERT INTO activity_topics (id,user_id,municipality_id,name,sort_order) VALUES (?,?,?,?,?)", [genId("tp"), userId, MUNI, name, n]);
+        const n = all<{ c: number }>("SELECT COUNT(*) c FROM activity_topics WHERE user_id=? AND kind=?", [userId, kind])[0].c;
+        run("INSERT INTO activity_topics (id,user_id,municipality_id,name,sort_order,kind) VALUES (?,?,?,?,?,?)", [genId("tp"), userId, MUNI, name, n, kind]);
       }
-      return all<{ name: string }>("SELECT name FROM activity_topics WHERE user_id=? ORDER BY sort_order", [userId]).map((r) => r.name);
+      return all<{ name: string }>("SELECT name FROM activity_topics WHERE user_id=? AND kind=? ORDER BY sort_order", [userId, kind]).map((r) => r.name);
     },
-    async remove(userId, name) {
-      run("DELETE FROM activity_topics WHERE user_id=? AND name=?", [userId, name]);
-      return all<{ name: string }>("SELECT name FROM activity_topics WHERE user_id=? ORDER BY sort_order", [userId]).map((r) => r.name);
+    async remove(userId, name, kind = "topic") {
+      run("DELETE FROM activity_topics WHERE user_id=? AND kind=? AND name=?", [userId, kind, name]);
+      return all<{ name: string }>("SELECT name FROM activity_topics WHERE user_id=? AND kind=? ORDER BY sort_order", [userId, kind]).map((r) => r.name);
     },
   },
 

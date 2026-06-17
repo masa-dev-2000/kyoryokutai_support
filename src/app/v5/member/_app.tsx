@@ -231,7 +231,6 @@ type Sheet =
   | { kind: "expense-settle"; item: ExpenseRequest }
   | { kind: "case-detail"; case: CaseItem }
   | { kind: "consult"; context: ConsultContext; onAdopt?: (text: string) => void }
-  | { kind: "topic-edit" }
   | { kind: "announcements" }
   | { kind: "rules-panel" }
   | { kind: "settings-menu" }
@@ -257,6 +256,8 @@ type Ctx = {
   topics: string[];
   addTopic: (t: string) => void;
   removeTopic: (t: string) => void;
+  types: string[];
+  addType: (t: string) => void;
   expenses: ExpenseRequest[];
   addExpense: (e: Omit<ExpenseRequest, "id" | "createdAt" | "aiNote" | "citation" | "hasReceipt">) => void | Promise<void>;
   markSettled: (id: string) => void;
@@ -269,6 +270,8 @@ type Ctx = {
   pushSheet: (s: Sheet) => void;
   popSheet: () => void;
   closeAllSheets: () => void;
+  /** スタックを畳んで指定日付の活動一覧シートだけを表示(活動保存後の遷移に使用) */
+  showDay: (date: string) => void;
   plan: string;
   setPlan: (p: string) => void;
   memberId: string;
@@ -290,6 +293,8 @@ export function MemberApp() {
   // 初期値はシード(即描画)→ マウント後にバックエンドの実データで置換
   const [logs, setLogs] = React.useState<ActivityLog[]>(seedLogs);
   const [topics, setTopics] = React.useState<string[]>(DEFAULT_TOPICS);
+  // #48: 活動の種類。組み込み(ACTIVITY_TYPES)+ ユーザー追加分(kind=type)
+  const [customTypes, setCustomTypes] = React.useState<string[]>([]);
   const [expenses, setExpenses] = React.useState<ExpenseRequest[]>(initialExpenses);
   const [reports, setReports] = React.useState<Report[]>(seedReports);
   const [caseItems, setCaseItems] = React.useState<CaseItem[]>(seedCases);
@@ -318,9 +323,10 @@ export function MemberApp() {
     let alive = true;
     (async () => {
       try {
-        const [lg, tp, ex, rp, cs, ns, rl] = await Promise.all([
+        const [lg, tp, ty, ex, rp, cs, ns, rl] = await Promise.all([
           apiGet<ActivityLog[]>(`/api/activity-logs?userId=${memberId}`),
           apiGet<string[]>(`/api/topics?userId=${memberId}`),
+          apiGet<string[]>(`/api/topics?userId=${memberId}&kind=type`),
           apiGet<ExpenseRequest[]>(`/api/expenses?userId=${memberId}`),
           apiGet<Report[]>(`/api/monthly-reports?userId=${memberId}`),
           apiGet<{ cases: CaseItem[]; trend: TrendItem[] }>(`/api/cases`),
@@ -329,7 +335,8 @@ export function MemberApp() {
         ]);
         if (!alive) return;
         setLogs(lg);
-        setTopics(tp);
+        setTopics(tp.length > 0 ? tp : DEFAULT_TOPICS);
+        setCustomTypes(ty);
         setExpenses(ex);
         setReports(rp);
         setCaseItems(cs.cases);
@@ -401,6 +408,12 @@ export function MemberApp() {
       const next = await apiDelete<string[]>(`/api/topics?userId=${memberId}&name=${encodeURIComponent(t)}`);
       setTopics(next);
     },
+    // #48: 活動の種類(組み込み + ユーザー追加)
+    types: [...ACTIVITY_TYPES, ...customTypes.filter((t) => !ACTIVITY_TYPES.includes(t))],
+    addType: async (t) => {
+      const next = await apiPost<string[]>("/api/topics", { userId: memberId, name: t, kind: "type" });
+      setCustomTypes(next);
+    },
     expenses,
     addExpense: async (e) => {
       const created = await apiPost<ExpenseRequest>("/api/expenses", { userId: memberId, ...e });
@@ -419,6 +432,7 @@ export function MemberApp() {
     pushSheet: (s) => setSheets((ss) => [...ss, s]),
     popSheet: () => setSheets((ss) => ss.slice(0, -1)),
     closeAllSheets: () => setSheets([]),
+    showDay: (date) => setSheets([{ kind: "report-day", date }]),
     plan,
     setPlan,
     memberId,
@@ -427,8 +441,11 @@ export function MemberApp() {
   return (
     <AppCtx.Provider value={ctx}>
       <main className="flex h-screen flex-col bg-white text-slate-900">
-        <Header onSettings={() => setSheets([{ kind: "settings-menu" }])} userName={memberName} />
-        <Tabs active={tab} onChange={setTab} unread={notices.length} />
+        {/* #49: ヘッダー + タブ欄を上部固定。Sheet は fixed inset-0 で別レイヤーのため競合しない */}
+        <div className="sticky top-0 z-20 shrink-0 bg-white">
+          <Header onSettings={() => setSheets([{ kind: "settings-menu" }])} userName={memberName} />
+          <Tabs active={tab} onChange={setTab} unread={notices.length} />
+        </div>
 
         <div className="flex flex-1 flex-col overflow-y-auto px-6 pb-20">
           <div className="mx-auto w-full max-w-2xl flex-1 py-4">
@@ -439,7 +456,6 @@ export function MemberApp() {
           </div>
         </div>
 
-        <Footer />
         <SheetRoot />
       </main>
     </AppCtx.Provider>
@@ -501,18 +517,11 @@ function TabBtn({ label, active, onClick, badge }: { label: string; active: bool
   );
 }
 
-function Footer() {
-  return (
-    <footer className="border-t border-slate-100 px-5 py-2 text-center text-[10px] text-slate-400">
-      地域おこし協力隊サポートシステム ・ v5 lab
-    </footer>
-  );
-}
-
 /* -------------------- 日付ユーティリティ -------------------- */
 
 function todayKey() {
-  return "2026-06-11";
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function currentYm() {
@@ -704,9 +713,6 @@ function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) 
                 );
               })}
             </div>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center">
-              <div className="h-full w-px bg-slate-900" />
-            </div>
             <div className="mt-1 flex justify-end text-[10px] text-slate-500">
               {Math.round(hoursProgress * 100)}% 達成
             </div>
@@ -752,9 +758,6 @@ function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) 
                 );
               })}
             </div>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center">
-              <div className="h-full w-px bg-slate-900" />
-            </div>
           </div>
 
           <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
@@ -777,22 +780,27 @@ function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) 
 type ExpenseSubTab = "request" | "settle";
 
 function ExpenseTab() {
-  const { expenses, logs, pushSheet } = useApp();
+  const { expenses, pushSheet } = useApp();
   const [sub, setSub] = React.useState<ExpenseSubTab>("request");
   const [q, setQ] = React.useState("");
 
-  // 経費使用状況計算(精算済 or 未精算の合計を年間とみなす / モック)
-  const fiscalYearLogs = logs.filter((l) => l.date >= "2026-04-01" && l.date < "2027-04-01");
-  const usedByMonth: Record<string, number> = {};
-  for (const l of fiscalYearLogs) {
-    const m = l.date.slice(0, 7);
-    usedByMonth[m] = (usedByMonth[m] ?? 0) + (l.expense ?? 0);
-  }
-  const usedTotal = Object.values(usedByMonth).reduce((s, v) => s + v, 0);
-  const monthsActive = Object.keys(usedByMonth).length || 1;
-  const monthlyAvg = Math.round(usedTotal / monthsActive);
-  const remaining = ANNUAL_BUDGET - usedTotal;
-  const pct = (usedTotal / ANNUAL_BUDGET) * 100;
+  // ADR(#46): 経費使用状況をステータス別の積算で表示。
+  // 使用額(メイン数字)= 清算済み合計(確定支出)。差戻しは集計に含めない。
+  const sumByStatus = (s: ExpenseRequest["status"]) =>
+    expenses.filter((e) => e.status === s).reduce((acc, e) => acc + e.amount, 0);
+  const settledSum = sumByStatus("精算済");
+  const approvedSum = sumByStatus("承認") + sumByStatus("未精算");
+  const pendingSum = sumByStatus("申請中");
+  const committedSum = settledSum + approvedSum + pendingSum; // 差戻しは除外
+  const usedTotal = settledSum; // 使用額 = 清算済み
+  const remaining = ANNUAL_BUDGET - committedSum; // 残予算はコミット済みベースで控除
+  const pct = (settledSum / ANNUAL_BUDGET) * 100;
+  // バーセグメント(左→右):清算済み → 承認済み → 申請中
+  const segments = [
+    { label: "清算済み", amount: settledSum, color: "bg-slate-700" },
+    { label: "承認済み", amount: approvedSum, color: "bg-emerald-500" },
+    { label: "申請中", amount: pendingSum, color: "bg-amber-400" },
+  ].filter((seg) => seg.amount > 0);
 
   const matched = expenses.filter((e) => (q.trim() ? e.title.includes(q) || e.purpose.includes(q) : true));
   const requestItems = matched.filter((e) => ["申請中", "承認", "差戻し"].includes(e.status));
@@ -806,7 +814,7 @@ function ExpenseTab() {
         <p className="mt-1 text-[12px] text-slate-500">申請(事前)と精算(事後)を分けて管理</p>
       </div>
 
-      {/* 現在の使用状況 ─ グラフ中心、カードなし */}
+      {/* 現在の使用状況 ─ ステータス別積算バー(#46) */}
       <section className="mx-auto mt-5 max-w-xl">
         <div className="flex items-baseline justify-between">
           <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
@@ -819,13 +827,29 @@ function ExpenseTab() {
             <span className="ml-1.5 text-slate-400">{pct.toFixed(1)}%</span>
           </div>
         </div>
-        <div className="mt-1.5 overflow-hidden rounded-full bg-slate-100">
-          <div className="h-2 rounded-full bg-slate-900" style={{ width: `${Math.min(pct, 100)}%` }} />
+        <div className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-slate-100">
+          {segments.map((seg) => (
+            <div
+              key={seg.label}
+              className={`${seg.color} h-full`}
+              style={{ width: `${Math.min((seg.amount / ANNUAL_BUDGET) * 100, 100)}%` }}
+              title={`${seg.label}: ¥${seg.amount.toLocaleString()}`}
+            />
+          ))}
         </div>
-        <div className="mt-1.5 flex justify-between text-[10px] text-slate-500">
-          <span>月平均 ¥{(monthlyAvg / 10000).toFixed(1)}万</span>
+        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px] text-slate-500">
+          <ul className="flex flex-wrap gap-x-3 gap-y-1">
+            {segments.map((seg) => (
+              <li key={seg.label} className="inline-flex items-center gap-1">
+                <span className={`inline-block h-2 w-2 rounded-full ${seg.color}`} />
+                <span className="text-slate-600">{seg.label}</span>
+                <span className="font-bold tabular-nums text-slate-800">¥{seg.amount.toLocaleString()}</span>
+              </li>
+            ))}
+          </ul>
           <span>残り ¥{(remaining / 10000).toFixed(1)}万</span>
         </div>
+        <p className="mt-1 text-[9px] text-slate-400">使用額=清算済み合計。残り=清算済み+承認済み+申請中を控除(差戻しは除く)。</p>
       </section>
 
       {/* サブタブ */}
@@ -1105,7 +1129,6 @@ function SheetRoot() {
       {sheet.kind === "expense-settle" && <ExpenseSettleSheet item={sheet.item} onClose={close} />}
       {sheet.kind === "case-detail" && <CaseDetailSheet item={sheet.case} onClose={close} />}
       {sheet.kind === "consult" && <ConsultSheet context={sheet.context} onAdopt={sheet.onAdopt} onClose={close} />}
-      {sheet.kind === "topic-edit" && <TopicEditSheet onClose={close} />}
       {sheet.kind === "announcements" && <AnnouncementsSheet onClose={close} />}
       {sheet.kind === "rules-panel" && <RulesPanelSheet onClose={close} />}
       {sheet.kind === "settings-menu" && <SettingsMenuSheet onClose={close} />}
@@ -1127,10 +1150,71 @@ function SheetHeader({ title, onClose, right, backLabel }: { title: string; onCl
   );
 }
 
+/* -------- チップ選択 + インライン追加(#48)-------- */
+
+function ChipPicker({
+  options, selected, onSelect, onAdd, addPlaceholder,
+}: {
+  options: string[];
+  selected: string | null;
+  onSelect: (v: string) => void;
+  onAdd: (v: string) => void;
+  addPlaceholder: string;
+}) {
+  const [adding, setAdding] = React.useState(false);
+  const [value, setValue] = React.useState("");
+
+  function commit() {
+    const v = value.trim();
+    if (!v) { setAdding(false); return; }
+    if (!options.includes(v)) onAdd(v);
+    else onSelect(v);
+    setValue("");
+    setAdding(false);
+  }
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+      {options.map((c) => (
+        <button
+          key={c}
+          type="button"
+          onClick={() => onSelect(c)}
+          className={`rounded-full border px-3 py-1 text-[12px] font-medium transition ${selected === c ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-600 hover:border-slate-500"}`}
+        >
+          {c}
+        </button>
+      ))}
+      {adding ? (
+        <span className="inline-flex items-center gap-1">
+          <input
+            autoFocus
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } if (e.key === "Escape") setAdding(false); }}
+            onBlur={commit}
+            placeholder={addPlaceholder}
+            className="w-28 rounded-full border border-slate-400 bg-white px-3 py-1 text-[12px] focus:border-slate-900 focus:outline-none"
+          />
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="inline-flex items-center gap-0.5 rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-[12px] font-medium text-slate-500 transition hover:border-slate-500 hover:text-slate-700"
+        >
+          <Plus className="h-3 w-3" />
+          追加
+        </button>
+      )}
+    </div>
+  );
+}
+
 /* -------- 活動報告 作成シート(入力ごとに相談ボタン)-------- */
 
 function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; editing?: ActivityLog; date?: string }) {
-  const { addLog, updateLog, topics } = useApp();
+  const { addLog, updateLog, topics, addTopic, types, addType, showDay } = useApp();
   const isEdit = !!editing;
   // ADR-020: カレンダー日付タップ起点の場合は date を、当日FAB起点は todayKey を使う
   const targetDate = editing?.date ?? date ?? todayKey();
@@ -1211,7 +1295,8 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
           expenses: validExpenses.length > 0 ? validExpenses : undefined,
         });
       }
-      onClose();
+      // 保存後はその日付の活動一覧シートに遷移(ヘッダーではなく入力欄下のボタンから)
+      showDay(targetDate);
     } catch {
       setSaving(false);
     }
@@ -1222,30 +1307,25 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
       <SheetHeader
         title={isEdit ? "活動報告を編集" : `${formatDateShort(targetDate)} の活動を書く`}
         onClose={onClose}
-        right={
-          <button onClick={save} disabled={!canSave} className="text-[11px] font-bold text-slate-900 hover:underline disabled:cursor-not-allowed disabled:text-slate-300">
-            {isEdit ? "更新" : "記録"}
-          </button>
-        }
       />
       <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
         <Label>活動の種類</Label>
-        <div className="mt-1 flex flex-wrap gap-1.5">
-          {ACTIVITY_TYPES.map((c) => (
-            <button key={c} onClick={() => setType((cur) => (cur === c ? null : c))} className={`rounded-full border px-3 py-1 text-[12px] font-medium transition ${type === c ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-600 hover:border-slate-500"}`}>
-              {c}
-            </button>
-          ))}
-        </div>
+        <ChipPicker
+          options={types}
+          selected={type}
+          onSelect={(c) => setType((cur) => (cur === c ? null : c))}
+          onAdd={(v) => { addType(v); setType(v); }}
+          addPlaceholder="例:研修"
+        />
 
         <Label>活動内容(あなたのテーマ)</Label>
-        <div className="mt-1 flex flex-wrap gap-1.5">
-          {topics.map((c) => (
-            <button key={c} onClick={() => setTopic((cur) => (cur === c ? null : c))} className={`rounded-full border px-3 py-1 text-[12px] font-medium transition ${topic === c ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-600 hover:border-slate-500"}`}>
-              {c}
-            </button>
-          ))}
-        </div>
+        <ChipPicker
+          options={topics}
+          selected={topic}
+          onSelect={(c) => setTopic((cur) => (cur === c ? null : c))}
+          onAdd={(v) => { addTopic(v); setTopic(v); }}
+          addPlaceholder="例:商店街活性化"
+        />
 
         <Label>活動時間</Label>
         <div className="mt-1 flex items-center gap-2">
@@ -1427,6 +1507,19 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
           <button className="inline-flex items-center gap-1 rounded-full border border-slate-300 px-3 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-slate-500">
             <Mic className="h-3.5 w-3.5" />
             音声で(後日)
+          </button>
+        </div>
+      </div>
+
+      {/* 入力欄下の保存ボタン(画面下部に固定)*/}
+      <div className="border-t border-slate-200 bg-white px-5 py-3">
+        <div className="mx-auto max-w-2xl">
+          <button
+            onClick={save}
+            disabled={!canSave}
+            className="w-full rounded-xl bg-slate-900 py-3 text-[13px] font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+          >
+            {saving ? (isEdit ? "更新中…" : "記録中…") : isEdit ? "更新する" : "記録する"}
           </button>
         </div>
       </div>
@@ -2076,9 +2169,9 @@ function CaseDetailSheet({ item, onClose }: { item: CaseItem; onClose: () => voi
 
 function SettingsMenuSheet({ onClose }: { onClose: () => void }) {
   const { pushSheet } = useApp();
+  // #48: 「活動内容を編集」は廃止。活動の種類・テーマは記録フォーム内の「+追加」で管理する。
   const items = [
     { label: "プロフィール", desc: "名前・自治体・自己紹介を編集", icon: <SettingsIcon className="h-4 w-4" />, action: () => pushSheet({ kind: "profile" }) },
-    { label: "活動内容を編集", desc: "活動テーマのカスタマイズ", icon: <Pencil className="h-4 w-4" />, action: () => pushSheet({ kind: "topic-edit" }) },
   ];
   return (
     <>
@@ -2156,54 +2249,6 @@ function ProfileSheet({ onClose }: { onClose: () => void }) {
         >
           保存
         </button>
-      </div>
-    </>
-  );
-}
-
-/* -------- 活動内容(トピック)編集シート -------- */
-
-function TopicEditSheet({ onClose }: { onClose: () => void }) {
-  const { topics, addTopic, removeTopic } = useApp();
-  const [input, setInput] = React.useState("");
-
-  function add() {
-    const v = input.trim();
-    if (!v) return;
-    addTopic(v);
-    setInput("");
-  }
-
-  return (
-    <>
-      <SheetHeader
-        title="活動内容を編集"
-        onClose={onClose}
-        right={
-          <button onClick={onClose} className="text-[11px] font-bold text-slate-900 hover:underline">完了</button>
-        }
-      />
-      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
-        <p className="text-[11px] text-slate-500">あなた専用の活動テーマ。活動報告を書くときの選択肢として使われます。</p>
-
-        <div className="mt-4 flex items-center gap-2">
-          <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add()} placeholder="例:商店街活性化" className="flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
-          <button onClick={add} disabled={!input.trim()} className="rounded-full bg-slate-900 px-4 py-1.5 text-[12px] font-bold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300">追加</button>
-        </div>
-
-        <div className="mt-4 text-[11px] font-bold uppercase tracking-wider text-slate-500">登録中({topics.length})</div>
-        {topics.length === 0 ? (
-          <div className="mt-2 text-[11px] text-slate-400">まだ登録されていません</div>
-        ) : (
-          <ul className="mt-2 space-y-px">
-            {topics.map((t) => (
-              <li key={t} className="flex items-center gap-3 border-b border-slate-100 py-2 last:border-b-0">
-                <span className="flex-1 text-[13px] text-slate-800">{t}</span>
-                <button onClick={() => removeTopic(t)} className="text-[11px] text-slate-400 hover:text-rose-700">削除</button>
-              </li>
-            ))}
-          </ul>
-        )}
       </div>
     </>
   );

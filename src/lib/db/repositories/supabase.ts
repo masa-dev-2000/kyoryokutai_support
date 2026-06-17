@@ -260,36 +260,40 @@ export const supabaseRepos: Repos = {
   },
 
   topics: {
-    async list(userId) {
+    async list(userId, kind = "topic") {
       const { data } = await supabase()
         .from("activity_topics")
         .select("name")
         .eq("user_id", userId)
+        .eq("kind", kind)
         .order("sort_order");
       return (data ?? []).map((r) => r.name);
     },
-    async add(userId, name) {
+    async add(userId, name, kind = "topic") {
       const { count } = await supabase()
         .from("activity_topics")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .eq("kind", kind);
       await supabase().from("activity_topics").upsert(
-        { user_id: userId, municipality_id: MUNI, name, sort_order: count ?? 0 },
-        { onConflict: "user_id,name", ignoreDuplicates: true }
+        { user_id: userId, municipality_id: MUNI, name, sort_order: count ?? 0, kind },
+        { onConflict: "user_id,kind,name", ignoreDuplicates: true }
       );
       const { data } = await supabase()
         .from("activity_topics")
         .select("name")
         .eq("user_id", userId)
+        .eq("kind", kind)
         .order("sort_order");
       return (data ?? []).map((r) => r.name);
     },
-    async remove(userId, name) {
-      await supabase().from("activity_topics").delete().eq("user_id", userId).eq("name", name);
+    async remove(userId, name, kind = "topic") {
+      await supabase().from("activity_topics").delete().eq("user_id", userId).eq("kind", kind).eq("name", name);
       const { data } = await supabase()
         .from("activity_topics")
         .select("name")
         .eq("user_id", userId)
+        .eq("kind", kind)
         .order("sort_order");
       return (data ?? []).map((r) => r.name);
     },
