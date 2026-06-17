@@ -80,38 +80,6 @@ type ActivityLog = {
   expense?: number;
 };
 
-const seedLogs: ActivityLog[] = [
-  // 今日(6/11)
-  { id: "l1", type: "現場訪問", topic: "空き家", hours: 2, body: "A 邸内覧、家族 4 人と現地調整。築 80 年、構造は良好。次回 6/15 に再訪。", date: "2026-06-11", time: "14:20" },
-  { id: "l2", type: "会議", topic: "観光協会", hours: 1.5, body: "観光協会 月例会(13:30〜)。夏祭りの出店枠について議論。", date: "2026-06-11", time: "11:05" },
-  // 6 月の過去
-  { id: "l3", type: "会議", topic: "移住相談", hours: 1, body: "名古屋ファミリー Web 会議(60 分)。8 月の現地視察日程を仮押さえ。", date: "2026-06-10", time: "16:40" },
-  { id: "l4", type: "広報", topic: "町報", hours: 2.5, body: "町報の特集記事ドラフト、写真選定。締切 6/18。", date: "2026-06-10", time: "10:30" },
-  { id: "l5", type: "イベント", topic: "夏祭り", hours: 3, body: "夏祭り実行委員会、出店者リスト確定。次回現地下見 6/22。", date: "2026-06-08", time: "19:00", expense: 1200 },
-  { id: "l6", type: "現場訪問", topic: "空き家", hours: 1.5, body: "B 邸 所有者連絡、内覧日程調整。所有者親族との合意形成が課題。", date: "2026-06-08", time: "14:00" },
-  { id: "l7", type: "出張", topic: "空き家", hours: 6, body: "島根県視察。海士町の古民家活用事例を視察。", date: "2026-06-05", time: "09:00", expense: 38400 },
-  { id: "l8", type: "内勤", topic: "町報", hours: 2, body: "町報 6 月号 印刷費精算処理。", date: "2026-06-03", time: "10:00", expense: 12800 },
-  // 5 月分
-  { id: "m1", type: "現場訪問", topic: "空き家", hours: 2, body: "A 邸 内覧、家族 4 人と現地調整。", date: "2026-05-02", time: "10:00" },
-  { id: "m2", type: "会議", topic: "移住相談", hours: 1.5, body: "GW 体験ツアー振り返り MTG。", date: "2026-05-04", time: "13:00" },
-  { id: "m3", type: "広報", topic: "町報", hours: 3, body: "町報 6 月号 編集作業。", date: "2026-05-07", time: "10:00" },
-  { id: "m4", type: "会議", topic: "観光協会", hours: 2, body: "観光協会 連携協議。", date: "2026-05-10", time: "14:00" },
-  { id: "m5", type: "イベント", topic: "夏祭り", hours: 4, body: "夏祭り実行委員会。", date: "2026-05-12", time: "19:00", expense: 1200 },
-  { id: "m6", type: "現場訪問", topic: "空き家", hours: 1.5, body: "B 邸 所有者打合せ。", date: "2026-05-15", time: "10:00" },
-  { id: "m7", type: "出張", topic: "移住相談", hours: 6, body: "大阪移住相談会出展。", date: "2026-05-18", time: "09:00", expense: 22000 },
-  { id: "m8", type: "会議", topic: "観光協会", hours: 1, body: "観光協会 連携協定締結会。", date: "2026-05-20", time: "15:00" },
-  { id: "m9", type: "現場訪問", topic: "空き家", hours: 2, body: "C 邸 解体相談 現地確認。", date: "2026-05-22", time: "13:30" },
-  { id: "m10", type: "内勤", topic: "町報", hours: 2, body: "町報印刷費精算。", date: "2026-05-25", time: "10:00", expense: 12800 },
-  { id: "m11", type: "現場訪問", topic: "空き家", hours: 1.5, body: "D 邸 内覧 2 回目。", date: "2026-05-28", time: "14:00" },
-  { id: "m12", type: "振り返り", topic: "移住相談", hours: 1, body: "5 月度振り返り。", date: "2026-05-30", time: "17:00" },
-  // 4 月分
-  { id: "a1", type: "内勤", topic: "空き家", hours: 4, body: "既存空き家リスト棚卸し。所有者連絡先整備。", date: "2026-04-03", time: "09:00" },
-  { id: "a2", type: "会議", topic: "観光協会", hours: 1.5, body: "着任挨拶 兼 観光協会への顔出し。", date: "2026-04-05", time: "13:00" },
-  { id: "a3", type: "広報", topic: "町報", hours: 3, body: "町報 5 月号 担当ページ作成。", date: "2026-04-08", time: "10:00" },
-  { id: "a4", type: "イベント", topic: "夏祭り", hours: 5, body: "GW 体験ツアー準備 ・ 行程設計。", date: "2026-04-15", time: "10:00", expense: 8500 },
-  { id: "a5", type: "イベント", topic: "夏祭り", hours: 8, body: "GW 体験ツアー 1 日目(4/29)。", date: "2026-04-29", time: "09:00", expense: 45000 },
-  { id: "a6", type: "イベント", topic: "夏祭り", hours: 8, body: "GW 体験ツアー 2 日目(4/30)。", date: "2026-04-30", time: "09:00" },
-];
 
 type Report = {
   id: string;
@@ -121,11 +89,6 @@ type Report = {
   statusLabel: string;
 };
 
-const seedReports: Report[] = [
-  { id: "r-2026-06", yearMonth: "2026 年 6 月", ym: "2026-06", status: "draft", statusLabel: "自動生成中" },
-  { id: "r-2026-05", yearMonth: "2026 年 5 月", ym: "2026-05", status: "approved", statusLabel: "役場承認 5/31" },
-  { id: "r-2026-04", yearMonth: "2026 年 4 月", ym: "2026-04", status: "approved", statusLabel: "役場承認 4/30" },
-];
 
 // ADR-021: 経費カテゴリ(活動費・備品・通信費 等)。活動に紐づかない経費も第一級で扱う。
 const EXPENSE_CATEGORIES = ["活動費", "旅費", "備品", "消耗品", "通信費", "謝金", "その他"];
@@ -143,11 +106,6 @@ type ExpenseRequest = {
   hasReceipt: boolean;
 };
 
-const initialExpenses: ExpenseRequest[] = [
-  { id: "e1", title: "町報 印刷費", amount: 12800, purpose: "町報 6 月号の印刷費。広報物の制作費として申請。", status: "精算済", aiNote: "広報物の印刷費は活動費対象。過去 4 件同様に承認実績あり。", citation: { source: "新温泉町 活動費ガイドライン v2.1", quote: "広報物の印刷費は活動費の対象に含まれます。" }, createdAt: "2026-06-03", hasReceipt: true },
-  { id: "e2", title: "島根県視察 出張費", amount: 38400, purpose: "海士町の古民家活用事例を視察し、自地域での運用設計に活かす。", status: "未精算", aiNote: "県外出張は事前承認が必要。本件は事前承認済み。", citation: { source: "新温泉町 活動費ガイドライン v2.1", quote: "県外出張は事前承認(町長決裁)必須。" }, createdAt: "2026-06-01", hasReceipt: false },
-  { id: "e3", title: "古民家家賃 月 5 万円", amount: 50000, purpose: "活動拠点として A 邸を月 5 万円で賃借。週 1 で地域開放を予定。", status: "申請中", aiNote: "拠点賃借料は対象。海士町に類似事例あり(月 4 万円承認)。", citation: { source: "JOIN お役立ちツール Q&A", quote: "活動拠点として賃借する家屋の賃料は活動費の対象に含まれます。" }, createdAt: "2026-06-09", hasReceipt: false },
-];
 
 type CaseItem = {
   id: string;
@@ -163,17 +121,6 @@ type CaseItem = {
   learning: string;
 };
 
-const seedCases: CaseItem[] = [
-  { id: "c1", title: "空き家バンクで 1 年目 12 件登録", area: "兵庫県 養父市", year: "2024", author: "山本(隊員 1 年目)", summary: "自治会連動の DM 配布で空き家所有者にリーチ。1 年目で 12 件の登録、うち 4 件成約。", kpi: "登録 12 件 / 成約 4 件 / 移住 3 家族", effect: "町外からの移住 7 名増、空き家率 -0.4 pt", process: [{ phase: "1-3 月目", body: "既存の空き家リスト棚卸し。所有者連絡先の整備に注力。" }, { phase: "4-6 月目", body: "自治会経由で所有者に挨拶状を DM 配布(18 件)。返信 9 件。" }, { phase: "7-9 月目", body: "内覧 7 件、登録 5 件。並行して移住希望者リスト作成。" }, { phase: "10-12 月目", body: "成約 4 件、移住 3 家族受け入れ。" }], learning: "自治会経由の DM は反応率が高い(直接送付の 3 倍)。所有者の心理的ハードルが「知らない人より地域経由」で下がる。" },
-  { id: "c2", title: "空き家清掃ボランティアの定着", area: "島根県 海士町", year: "2023", author: "中島(隊員 2 年目)", summary: "月 1 回の空き家清掃ボランティアを継続開催。地元住民との関係構築の場として機能。", kpi: "12 回開催 / 延べ参加 84 名 / 清掃完了 8 物件", effect: "地元住民との関係構築 + 物件の早期市場投入", process: [{ phase: "1-2 月目", body: "地元自治会と相談、第 1 回は地域住民のみで開催。" }, { phase: "3-6 月目", body: "SNS で外部にも告知、移住希望者の参加が増える。" }, { phase: "7-12 月目", body: "月 1 定期化、清掃完了物件は空き家バンクに即登録。" }], learning: "地元 → 外部の順で開いていくと、住民の抵抗が少ない。清掃 + 交流の二段構造が効く。" },
-  { id: "c3", title: "DIY 補助金との組み合わせ", area: "全国(JOIN)", year: "2024", author: "JOIN お役立ちツール", summary: "空き家物件登録時に DIY 補助金を活用するスキーム例。", kpi: "補助上限 50 万円 / 申請期間 2 ヶ月", effect: "物件登録のインセンティブ強化", process: [{ phase: "申請", body: "市町村窓口で DIY 補助金の交付申請。" }, { phase: "実施", body: "補助対象工事を実施(壁紙・水回り等)。" }, { phase: "登録", body: "工事完了後に空き家バンクに登録。" }], learning: "補助金申請のタイミングを物件登録と連動させると、所有者の意思決定が早まる。" },
-];
-
-const seedTrend = [
-  { id: "t1", title: "空き家バンク立ち上げ", count: 34 },
-  { id: "t2", title: "移住相談ネットワーク", count: 28 },
-  { id: "t3", title: "観光協会との連携", count: 19 },
-];
 
 const ANNUAL_BUDGET = 2000000;
 
@@ -292,15 +239,15 @@ export function MemberApp() {
   const [tab, setTab] = React.useState<Tab>("report");
   const [memberId, setMemberId] = React.useState(DEMO_MEMBER_ID);
   const [memberName, setMemberName] = React.useState<string | null>(null);
-  // 初期値はシード(即描画)→ マウント後にバックエンドの実データで置換
-  const [logs, setLogs] = React.useState<ActivityLog[]>(seedLogs);
+  // 初期値は空(マウント後にバックエンドの実データで置換)
+  const [logs, setLogs] = React.useState<ActivityLog[]>([]);
   const [topics, setTopics] = React.useState<string[]>(DEFAULT_TOPICS);
   // #48: 活動の種類。組み込み(ACTIVITY_TYPES)+ ユーザー追加分(kind=type)
   const [customTypes, setCustomTypes] = React.useState<string[]>([]);
-  const [expenses, setExpenses] = React.useState<ExpenseRequest[]>(initialExpenses);
-  const [reports, setReports] = React.useState<Report[]>(seedReports);
-  const [caseItems, setCaseItems] = React.useState<CaseItem[]>(seedCases);
-  const [trend, setTrend] = React.useState<TrendItem[]>(seedTrend);
+  const [expenses, setExpenses] = React.useState<ExpenseRequest[]>([]);
+  const [reports, setReports] = React.useState<Report[]>([]);
+  const [caseItems, setCaseItems] = React.useState<CaseItem[]>([]);
+  const [trend, setTrend] = React.useState<TrendItem[]>([]);
   const [notices, setNotices] = React.useState<Notice[]>([]);
   const [rules, setRules] = React.useState<Notice[]>([]);
   const [sheets, setSheets] = React.useState<Sheet[]>([]);
