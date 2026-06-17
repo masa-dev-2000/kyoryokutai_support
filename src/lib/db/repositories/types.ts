@@ -64,6 +64,7 @@ export interface Repos {
   users: {
     count(): Promise<number>;
     nameOf(id: string): Promise<string | undefined>;
+    getProfile(id: string): Promise<{ name: string; municipality: string; bio?: string; assigned_at?: string } | null>;
   };
   members: {
     list(): Promise<MemberDTO[]>;

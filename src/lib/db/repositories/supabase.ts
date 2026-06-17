@@ -61,6 +61,15 @@ export const supabaseRepos: Repos = {
       const { data } = await supabase().from("users").select("name").eq("id", id).single();
       return data?.name;
     },
+    async getProfile(id) {
+      const { data } = await supabase()
+        .from("users")
+        .select("name, municipality_id, bio, started_at")
+        .eq("id", id)
+        .single();
+      if (!data) return null;
+      return { name: data.name, municipality: data.municipality_id ?? "", bio: data.bio ?? undefined, assigned_at: data.started_at ?? undefined };
+    },
   },
 
   members: {

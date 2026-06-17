@@ -63,6 +63,7 @@ export function mapCase(r: Row) {
     area: r.area as string,
     year: r.year as string,
     author: r.author as string,
+    sourceUserId: (r.source_user_id as string) ?? null,
     summary: r.summary as string,
     kpi: (r.kpi as string) ?? "",
     effect: (r.effect as string) ?? "",

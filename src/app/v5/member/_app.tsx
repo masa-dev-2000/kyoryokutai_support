@@ -155,6 +155,7 @@ type CaseItem = {
   area: string;
   year: string;
   author: string;
+  sourceUserId?: string | null;
   summary: string;
   kpi: string;
   effect: string;
@@ -230,6 +231,7 @@ type Sheet =
   | { kind: "expense-create" }
   | { kind: "expense-settle"; item: ExpenseRequest }
   | { kind: "case-detail"; case: CaseItem }
+  | { kind: "case-author"; userId: string; name: string; area: string }
   | { kind: "consult"; context: ConsultContext; onAdopt?: (text: string) => void }
   | { kind: "announcements" }
   | { kind: "rules-panel" }
@@ -1128,6 +1130,7 @@ function SheetRoot() {
       {sheet.kind === "expense-create" && <ExpenseCreateSheet onClose={close} />}
       {sheet.kind === "expense-settle" && <ExpenseSettleSheet item={sheet.item} onClose={close} />}
       {sheet.kind === "case-detail" && <CaseDetailSheet item={sheet.case} onClose={close} />}
+      {sheet.kind === "case-author" && <CaseAuthorSheet userId={sheet.userId} name={sheet.name} area={sheet.area} onClose={close} />}
       {sheet.kind === "consult" && <ConsultSheet context={sheet.context} onAdopt={sheet.onAdopt} onClose={close} />}
       {sheet.kind === "announcements" && <AnnouncementsSheet onClose={close} />}
       {sheet.kind === "rules-panel" && <RulesPanelSheet onClose={close} />}
@@ -2106,6 +2109,7 @@ function ExpenseSettleSheet({ item, onClose }: { item: ExpenseRequest; onClose: 
 /* -------- 事例 詳細シート -------- */
 
 function CaseDetailSheet({ item, onClose }: { item: CaseItem; onClose: () => void }) {
+  const { pushSheet } = useApp();
   return (
     <>
       <SheetHeader title="事例" onClose={onClose} />
@@ -2120,7 +2124,17 @@ function CaseDetailSheet({ item, onClose }: { item: CaseItem; onClose: () => voi
             <Calendar className="h-3 w-3" />
             {item.year}
           </span>
-          <span>・ {item.author}</span>
+          {item.sourceUserId ? (
+            <button
+              type="button"
+              onClick={() => pushSheet({ kind: "case-author", userId: item.sourceUserId!, name: item.author, area: item.area })}
+              className="inline-flex items-center gap-0.5 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-200"
+            >
+              ・ {item.author} →
+            </button>
+          ) : (
+            <span>・ {item.author}</span>
+          )}
         </div>
 
         <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50/40 p-3 text-[13px] leading-relaxed text-slate-800">{item.summary}</p>
@@ -2160,6 +2174,49 @@ function CaseDetailSheet({ item, onClose }: { item: CaseItem; onClose: () => voi
             自分の地域に翻案
           </button>
         </div>
+      </div>
+    </>
+  );
+}
+
+/* -------- 事例著者プロフィールシート -------- */
+
+function CaseAuthorSheet({ userId, name, area, onClose }: { userId: string; name: string; area: string; onClose: () => void }) {
+  const [profile, setProfile] = React.useState<{ name: string; municipality: string; bio?: string; assigned_at?: string } | null>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    apiGet<{ name: string; municipality: string; bio?: string; assigned_at?: string }>(`/api/users/${userId}/profile`)
+      .then(setProfile)
+      .catch(() => setProfile({ name, municipality: area }))
+      .finally(() => setLoading(false));
+  }, [userId, name, area]);
+
+  return (
+    <>
+      <SheetHeader title="著者プロフィール" onClose={onClose} />
+      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-8">
+        {loading ? (
+          <div className="text-center text-[13px] text-slate-400">読み込み中…</div>
+        ) : profile ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-2xl font-bold text-slate-600">
+                {profile.name.charAt(0)}
+              </div>
+              <div>
+                <div className="text-lg font-bold text-slate-900">{profile.name}</div>
+                <div className="text-[12px] text-slate-500">{profile.municipality}</div>
+                {profile.assigned_at && (
+                  <div className="text-[11px] text-slate-400">着任: {profile.assigned_at.slice(0, 7)}</div>
+                )}
+              </div>
+            </div>
+            {profile.bio && (
+              <p className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 text-[13px] leading-relaxed text-slate-800">{profile.bio}</p>
+            )}
+          </div>
+        ) : null}
       </div>
     </>
   );

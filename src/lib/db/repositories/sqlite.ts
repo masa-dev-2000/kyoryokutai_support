@@ -63,6 +63,13 @@ export const sqliteRepos: Repos = {
     async nameOf(id) {
       return get<{ name: string }>("SELECT name FROM users WHERE id=?", [id])?.name;
     },
+    async getProfile(id) {
+      const r = get<{ name: string; municipality_id: string; bio?: string; started_at?: string }>(
+        "SELECT name, municipality_id, bio, started_at FROM users WHERE id=?", [id]
+      );
+      if (!r) return null;
+      return { name: r.name, municipality: r.municipality_id ?? "", bio: r.bio, assigned_at: r.started_at };
+    },
   },
 
   members: {
