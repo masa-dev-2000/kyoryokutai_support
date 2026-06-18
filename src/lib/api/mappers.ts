@@ -22,6 +22,8 @@ export function mapLog(r: Row) {
     date: r.log_date as string,
     time: r.log_time as string,
     expense: (r.expense_amount as number | null) ?? undefined,
+    feelingScore: (r.feeling_score as number | null) ?? undefined,  // #56
+    contactCount: (r.contact_count as number | null) ?? undefined,  // #56
   };
 }
 

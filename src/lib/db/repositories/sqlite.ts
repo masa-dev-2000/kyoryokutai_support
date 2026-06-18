@@ -230,9 +230,9 @@ export const sqliteRepos: Repos = {
       );
       const dl = get<{ id: string }>("SELECT id FROM daily_logs WHERE user_id=? AND log_date=?", [b.userId, date]);
       run(
-        `INSERT INTO activity_logs (id,user_id,municipality_id,daily_log_id,activity_type,topic,hours,distance_km,body,log_date,log_time,expense_amount)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, b.userId, MUNI, dl?.id ?? null, b.type, b.topic, b.hours, b.distanceKm ?? null, b.body, date, time, b.expense ?? null]
+        `INSERT INTO activity_logs (id,user_id,municipality_id,daily_log_id,activity_type,topic,hours,distance_km,body,log_date,log_time,expense_amount,feeling_score,contact_count)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [id, b.userId, MUNI, dl?.id ?? null, b.type, b.topic, b.hours, b.distanceKm ?? null, b.body, date, time, b.expense ?? null, b.feelingScore ?? null, b.contactCount ?? null]
       );
       return mapLog(all("SELECT * FROM activity_logs WHERE id=?", [id])[0]);
     },
@@ -247,12 +247,15 @@ export const sqliteRepos: Repos = {
            distance_km=CASE WHEN ? IS NOT NULL THEN ? ELSE distance_km END,
            body=COALESCE(?,body),
            log_date=COALESCE(?,log_date),
-           log_time=COALESCE(?,log_time)
+           log_time=COALESCE(?,log_time),
+           feeling_score=COALESCE(?,feeling_score),
+           contact_count=COALESCE(?,contact_count)
          WHERE id=?`,
         [
           b.type ?? null, b.topic ?? null, b.hours ?? null,
           b.distanceKm !== undefined ? 1 : null, b.distanceKm ?? null,
           b.body ?? null, b.date ?? null, b.time ?? null,
+          b.feelingScore ?? null, b.contactCount ?? null,
           id,
         ]
       );

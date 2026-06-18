@@ -12,6 +12,8 @@ type PatchBody = {
   body?: string;
   date?: string;
   time?: string;
+  feelingScore?: number;   // #56
+  contactCount?: number;   // #56
   userId?: string;
 };
 

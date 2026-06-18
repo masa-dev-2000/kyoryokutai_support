@@ -107,6 +107,8 @@ export interface Repos {
       date?: string;
       time?: string;
       expense?: number;
+      feelingScore?: number;   // #56: 今日の手応え(1〜4)
+      contactCount?: number;   // #56: 接触人数(任意)
     }): Promise<ActivityLogDTO>;
     update(id: string, patch: {
       type?: string;
@@ -116,6 +118,8 @@ export interface Repos {
       body?: string;
       date?: string;
       time?: string;
+      feelingScore?: number;   // #56
+      contactCount?: number;   // #56
     }): Promise<ActivityLogDTO | undefined>;
     delete(id: string): Promise<void>;
     listForAI(userId: string, ym: string): Promise<LogForAI[]>;

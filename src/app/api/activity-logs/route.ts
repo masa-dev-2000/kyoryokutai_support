@@ -29,6 +29,8 @@ type CreateBody = {
   body: string;
   date?: string;
   time?: string;
+  feelingScore?: number;   // #56: 今日の手応え(1〜4)
+  contactCount?: number;   // #56: 接触人数(任意)
   /** ADR-014 動線①:活動報告と一緒に投入する経費明細(複数可) */
   expenses?: InlineExpense[];
 };
@@ -51,6 +53,8 @@ export async function POST(req: Request) {
     body: b.body,
     date: b.date,
     time: b.time,
+    feelingScore: b.feelingScore,
+    contactCount: b.contactCount,
     expense: expenseSum > 0 ? expenseSum : undefined,
   });
 

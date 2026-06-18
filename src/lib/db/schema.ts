@@ -86,6 +86,8 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   log_date TEXT NOT NULL,
   log_time TEXT NOT NULL DEFAULT '',
   expense_amount INTEGER,
+  feeling_score INTEGER,                    -- #56: 今日の手応え(1=😴 つかれた 〜 4=🔥 充実)
+  contact_count INTEGER,                    -- #56: この活動で接した人数(任意)
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

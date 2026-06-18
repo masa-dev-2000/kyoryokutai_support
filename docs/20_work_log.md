@@ -162,3 +162,49 @@
 
 ### 関連
 - Issue #42〜#49(クローズ済)、#50〜#54(open)、#55(クローズ済)
+
+---
+
+## 2026-06-18
+
+### 完了
+
+#### Issue #50/#51/#53/#54 バグ修正
+- **#50** 経費バーを 0 件時も常時表示(空状態「申請 0件 ・ ¥0」を追加)
+- **#51** 経費追加バグ修正:`approvals.enqueue`(supabase)に `total_steps` 欠落 → NOT NULL 違反。`total_steps: a.steps.length` を追加
+- **#53** PC 幅広時のレイアウト:ヘッダーを `max-w-2xl` に内包、FAB を `right: max(1.5rem, calc(50vw - 21rem + 1.5rem))` でコンテンツ右端に追従
+- **#54** お知らせ詳細が開けない → `AnnounceDetailSheet` を新設、`AnnounceTab` に `pushSheet` 動線
+
+#### Issue #52 活動種別の削除・リネーム → 設計で解消
+- とがった多役 agent 討論(実装者/経営者/苛烈な批判者/批判の批判者、孫氏/曹操/老子/諸葛亮)を実施
+- 結論:`ChipPicker` を「チップ + 追加ボタン」から**自由入力 + 過去候補サジェスト方式**に刷新
+  - 種別マスタを正規化せず文字列で持つため、削除・リネーム問題が構造的に発生しない
+  - `activity_topics` は「過去に使った候補のキャッシュ」として存続、表記ゆれはサジェストで緩和
+
+#### Issue #56 活動記録のデータ項目設計 → 隊員側を実装
+- agent 討論(孫氏/曹操/老子/諸葛亮)で「取るべきデータ」を決定 → 諸葛亮案(構造 + 手応え)を採用
+- **今日の手応え `feeling_score`(1〜4)**:絵文字スケール 😴🙂😊🔥。
+  - 「評価」ではなく「コンディション」のエネルギー軸ラベル(つかれた/まあまあ/いい感じ/充実)で偽りを起きにくく
+  - 役場へは個別値ではなく推移のみ共有する想定(UI 文言に明記)
+  - issue 草案の `satisfaction_score` → 決定を反映し `feeling_score` に改名
+- **接触人数 `contact_count`(任意)**:「住民◯人に対応」を予算・議会向けの言葉として残す
+- 成果一言は既存の `body`(メモ + AI ブラッシュアップ素材)で兼ねる方針
+- 配線:schema / mappers / repositories(types・sqlite・supabase)/ API(POST・PATCH)/ 作成シート・詳細シート・日別一覧の絵文字表示
+- 検証:
+  - Supabase 本番に migration 018 適用 → DB レベルで feeling/contact 保存・CHECK(1〜4)を確認
+  - SQLite で API 全往復(POST 201 → GET 反映 → PATCH 更新 → 省略時も 201)を実機確認
+  - `tsc --noEmit` クリーン
+
+### 変更ファイル
+- `src/app/v5/member/_app.tsx`: ChipPicker 刷新(#52)、FeelingPicker・接触人数・手応え表示(#56)
+- `src/lib/db/schema.ts` / `src/lib/api/mappers.ts` / `src/lib/db/repositories/{types,sqlite,supabase}.ts`: feeling_score / contact_count 配線
+- `src/app/api/activity-logs/route.ts` / `[id]/route.ts`: 新フィールドの受け渡し
+- `supabase/migrations/20260618_018_activity_feeling.sql`: feeling_score / contact_count + CHECK
+
+### 次のアクション
+- Issue #56:役場側に「手応え」推移グラフ(Year 1)、#57 段階的ボタン選択の設計
+- Issue #50/#51/#53/#54 を GitHub でクローズ
+- ローカル `.env.local` の Supabase サービスロールキーが失効 → 本番(Vercel)の値で更新が必要
+
+### 関連
+- Issue #52(自由入力方式で解消)、#56(隊員側 実装 / open)、#50・#51・#53・#54(実装済・クローズ待ち)

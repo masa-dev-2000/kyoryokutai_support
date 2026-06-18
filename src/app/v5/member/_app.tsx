@@ -27,6 +27,7 @@ import {
   MessageSquare,
   Trash2,
   Pencil,
+  Users,
 } from "lucide-react";
 
 /* ============================================================
@@ -78,7 +79,19 @@ type ActivityLog = {
   date: string;
   time: string;
   expense?: number;
+  feelingScore?: number;   // #56: 今日の手応え(1=😴 〜 4=🔥)
+  contactCount?: number;   // #56: 接触人数(任意)
 };
+
+// #56: 今日の手応え。「評価」ではなく「体力・気分」の自己申告にして
+// 役場の目を気にした偽りを起きにくくする(エネルギー軸)。役場へは推移のみ共有する想定。
+const FEELINGS: { score: number; emoji: string; label: string }[] = [
+  { score: 1, emoji: "😴", label: "つかれた" },
+  { score: 2, emoji: "🙂", label: "まあまあ" },
+  { score: 3, emoji: "😊", label: "いい感じ" },
+  { score: 4, emoji: "🔥", label: "充実" },
+];
+const feelingOf = (s?: number) => FEELINGS.find((f) => f.score === s);
 
 
 type Report = {
@@ -1175,6 +1188,30 @@ function ChipPicker({
   );
 }
 
+/* -------- 今日の手応えピッカー(#56)-------- */
+// 絵文字を 1 タップで選ぶだけ。もう一度押すと解除(任意項目)。
+function FeelingPicker({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
+  return (
+    <div className="mt-1 grid grid-cols-4 gap-2">
+      {FEELINGS.map((f) => {
+        const active = value === f.score;
+        return (
+          <button
+            key={f.score}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(active ? null : f.score)}
+            className={`flex flex-col items-center gap-0.5 rounded-xl border py-2 transition ${active ? "border-slate-900 bg-slate-50" : "border-slate-200 hover:border-slate-400"}`}
+          >
+            <span className="text-[22px] leading-none">{f.emoji}</span>
+            <span className={`text-[10px] ${active ? "font-bold text-slate-900" : "text-slate-500"}`}>{f.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /* -------- 活動報告 作成シート(入力ごとに相談ボタン)-------- */
 
 function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; editing?: ActivityLog; date?: string }) {
@@ -1186,6 +1223,8 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
   const [topic, setTopic] = React.useState<string | null>(editing?.topic ?? null);
   const [hours, setHours] = React.useState<string>(editing ? String(editing.hours) : "1");
   const [distance, setDistance] = React.useState<string>(editing?.distanceKm != null ? String(editing.distanceKm) : "");
+  const [contact, setContact] = React.useState<string>(editing?.contactCount != null ? String(editing.contactCount) : "");
+  const [feeling, setFeeling] = React.useState<number | null>(editing?.feelingScore ?? null);  // #56
   const [body, setBody] = React.useState(editing?.body ?? "");
   const [saving, setSaving] = React.useState(false);
 
@@ -1239,6 +1278,7 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
     if (!canSave) return;
     setSaving(true);
     try {
+      const contactCount = contact.trim() ? parseInt(contact, 10) : undefined;
       if (editing) {
         await updateLog(editing.id, {
           type: type!,
@@ -1246,6 +1286,8 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
           hours: parseFloat(hours),
           distanceKm: distance ? parseFloat(distance) : undefined,
           body: body.trim(),
+          feelingScore: feeling ?? undefined,
+          contactCount,
         });
       } else {
         await addLog({
@@ -1256,6 +1298,8 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
           body: body.trim(),
           date: targetDate,
           time: new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }),
+          feelingScore: feeling ?? undefined,
+          contactCount,
           expenses: validExpenses.length > 0 ? validExpenses : undefined,
         });
       }
@@ -1301,6 +1345,14 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
         <div className="mt-1 flex items-center gap-2">
           <input type="number" step="0.1" min="0" value={distance} onChange={(e) => setDistance(e.target.value)} placeholder="例:12.5" className="w-24 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
           <span className="text-[12px] text-slate-600">km(車での移動)</span>
+        </div>
+
+        {/* #56: 接触人数 — 「住民◯人に対応」が役場・議会向けの言葉になる */}
+        <Label>接した人数(任意)</Label>
+        <div className="mt-1 flex items-center gap-2">
+          <Users className="h-4 w-4 text-slate-400" />
+          <input type="number" step="1" min="0" value={contact} onChange={(e) => setContact(e.target.value)} placeholder="例:8" className="w-24 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
+          <span className="text-[12px] text-slate-600">人(住民・関係者など)</span>
         </div>
 
         <Label right={
@@ -1361,6 +1413,13 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
             <p className="mt-1 text-[9px] text-slate-400">※ 事実は変えていません。気になる箇所は採用後に手で直してください。</p>
           </div>
         )}
+
+        {/* #56: 今日の手応え — 絵文字 1 タップ。役場には推移グラフでのみ共有する想定なので正直に。 */}
+        <Label>今日の手応え(任意)</Label>
+        <FeelingPicker value={feeling} onChange={setFeeling} />
+        <div className="mt-1 text-[10px] text-slate-400">
+          良い・悪いの評価ではなく「今日のコンディション」です。役場には日々の数値ではなく推移だけが共有されます。
+        </div>
 
         {/* ─── 経費明細(ADR-014 動線①、複数登録可)─── */}
         <Label
@@ -1537,6 +1596,18 @@ function ActivityDetailSheet({ log, onClose }: { log: ActivityLog; onClose: () =
           </span>
           {typeof log.distanceKm === "number" && (
             <span className="text-[11px] text-slate-500">・移動 {log.distanceKm} km</span>
+          )}
+          {typeof log.contactCount === "number" && (
+            <span className="inline-flex items-center gap-0.5 text-[11px] text-slate-500">
+              <Users className="h-3 w-3" />
+              {log.contactCount} 人
+            </span>
+          )}
+          {feelingOf(log.feelingScore) && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
+              <span className="text-[13px] leading-none">{feelingOf(log.feelingScore)!.emoji}</span>
+              {feelingOf(log.feelingScore)!.label}
+            </span>
           )}
         </div>
 
@@ -1750,6 +1821,9 @@ function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () =>
                 className="group w-full rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-slate-900 hover:bg-slate-50/60"
               >
                 <div className="flex items-center gap-2">
+                  {feelingOf(l.feelingScore) && (
+                    <span className="text-[14px] leading-none" title={feelingOf(l.feelingScore)!.label}>{feelingOf(l.feelingScore)!.emoji}</span>
+                  )}
                   <span className="rounded-full border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-700">{l.type}</span>
                   <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{l.topic}</span>
                   <span className="ml-auto inline-flex items-center gap-0.5 text-[10px] text-slate-500">
@@ -1758,6 +1832,11 @@ function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () =>
                   </span>
                   {typeof l.distanceKm === "number" && (
                     <span className="text-[10px] text-slate-500">{l.distanceKm}km</span>
+                  )}
+                  {typeof l.contactCount === "number" && (
+                    <span className="inline-flex items-center gap-0.5 text-[10px] text-slate-500">
+                      <Users className="h-3 w-3" />{l.contactCount}
+                    </span>
                   )}
                 </div>
                 <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-slate-800">{l.body}</p>

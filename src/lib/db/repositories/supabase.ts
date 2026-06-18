@@ -335,6 +335,8 @@ export const supabaseRepos: Repos = {
           body: b.body,
           occurred_at: occurredAt,
           expense_amount: b.expense ?? null,
+          feeling_score: b.feelingScore ?? null,
+          contact_count: b.contactCount ?? null,
         })
         .select()
         .single();
@@ -347,6 +349,8 @@ export const supabaseRepos: Repos = {
       if (b.hours !== undefined) patch.hours = b.hours;
       if (b.distanceKm !== undefined) patch.distance_km = b.distanceKm;
       if (b.body !== undefined) patch.body = b.body;
+      if (b.feelingScore !== undefined) patch.feeling_score = b.feelingScore;
+      if (b.contactCount !== undefined) patch.contact_count = b.contactCount;
       if (b.date !== undefined || b.time !== undefined) {
         const { data: existing } = await supabase()
           .from("activity_logs")
