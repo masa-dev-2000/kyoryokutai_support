@@ -562,10 +562,13 @@ function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) 
   const byDate: Record<string, ActivityLog[]> = {};
   for (const l of monthLogs) (byDate[l.date] ??= []).push(l);
 
-  // 活動時間:種類別(積算棒)
+  // 活動時間:種類別(積算棒) — ACTIVITY_TYPES 順を優先し、それ以外は末尾に追加
   const byType: Record<string, number> = {};
   for (const l of monthLogs) byType[l.type] = (byType[l.type] ?? 0) + l.hours;
-  const typeOrder = ACTIVITY_TYPES.filter((t) => byType[t] > 0);
+  const typeOrder = [
+    ...ACTIVITY_TYPES.filter((t) => byType[t] > 0),
+    ...Object.keys(byType).filter((t) => !ACTIVITY_TYPES.includes(t)),
+  ];
   const hoursProgress = Math.min(totalHours / MIN_MONTHLY_HOURS, 1);
   const hoursRemain = Math.max(MIN_MONTHLY_HOURS - totalHours, 0);
   const hoursOver = Math.max(totalHours - MIN_MONTHLY_HOURS, 0);
