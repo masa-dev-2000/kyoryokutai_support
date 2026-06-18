@@ -179,6 +179,7 @@ type Sheet =
   | { kind: "expense-settle"; item: ExpenseRequest }
   | { kind: "case-detail"; case: CaseItem }
   | { kind: "case-author"; userId: string; name: string; area: string }
+  | { kind: "announce-detail"; notice: Notice }
   | { kind: "consult"; context: ConsultContext; onAdopt?: (text: string) => void }
   | { kind: "announcements" }
   | { kind: "rules-panel" }
@@ -392,8 +393,10 @@ export function MemberApp() {
       <main className="flex h-screen flex-col bg-white text-slate-900">
         {/* #49: ヘッダー + タブ欄を上部固定。Sheet は fixed inset-0 で別レイヤーのため競合しない */}
         <div className="sticky top-0 z-20 shrink-0 bg-white">
-          <Header onSettings={() => setSheets([{ kind: "settings-menu" }])} userName={memberName} />
-          <Tabs active={tab} onChange={setTab} unread={notices.length} />
+          <div className="mx-auto w-full max-w-2xl">
+            <Header onSettings={() => setSheets([{ kind: "settings-menu" }])} userName={memberName} />
+            <Tabs active={tab} onChange={setTab} unread={notices.length} />
+          </div>
         </div>
 
         <div className="flex flex-1 flex-col overflow-y-auto px-6 pb-20">
@@ -543,7 +546,8 @@ function ReportTab() {
       {/* FAB: 当日の活動を追加(セカンダリ動線) */}
       <button
         onClick={() => pushSheet({ kind: "activity-create" })}
-        className="fixed bottom-10 right-6 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg ring-4 ring-white transition hover:bg-slate-800 active:scale-95"
+        className="fixed bottom-10 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg ring-4 ring-white transition hover:bg-slate-800 active:scale-95"
+        style={{ right: "max(1.5rem, calc(50vw - 21rem + 1.5rem))" }}
         aria-label="今日の活動を追加"
       >
         <Plus className="h-6 w-6" />
@@ -683,35 +687,39 @@ function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) 
       )}
 
       {/* 経費使用:カテゴリ別積算棒 + 月予算との比較 */}
-      {totalExpense > 0 && (
-        <div className="mt-6">
-          <div className="flex items-baseline justify-between">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">経費使用(カテゴリ別積算)</div>
-            <div className="text-[10px] text-slate-500">
-              <span className="font-bold text-slate-900 text-[12px]">¥{totalExpense.toLocaleString()}</span>
-              <span className="mx-1 text-slate-400">/</span>
-              <span>月予算 ¥{(MONTHLY_BUDGET / 10000).toFixed(0)}万</span>
-              <span className="ml-1 text-slate-400">({expBudgetPct.toFixed(1)}%)</span>
-            </div>
+      <div className="mt-6">
+        <div className="flex items-baseline justify-between">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">経費使用(カテゴリ別積算)</div>
+          <div className="text-[10px] text-slate-500">
+            <span className="font-bold text-slate-900 text-[12px]">¥{totalExpense.toLocaleString()}</span>
+            <span className="mx-1 text-slate-400">/</span>
+            <span>月予算 ¥{(MONTHLY_BUDGET / 10000).toFixed(0)}万</span>
+            <span className="ml-1 text-slate-400">({expBudgetPct.toFixed(1)}%)</span>
           </div>
+        </div>
 
-          <div className="mt-2 relative">
-            <div className="flex h-5 w-full overflow-hidden rounded-full bg-slate-100">
-              {catOrder.map((cat, i) => {
-                const w = (byCat[cat] / MONTHLY_BUDGET) * 100;
-                const tone = ["bg-slate-900", "bg-slate-700", "bg-slate-500", "bg-slate-400", "bg-slate-300", "bg-slate-200"][i % 6];
-                return (
-                  <div
-                    key={cat}
-                    className={`${tone} h-full`}
-                    style={{ width: `${Math.min(w, 100)}%` }}
-                    title={`${cat}: ¥${byCat[cat].toLocaleString()}`}
-                  />
-                );
-              })}
-            </div>
+        <div className="mt-2 relative">
+          <div className="flex h-5 w-full overflow-hidden rounded-full bg-slate-100">
+            {catOrder.length === 0 ? (
+              <div className="h-full w-full bg-slate-100" />
+            ) : catOrder.map((cat, i) => {
+              const w = (byCat[cat] / MONTHLY_BUDGET) * 100;
+              const tone = ["bg-slate-900", "bg-slate-700", "bg-slate-500", "bg-slate-400", "bg-slate-300", "bg-slate-200"][i % 6];
+              return (
+                <div
+                  key={cat}
+                  className={`${tone} h-full`}
+                  style={{ width: `${Math.min(w, 100)}%` }}
+                  title={`${cat}: ¥${byCat[cat].toLocaleString()}`}
+                />
+              );
+            })}
           </div>
+        </div>
 
+        {catOrder.length === 0 ? (
+          <p className="mt-2 text-[11px] text-slate-400">申請 0件 ・ ¥0</p>
+        ) : (
           <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
             {catOrder.map((cat, i) => (
               <li key={cat} className="inline-flex items-center gap-1">
@@ -721,8 +729,8 @@ function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) 
               </li>
             ))}
           </ul>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -851,7 +859,8 @@ function ExpenseTab() {
 
       <button
         onClick={() => pushSheet({ kind: "expense-create" })}
-        className="fixed bottom-10 right-6 z-30 inline-flex h-12 items-center gap-1.5 rounded-full bg-slate-900 px-5 text-[12px] font-bold text-white shadow-lg ring-4 ring-white transition hover:bg-slate-800 active:scale-95"
+        className="fixed bottom-10 z-30 inline-flex h-12 items-center gap-1.5 rounded-full bg-slate-900 px-5 text-[12px] font-bold text-white shadow-lg ring-4 ring-white transition hover:bg-slate-800 active:scale-95"
+        style={{ right: "max(1.5rem, calc(50vw - 21rem + 1.5rem))" }}
       >
         <Plus className="h-4 w-4" />
         経費申請
@@ -881,7 +890,7 @@ function statusClass(s: ExpenseRequest["status"]) {
 /* -------------------- 3. お知らせタブ -------------------- */
 
 function AnnounceTab() {
-  const { notices, rules, memberId } = useApp();
+  const { notices, rules, memberId, pushSheet } = useApp();
   const [readIds, setReadIds] = React.useState<Set<string>>(new Set());
   const all = [...notices, ...rules].sort((a, b) => b.date.localeCompare(a.date));
 
@@ -910,7 +919,7 @@ function AnnounceTab() {
           <li
             key={n.id}
             className="rounded-xl border border-slate-200 bg-white px-4 py-3 cursor-pointer active:bg-slate-50"
-            onClick={() => handleRead(n.id)}
+            onClick={() => { handleRead(n.id); pushSheet({ kind: "announce-detail", notice: n }); }}
           >
             <div className="flex items-start gap-2">
               {n.isPinned && <Pin className="mt-0.5 h-3 w-3 shrink-0 text-slate-500" />}
@@ -1082,6 +1091,7 @@ function SheetRoot() {
       {sheet.kind === "case-detail" && <CaseDetailSheet item={sheet.case} onClose={close} />}
       {sheet.kind === "case-author" && <CaseAuthorSheet userId={sheet.userId} name={sheet.name} area={sheet.area} onClose={close} />}
       {sheet.kind === "consult" && <ConsultSheet context={sheet.context} onAdopt={sheet.onAdopt} onClose={close} />}
+      {sheet.kind === "announce-detail" && <AnnounceDetailSheet notice={sheet.notice} onClose={close} />}
       {sheet.kind === "announcements" && <AnnouncementsSheet onClose={close} />}
       {sheet.kind === "rules-panel" && <RulesPanelSheet onClose={close} />}
       {sheet.kind === "settings-menu" && <SettingsMenuSheet onClose={close} />}
@@ -2417,6 +2427,27 @@ function ConsultInner({
               </div>
             )}
           </>
+        )}
+      </div>
+    </>
+  );
+}
+
+/* -------- お知らせ詳細シート -------- */
+
+function AnnounceDetailSheet({ notice, onClose }: { notice: Notice; onClose: () => void }) {
+  return (
+    <>
+      <SheetHeader title="お知らせ詳細" onClose={onClose} backLabel="戻る" />
+      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+        <div className="flex items-center gap-2 text-[11px] text-slate-400">
+          <span>{notice.date}</span>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-500">{notice.sender}</span>
+          {notice.isPinned && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-700">ピン留め</span>}
+        </div>
+        <h2 className="mt-3 text-[18px] font-bold text-slate-900">{notice.title}</h2>
+        {notice.body && (
+          <p className="mt-4 whitespace-pre-wrap text-[14px] leading-relaxed text-slate-700">{notice.body}</p>
         )}
       </div>
     </>

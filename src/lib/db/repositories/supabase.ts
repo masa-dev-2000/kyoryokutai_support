@@ -580,6 +580,7 @@ export const supabaseRepos: Repos = {
         route_name: a.routeName,
         steps: a.steps,
         current_step: 0,
+        total_steps: a.steps.length,
         status: "pending",
         target_table: a.targetTable,
         target_id: a.targetId,
