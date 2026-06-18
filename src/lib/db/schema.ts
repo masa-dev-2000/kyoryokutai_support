@@ -67,6 +67,9 @@ CREATE TABLE IF NOT EXISTS daily_logs (
   municipality_id TEXT NOT NULL,
   log_date TEXT NOT NULL,
   note TEXT,
+  distance_km REAL,           -- 日報レベルの移動距離
+  expense_amount INTEGER,     -- 日報レベルの経費合計キャッシュ
+  feeling_score INTEGER,      -- 今日の手応え(1=😴〜4=🔥)
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(user_id, log_date)
@@ -81,13 +84,9 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   activity_type TEXT NOT NULL,
   topic TEXT NOT NULL,
   hours REAL NOT NULL DEFAULT 0,
-  distance_km REAL,
   body TEXT NOT NULL DEFAULT '',
   log_date TEXT NOT NULL,
   log_time TEXT NOT NULL DEFAULT '',
-  expense_amount INTEGER,
-  feeling_score INTEGER,                    -- #56: 今日の手応え(1=😴 つかれた 〜 4=🔥 充実)
-  contact_count INTEGER,                    -- #56: この活動で接した人数(任意)
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

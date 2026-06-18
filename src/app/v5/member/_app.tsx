@@ -27,7 +27,6 @@ import {
   MessageSquare,
   Trash2,
   Pencil,
-  Users,
 } from "lucide-react";
 
 /* ============================================================
@@ -74,13 +73,18 @@ type ActivityLog = {
   type: string;
   topic: string;
   hours: number;
-  distanceKm?: number;
   body: string;
   date: string;
   time: string;
-  expense?: number;
-  feelingScore?: number;   // #56: 今日の手応え(1=😴 〜 4=🔥)
-  contactCount?: number;   // #56: 接触人数(任意)
+};
+
+type DailyLogEntry = {
+  id: string;
+  date: string;
+  note?: string;
+  distanceKm?: number;
+  expenseAmount?: number;
+  feelingScore?: number;
 };
 
 // #56: 今日の手応え。「評価」ではなく「体力・気分」の自己申告にして
@@ -213,7 +217,15 @@ export type InlineExpense = {
 
 type Ctx = {
   logs: ActivityLog[];
-  addLog: (l: Omit<ActivityLog, "id"> & { expenses?: InlineExpense[] }) => void | Promise<void>;
+  dailyLogs: DailyLogEntry[];
+  addDailyLog: (dl: {
+    date: string;
+    distanceKm?: number;
+    feelingScore?: number;
+    activities: { type: string; topic: string; hours: number; body: string }[];
+    expenses?: InlineExpense[];
+  }) => Promise<void>;
+  addLog: (l: Omit<ActivityLog, "id">) => void | Promise<void>;
   updateLog: (id: string, patch: Partial<Omit<ActivityLog, "id">>) => void | Promise<void>;
   deleteLog: (id: string) => void | Promise<void>;
   topics: string[];
@@ -255,6 +267,7 @@ export function MemberApp() {
   const [memberName, setMemberName] = React.useState<string | null>(null);
   // 初期値は空(マウント後にバックエンドの実データで置換)
   const [logs, setLogs] = React.useState<ActivityLog[]>([]);
+  const [dailyLogs, setDailyLogs] = React.useState<DailyLogEntry[]>([]);
   const [topics, setTopics] = React.useState<string[]>(DEFAULT_TOPICS);
   // #48: 活動の種類。組み込み(ACTIVITY_TYPES)+ ユーザー追加分(kind=type)
   const [customTypes, setCustomTypes] = React.useState<string[]>([]);
@@ -286,8 +299,9 @@ export function MemberApp() {
     let alive = true;
     (async () => {
       try {
-        const [lg, tp, ty, ex, rp, cs, ns, rl] = await Promise.all([
+        const [lg, dl, tp, ty, ex, rp, cs, ns, rl] = await Promise.all([
           apiGet<ActivityLog[]>(`/api/activity-logs?userId=${memberId}`),
+          apiGet<DailyLogEntry[]>(`/api/daily-logs?userId=${memberId}`),
           apiGet<string[]>(`/api/topics?userId=${memberId}`),
           apiGet<string[]>(`/api/topics?userId=${memberId}&kind=type`),
           apiGet<ExpenseRequest[]>(`/api/expenses?userId=${memberId}`),
@@ -298,6 +312,7 @@ export function MemberApp() {
         ]);
         if (!alive) return;
         setLogs(lg);
+        setDailyLogs(dl);
         setTopics(tp.length > 0 ? tp : DEFAULT_TOPICS);
         setCustomTypes(ty);
         setExpenses(ex);
@@ -317,35 +332,33 @@ export function MemberApp() {
 
   const ctx: Ctx = {
     logs,
-    addLog: async (l) => {
-      // 経費明細は receiptDataUrl(クライアント表示専用)を落として送る
-      const { expenses, ...rest } = l;
-      const payload = {
-        userId: memberId,
-        ...rest,
-        ...(expenses && expenses.length > 0
-          ? {
-              expenses: expenses.map((e) => ({
-                title: e.title,
-                amount: e.amount,
-                purpose: e.purpose,
-                hasReceipt: !!e.hasReceipt,
-              })),
-            }
-          : {}),
-      };
-      const created = await apiPost<ActivityLog>("/api/activity-logs", payload);
-      setLogs((ls) => [created, ...ls]);
-      if (expenses && expenses.length > 0) {
-        // 同時登録した経費を経費一覧にも反映(取り直し)
+    dailyLogs,
+    addDailyLog: async (input) => {
+      const expenses = input.expenses?.map((e) => ({
+        title: e.title,
+        amount: e.amount,
+        purpose: e.purpose,
+        hasReceipt: !!e.hasReceipt,
+      }));
+      const result = await apiPost<{ dailyLog: DailyLogEntry; activities: ActivityLog[]; expensesCreated: number }>(
+        "/api/daily-logs",
+        { userId: memberId, ...input, expenses }
+      );
+      setDailyLogs((dls) => [result.dailyLog, ...dls.filter((d) => d.date !== result.dailyLog.date)]);
+      setLogs((ls) => [...result.activities, ...ls]);
+      if (result.expensesCreated > 0) {
         try {
           const ex = await apiGet<ExpenseRequest[]>(`/api/expenses?userId=${memberId}`);
           setExpenses(ex);
         } catch { /* noop */ }
       }
     },
+    addLog: async (l) => {
+      const created = await apiPost<ActivityLog>("/api/activity-logs", { userId: memberId, ...l });
+      setLogs((ls) => [created, ...ls]);
+    },
     updateLog: async (id, patch) => {
-      const updated = await apiPatch<ActivityLog>(`/api/activity-logs/${id}`, { ...patch, userId: memberId });
+      const updated = await apiPatch<ActivityLog>(`/api/activity-logs/${id}`, { ...patch, userId: memberId } as Record<string, unknown>);
       setLogs((ls) => ls.map((l) => (l.id === id ? updated : l)));
       // 同月の月報が差し戻された可能性があるため再取得
       try {
@@ -571,11 +584,12 @@ function ReportTab() {
 
 // ADR-020: サマリー→カレンダー→グラフの月次オーバービュー(月報タブ・月報詳細で共有)
 function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) => void }) {
-  const { logs } = useApp();
+  const { logs, dailyLogs } = useApp();
   const monthLogs = logs.filter((l) => l.date.startsWith(ym));
+  const monthDailyLogs = dailyLogs.filter((d) => d.date.startsWith(ym));
 
   const totalHours = monthLogs.reduce((s, l) => s + l.hours, 0);
-  const totalExpense = monthLogs.reduce((s, l) => s + (l.expense ?? 0), 0);
+  const totalExpense = monthDailyLogs.reduce((s, d) => s + (d.expenseAmount ?? 0), 0);
   const byDate: Record<string, ActivityLog[]> = {};
   for (const l of monthLogs) (byDate[l.date] ??= []).push(l);
 
@@ -590,11 +604,13 @@ function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) 
   const hoursRemain = Math.max(MIN_MONTHLY_HOURS - totalHours, 0);
   const hoursOver = Math.max(totalHours - MIN_MONTHLY_HOURS, 0);
 
-  // 経費:カテゴリ(= 活動内容 topic)別合計
+  // 経費:カテゴリ(= 活動内容 topic)別合計(日報レベルの expenseAmount を使用)
   const byCat: Record<string, number> = {};
-  for (const l of monthLogs) {
-    if (typeof l.expense === "number" && l.expense > 0) {
-      byCat[l.topic] = (byCat[l.topic] ?? 0) + l.expense;
+  for (const d of monthDailyLogs) {
+    if (d.expenseAmount && d.expenseAmount > 0) {
+      const dayLogs = byDate[d.date] ?? [];
+      const key = dayLogs[0]?.topic ?? "その他";
+      byCat[key] = (byCat[key] ?? 0) + d.expenseAmount;
     }
   }
   const catOrder = Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([k]) => k);
@@ -636,11 +652,7 @@ function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) 
                     <span className="absolute bottom-3 left-1 right-1 text-[9px] font-semibold text-slate-700">
                       {c.logs.reduce((s, l) => s + l.hours, 0)}h
                     </span>
-                    {c.logs.some((l) => l.expense) && (
-                      <span className="absolute bottom-0.5 left-1 right-1 truncate text-[8px] text-slate-500">
-                        ¥{Math.round(c.logs.reduce((s, l) => s + (l.expense ?? 0), 0) / 100) / 10}k
-                      </span>
-                    )}
+                    {(() => { const d = monthDailyLogs.find((d) => d.date === c.date); return d?.expenseAmount ? <span className="absolute bottom-0.5 left-1 right-1 truncate text-[8px] text-slate-500">¥{Math.round(d.expenseAmount / 100) / 10}k</span> : null; })()}
                   </>
                 ) : (
                   <Plus className="absolute bottom-1 right-1 h-2.5 w-2.5 text-slate-300" />
@@ -1212,44 +1224,46 @@ function FeelingPicker({ value, onChange }: { value: number | null; onChange: (v
   );
 }
 
-/* -------- 活動報告 作成シート(入力ごとに相談ボタン)-------- */
+/* -------- 活動報告 作成シート -------- */
+// 1 日報に複数の活動を登録できる。移動距離・経費・手応えは日報レベルで入力。
+
+type InlineActivity = {
+  type: string | null;
+  topic: string | null;
+  hours: string;
+  body: string;
+};
 
 function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; editing?: ActivityLog; date?: string }) {
-  const { addLog, updateLog, topics, addTopic, types, addType, showDay } = useApp();
+  const { addDailyLog, updateLog, topics, addTopic, types, addType, showDay } = useApp();
   const isEdit = !!editing;
-  // ADR-020: カレンダー日付タップ起点の場合は date を、当日FAB起点は todayKey を使う
   const targetDate = editing?.date ?? date ?? todayKey();
-  const [type, setType] = React.useState<string | null>(editing?.type ?? null);
-  const [topic, setTopic] = React.useState<string | null>(editing?.topic ?? null);
-  const [hours, setHours] = React.useState<string>(editing ? String(editing.hours) : "1");
-  const [distance, setDistance] = React.useState<string>(editing?.distanceKm != null ? String(editing.distanceKm) : "");
-  const [contact, setContact] = React.useState<string>(editing?.contactCount != null ? String(editing.contactCount) : "");
-  const [feeling, setFeeling] = React.useState<number | null>(editing?.feelingScore ?? null);  // #56
-  const [body, setBody] = React.useState(editing?.body ?? "");
+
+  // 編集モード: 単一活動を編集
+  const [editType, setEditType] = React.useState<string | null>(editing?.type ?? null);
+  const [editTopic, setEditTopic] = React.useState<string | null>(editing?.topic ?? null);
+  const [editHours, setEditHours] = React.useState<string>(editing ? String(editing.hours) : "1");
+  const [editBody, setEditBody] = React.useState(editing?.body ?? "");
+
+  // 新規モード: 複数活動 + 日報レベルフィールド
+  const [activities, setActivities] = React.useState<InlineActivity[]>([
+    { type: null, topic: null, hours: "1", body: "" },
+  ]);
+  const [distance, setDistance] = React.useState<string>("");
+  const [feeling, setFeeling] = React.useState<number | null>(null);
+  const [inlineExpenses, setInlineExpenses] = React.useState<InlineExpense[]>([]);
   const [saving, setSaving] = React.useState(false);
 
-  // メモのブラッシュアップ(押下 → AI が清書 → プレビュー → 採用 / やめる)
-  const [polishing, setPolishing] = React.useState(false);
-  const [polished, setPolished] = React.useState<string | null>(null);
-
-  async function brushUp() {
-    if (!body.trim() || polishing) return;
-    setPolishing(true);
-    try {
-      const r = await apiPost<{ reply: string }>("/api/ai/consult", {
-        context: "polish-memo",
-        payload: { current: body },
-      });
-      setPolished(r.reply.trim());
-    } catch {
-      setPolished("(AI への接続に失敗しました。少し時間をおいて再度お試しください)");
-    } finally {
-      setPolishing(false);
-    }
+  function updateActivity(idx: number, patch: Partial<InlineActivity>) {
+    setActivities((cur) => cur.map((a, i) => (i === idx ? { ...a, ...patch } : a)));
+  }
+  function addActivity() {
+    setActivities((cur) => [...cur, { type: null, topic: null, hours: "1", body: "" }]);
+  }
+  function removeActivity(idx: number) {
+    setActivities((cur) => cur.filter((_, i) => i !== idx));
   }
 
-  // 経費明細(ADR-014 動線①):複数登録可、レシート画像は dataURL でプレビュー
-  const [inlineExpenses, setInlineExpenses] = React.useState<InlineExpense[]>([]);
   function addExpense() {
     setInlineExpenses((cur) => [...cur, { title: "", amount: 0, purpose: "", hasReceipt: false }]);
   }
@@ -1268,281 +1282,209 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
     reader.readAsDataURL(file);
   }
 
-  // 経費は「金額 > 0 かつ 用途が 1 文字以上」の行のみ送信
   const validExpenses = inlineExpenses.filter((e) => e.amount > 0 && e.purpose.trim().length > 0);
   const expenseSum = validExpenses.reduce((s, e) => s + e.amount, 0);
+  const validActivities = activities.filter((a) => !!a.type && !!a.topic && parseFloat(a.hours) > 0);
 
-  const canSave = !!type && !!topic && parseFloat(hours) > 0 && body.trim().length > 0 && !saving;
+  const canSave = isEdit
+    ? !!editType && !!editTopic && parseFloat(editHours) > 0 && !saving
+    : validActivities.length > 0 && !saving;
 
   async function save() {
     if (!canSave) return;
     setSaving(true);
     try {
-      const contactCount = contact.trim() ? parseInt(contact, 10) : undefined;
-      if (editing) {
-        await updateLog(editing.id, {
-          type: type!,
-          topic: topic!,
-          hours: parseFloat(hours),
-          distanceKm: distance ? parseFloat(distance) : undefined,
-          body: body.trim(),
-          feelingScore: feeling ?? undefined,
-          contactCount,
+      if (isEdit) {
+        await updateLog(editing!.id, {
+          type: editType!,
+          topic: editTopic!,
+          hours: parseFloat(editHours),
+          body: editBody.trim(),
         });
+        showDay(editing!.date);
       } else {
-        await addLog({
-          type: type!,
-          topic: topic!,
-          hours: parseFloat(hours),
-          distanceKm: distance ? parseFloat(distance) : undefined,
-          body: body.trim(),
+        await addDailyLog({
           date: targetDate,
-          time: new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }),
+          distanceKm: distance ? parseFloat(distance) : undefined,
           feelingScore: feeling ?? undefined,
-          contactCount,
+          activities: validActivities.map((a) => ({
+            type: a.type!,
+            topic: a.topic!,
+            hours: parseFloat(a.hours),
+            body: a.body.trim(),
+          })),
           expenses: validExpenses.length > 0 ? validExpenses : undefined,
         });
+        showDay(targetDate);
       }
-      // 保存後はその日付の活動一覧シートに遷移(ヘッダーではなく入力欄下のボタンから)
-      showDay(targetDate);
     } catch {
       setSaving(false);
     }
   }
 
+  if (isEdit) {
+    return (
+      <>
+        <SheetHeader title="活動を編集" onClose={onClose} />
+        <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+          <Label>活動の種類</Label>
+          <ChipPicker options={types} selected={editType} onSelect={(c) => setEditType(c || null)} onAdd={(v) => { addType(v); setEditType(v); }} placeholder="例:研修、地域PR…" />
+          <Label>活動内容</Label>
+          <ChipPicker options={topics} selected={editTopic} onSelect={(c) => setEditTopic(c || null)} onAdd={(v) => { addTopic(v); setEditTopic(v); }} placeholder="例:商店街活性化…" />
+          <Label>活動時間</Label>
+          <div className="mt-1 flex items-center gap-2">
+            <input type="number" step="0.5" min="0" value={editHours} onChange={(e) => setEditHours(e.target.value)} className="w-24 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
+            <span className="text-[12px] text-slate-600">時間</span>
+          </div>
+          <Label>メモ</Label>
+          <textarea rows={4} value={editBody} onChange={(e) => setEditBody(e.target.value)} className="mt-1 w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
+        </div>
+        <div className="border-t border-slate-200 bg-white px-5 py-3">
+          <div className="mx-auto max-w-2xl">
+            <button onClick={save} disabled={!canSave} className="w-full rounded-xl bg-slate-900 py-3 text-[13px] font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400">
+              {saving ? "更新中…" : "更新する"}
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
-      <SheetHeader
-        title={isEdit ? "活動報告を編集" : `${formatDateShort(targetDate)} の活動を書く`}
-        onClose={onClose}
-      />
+      <SheetHeader title={`${formatDateShort(targetDate)} の日報`} onClose={onClose} />
       <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
-        <Label>活動の種類</Label>
-        <ChipPicker
-          options={types}
-          selected={type}
-          onSelect={(c) => setType(c || null)}
-          onAdd={(v) => { addType(v); setType(v); }}
-          placeholder="例:研修、地域PR、農業支援…"
-        />
 
-        <Label>活動内容(あなたのテーマ)</Label>
-        <ChipPicker
-          options={topics}
-          selected={topic}
-          onSelect={(c) => setTopic(c || null)}
-          onAdd={(v) => { addTopic(v); setTopic(v); }}
-          placeholder="例:商店街活性化、移住者支援…"
-        />
-
-        <Label>活動時間</Label>
-        <div className="mt-1 flex items-center gap-2">
-          <input type="number" step="0.5" min="0" value={hours} onChange={(e) => setHours(e.target.value)} className="w-24 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
-          <span className="text-[12px] text-slate-600">時間</span>
-        </div>
-
-        <Label>移動距離(任意)</Label>
-        <div className="mt-1 flex items-center gap-2">
-          <input type="number" step="0.1" min="0" value={distance} onChange={(e) => setDistance(e.target.value)} placeholder="例:12.5" className="w-24 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
-          <span className="text-[12px] text-slate-600">km(車での移動)</span>
-        </div>
-
-        {/* #56: 接触人数 — 「住民◯人に対応」が役場・議会向けの言葉になる */}
-        <Label>接した人数(任意)</Label>
-        <div className="mt-1 flex items-center gap-2">
-          <Users className="h-4 w-4 text-slate-400" />
-          <input type="number" step="1" min="0" value={contact} onChange={(e) => setContact(e.target.value)} placeholder="例:8" className="w-24 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
-          <span className="text-[12px] text-slate-600">人(住民・関係者など)</span>
-        </div>
-
-        <Label right={
-          <button
-            type="button"
-            onClick={brushUp}
-            disabled={!body.trim() || polishing}
-            title="メモを 5W1H に沿って清書します(事実は変えません)"
-            className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:border-slate-900 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
-          >
-            <Sparkles className="h-3 w-3" />
-            {polishing ? "清書中…" : "メモをブラッシュアップ"}
+        {/* 活動リスト */}
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">活動</span>
+          <button type="button" onClick={addActivity} className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:border-slate-900 hover:bg-slate-50">
+            <Plus className="h-3 w-3" />
+            活動を追加
           </button>
-        }>
-          メモ
-        </Label>
-        <textarea
-          rows={5}
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="例:A 邸を内覧、移住希望者と一緒に。築 80 年だが構造良好。"
-          className="mt-1 w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none"
-        />
-        <div className="mt-1 text-[10px] text-slate-400">
-          住民個人を特定する情報は記載しないでください。迷ったら 5W1H(いつ・どこで・誰と・何を・なぜ・どうやって)で。
         </div>
 
-        {polished && (
-          <div className="mt-3 rounded-xl border border-slate-300 bg-slate-50/60 p-3">
-            <div className="flex items-center justify-between">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                AI 清書プレビュー
+        <div className="space-y-3">
+          {activities.map((a, i) => (
+            <div key={i} className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400">活動 {i + 1}</span>
+                {activities.length > 1 && (
+                  <button type="button" onClick={() => removeActivity(i)} className="text-[10px] text-slate-400 hover:text-rose-600">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => setPolished(null)}
-                  className="rounded-full border border-slate-300 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 hover:border-slate-500"
-                >
-                  やめる
-                </button>
-                <button
-                  onClick={brushUp}
-                  disabled={polishing}
-                  className="rounded-full border border-slate-300 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 hover:border-slate-500"
-                >
-                  もう一度
-                </button>
-                <button
-                  onClick={() => { setBody(polished); setPolished(null); }}
-                  className="inline-flex items-center gap-0.5 rounded-full bg-slate-900 px-2.5 py-0.5 text-[10px] font-bold text-white hover:bg-slate-800"
-                >
-                  <Check className="h-3 w-3" />
-                  採用する
-                </button>
+              <div className="mt-2">
+                <Label>種類</Label>
+                <ChipPicker options={types} selected={a.type} onSelect={(c) => updateActivity(i, { type: c || null })} onAdd={(v) => { addType(v); updateActivity(i, { type: v }); }} placeholder="例:研修、地域PR…" />
+              </div>
+              <div className="mt-2">
+                <Label>内容</Label>
+                <ChipPicker options={topics} selected={a.topic} onSelect={(c) => updateActivity(i, { topic: c || null })} onAdd={(v) => { addTopic(v); updateActivity(i, { topic: v }); }} placeholder="例:空き家バンク、移住相談…" />
+              </div>
+              <div className="mt-2 flex items-end gap-4">
+                <div>
+                  <Label>時間</Label>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <input type="number" step="0.5" min="0" value={a.hours} onChange={(e) => updateActivity(i, { hours: e.target.value })} className="w-20 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
+                    <span className="text-[12px] text-slate-600">h</span>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-2">
+                <Label>メモ</Label>
+                <textarea rows={3} value={a.body} onChange={(e) => updateActivity(i, { body: e.target.value })} placeholder="例:A 邸を内覧、移住希望者と一緒に。築 80 年だが構造良好。" className="mt-1 w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
               </div>
             </div>
-            <pre className="mt-2 whitespace-pre-wrap font-sans text-[12.5px] leading-relaxed text-slate-800">{polished}</pre>
-            <p className="mt-1 text-[9px] text-slate-400">※ 事実は変えていません。気になる箇所は採用後に手で直してください。</p>
-          </div>
-        )}
-
-        {/* #56: 今日の手応え — 絵文字 1 タップ。役場には推移グラフでのみ共有する想定なので正直に。 */}
-        <Label>今日の手応え(任意)</Label>
-        <FeelingPicker value={feeling} onChange={setFeeling} />
-        <div className="mt-1 text-[10px] text-slate-400">
-          良い・悪いの評価ではなく「今日のコンディション」です。役場には日々の数値ではなく推移だけが共有されます。
+          ))}
         </div>
 
-        {/* ─── 経費明細(ADR-014 動線①、複数登録可)─── */}
-        <Label
-          right={
-            <button
-              type="button"
-              onClick={addExpense}
-              className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:border-slate-900 hover:bg-slate-50"
-            >
-              <Plus className="h-3 w-3" />
-              経費を追加
-            </button>
-          }
-        >
-          💴 経費(任意)
-        </Label>
-        {inlineExpenses.length === 0 ? (
-          <div className="mt-1 rounded-xl border border-dashed border-slate-300 bg-white px-3 py-4 text-center text-[11px] text-slate-500">
-            この活動で支出があれば「<strong>+ 経費を追加</strong>」(現場で簡単に複数登録できます)
+        {/* 日報レベルのフィールド */}
+        <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+          <div className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">今日のまとめ</div>
+
+          <Label>移動距離(任意)</Label>
+          <div className="mt-1 flex items-center gap-2">
+            <input type="number" step="0.1" min="0" value={distance} onChange={(e) => setDistance(e.target.value)} placeholder="例:12.5" className="w-24 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none" />
+            <span className="text-[12px] text-slate-600">km</span>
           </div>
-        ) : (
-          <ul className="mt-1 space-y-2">
-            {inlineExpenses.map((e, i) => (
-              <li key={i} className="rounded-xl border border-slate-200 bg-white p-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">明細 #{i + 1}</div>
-                  <button
-                    onClick={() => removeExpense(i)}
-                    className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] text-slate-400 hover:bg-rose-50 hover:text-rose-700"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                    削除
-                  </button>
-                </div>
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  <div className="col-span-2">
-                    <label className="text-[10px] text-slate-500">タイトル(任意)</label>
-                    <input
-                      type="text"
-                      value={e.title ?? ""}
-                      onChange={(ev) => updateExpense(i, { title: ev.target.value })}
-                      placeholder="例:ボールペン"
-                      className="mt-0.5 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[12px] focus:border-slate-900 focus:outline-none"
-                    />
+
+          <Label>今日の手応え(任意)</Label>
+          <FeelingPicker value={feeling} onChange={setFeeling} />
+          <div className="mt-1 text-[10px] text-slate-400">
+            「今日のコンディション」です。役場には推移だけが共有されます。
+          </div>
+
+          <Label
+            right={
+              <button type="button" onClick={addExpense} className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:border-slate-900 hover:bg-slate-50">
+                <Plus className="h-3 w-3" />
+                経費を追加
+              </button>
+            }
+          >
+            💴 経費(任意)
+          </Label>
+          {inlineExpenses.length === 0 ? (
+            <div className="mt-1 rounded-xl border border-dashed border-slate-300 bg-white px-3 py-4 text-center text-[11px] text-slate-500">
+              支出があれば「<strong>+ 経費を追加</strong>」
+            </div>
+          ) : (
+            <ul className="mt-1 space-y-2">
+              {inlineExpenses.map((e, i) => (
+                <li key={i} className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">明細 #{i + 1}</div>
+                    <button onClick={() => removeExpense(i)} className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] text-slate-400 hover:bg-rose-50 hover:text-rose-700">
+                      <Trash2 className="h-3 w-3" />削除
+                    </button>
                   </div>
-                  <div>
-                    <label className="text-[10px] text-slate-500">金額 <span className="text-rose-600">必須</span></label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={e.amount || ""}
-                      onChange={(ev) => updateExpense(i, { amount: parseInt(ev.target.value || "0", 10) })}
-                      placeholder="円"
-                      className="mt-0.5 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[12px] focus:border-slate-900 focus:outline-none"
-                    />
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <label className="text-[10px] text-slate-500">タイトル(任意)</label>
+                      <input type="text" value={e.title ?? ""} onChange={(ev) => updateExpense(i, { title: ev.target.value })} placeholder="例:ボールペン" className="mt-0.5 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[12px] focus:border-slate-900 focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-500">金額 <span className="text-rose-600">必須</span></label>
+                      <input type="number" min="0" value={e.amount || ""} onChange={(ev) => updateExpense(i, { amount: parseInt(ev.target.value || "0", 10) })} placeholder="円" className="mt-0.5 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[12px] focus:border-slate-900 focus:outline-none" />
+                    </div>
                   </div>
-                </div>
-                <div className="mt-2">
-                  <label className="text-[10px] text-slate-500">用途 <span className="text-rose-600">必須</span></label>
-                  <input
-                    type="text"
-                    value={e.purpose}
-                    onChange={(ev) => updateExpense(i, { purpose: ev.target.value })}
-                    placeholder="例:町報の写真撮影で使用"
-                    className="mt-0.5 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[12px] focus:border-slate-900 focus:outline-none"
-                  />
-                </div>
-                <div className="mt-2">
-                  <label className="text-[10px] text-slate-500">レシート(任意)</label>
-                  <div className="mt-0.5 flex items-center gap-2">
-                    <label className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${e.hasReceipt ? "border-slate-900 bg-slate-50 text-slate-900" : "border-slate-300 text-slate-600 hover:border-slate-500"}`}>
-                      <Camera className="h-3 w-3" />
-                      {e.hasReceipt ? "添付済(タップで変更)" : "画像を選択"}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={(ev) => onReceiptFile(i, ev.target.files?.[0] ?? null)}
-                        className="hidden"
-                      />
-                    </label>
-                    {e.hasReceipt && (
-                      <button
-                        onClick={() => updateExpense(i, { hasReceipt: false, receiptDataUrl: undefined })}
-                        className="text-[10px] text-slate-400 hover:text-rose-700"
-                      >
-                        外す
-                      </button>
+                  <div className="mt-2">
+                    <label className="text-[10px] text-slate-500">用途 <span className="text-rose-600">必須</span></label>
+                    <input type="text" value={e.purpose} onChange={(ev) => updateExpense(i, { purpose: ev.target.value })} placeholder="例:町報の写真撮影で使用" className="mt-0.5 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[12px] focus:border-slate-900 focus:outline-none" />
+                  </div>
+                  <div className="mt-2">
+                    <label className="text-[10px] text-slate-500">レシート(任意)</label>
+                    <div className="mt-0.5 flex items-center gap-2">
+                      <label className={`inline-flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition ${e.hasReceipt ? "border-slate-900 bg-slate-50 text-slate-900" : "border-slate-300 text-slate-600 hover:border-slate-500"}`}>
+                        <Camera className="h-3 w-3" />
+                        {e.hasReceipt ? "添付済" : "画像を選択"}
+                        <input type="file" accept="image/*" capture="environment" onChange={(ev) => onReceiptFile(i, ev.target.files?.[0] ?? null)} className="hidden" />
+                      </label>
+                    </div>
+                    {e.receiptDataUrl && (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img src={e.receiptDataUrl} alt="レシート" className="mt-2 max-h-32 rounded-lg border border-slate-200" />
                     )}
                   </div>
-                  {e.receiptDataUrl && (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img src={e.receiptDataUrl} alt="レシート" className="mt-2 max-h-32 rounded-lg border border-slate-200" />
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-        {validExpenses.length > 0 && (
-          <div className="mt-2 flex items-center justify-end gap-1 text-[11px] text-slate-600">
-            <Receipt className="h-3 w-3 text-slate-400" />
-            <span>合計 ¥{expenseSum.toLocaleString()} を経費申請(申請中)として記録</span>
-          </div>
-        )}
-
-        <div className="mt-4 flex gap-2">
-          <button className="inline-flex items-center gap-1 rounded-full border border-slate-300 px-3 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-slate-500">
-            <Mic className="h-3.5 w-3.5" />
-            音声で(後日)
-          </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {validExpenses.length > 0 && (
+            <div className="mt-2 flex items-center justify-end gap-1 text-[11px] text-slate-600">
+              <Receipt className="h-3 w-3 text-slate-400" />
+              <span>合計 ¥{expenseSum.toLocaleString()} を経費申請として記録</span>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 入力欄下の保存ボタン(画面下部に固定)*/}
       <div className="border-t border-slate-200 bg-white px-5 py-3">
         <div className="mx-auto max-w-2xl">
-          <button
-            onClick={save}
-            disabled={!canSave}
-            className="w-full rounded-xl bg-slate-900 py-3 text-[13px] font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
-          >
-            {saving ? (isEdit ? "更新中…" : "記録中…") : isEdit ? "更新する" : "記録する"}
+          <button onClick={save} disabled={!canSave} className="w-full rounded-xl bg-slate-900 py-3 text-[13px] font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400">
+            {saving ? "記録中…" : `${validActivities.length} 件の活動を記録する`}
           </button>
         </div>
       </div>
@@ -1594,31 +1536,9 @@ function ActivityDetailSheet({ log, onClose }: { log: ActivityLog; onClose: () =
             <Clock className="h-3 w-3" />
             {log.hours} 時間
           </span>
-          {typeof log.distanceKm === "number" && (
-            <span className="text-[11px] text-slate-500">・移動 {log.distanceKm} km</span>
-          )}
-          {typeof log.contactCount === "number" && (
-            <span className="inline-flex items-center gap-0.5 text-[11px] text-slate-500">
-              <Users className="h-3 w-3" />
-              {log.contactCount} 人
-            </span>
-          )}
-          {feelingOf(log.feelingScore) && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
-              <span className="text-[13px] leading-none">{feelingOf(log.feelingScore)!.emoji}</span>
-              {feelingOf(log.feelingScore)!.label}
-            </span>
-          )}
         </div>
 
         <p className="mt-4 whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50/40 p-3 text-[13px] leading-relaxed text-slate-800">{log.body}</p>
-
-        {typeof log.expense === "number" && (
-          <div className="mt-4 inline-flex items-center gap-1 rounded-full border border-slate-300 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-700">
-            <Wallet className="h-3 w-3" />
-            この活動で発生した経費:¥{log.expense.toLocaleString()}
-          </div>
-        )}
 
         <div className="mt-8 border-t border-slate-100 pt-4">
           <button
@@ -1799,19 +1719,26 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
 }
 
 function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () => void; depth: number }) {
-  const { logs, pushSheet } = useApp();
+  const { logs, dailyLogs, pushSheet } = useApp();
   const items = logs.filter((l) => l.date === date);
+  const dl = dailyLogs.find((d) => d.date === date);
   const totalHours = items.reduce((s, l) => s + l.hours, 0);
-  const totalExpense = items.reduce((s, l) => s + (l.expense ?? 0), 0);
 
   return (
     <>
       <SheetHeader title={`${formatDateShort(date)} の活動`} onClose={onClose} backLabel={depth > 1 ? "カレンダー" : undefined} />
       <div className="flex-1 overflow-y-auto">
       <div className="mx-auto w-full max-w-2xl px-5 py-4">
-        <div className="text-[11px] text-slate-500">
-          {items.length} 件 ・ {totalHours} 時間
-          {totalExpense > 0 && ` ・ 経費 ¥${totalExpense.toLocaleString()}`}
+        <div className="flex items-center gap-3 text-[11px] text-slate-500">
+          <span>{items.length} 件 ・ {totalHours} 時間</span>
+          {dl?.distanceKm != null && <span>・ {dl.distanceKm} km</span>}
+          {dl?.expenseAmount != null && dl.expenseAmount > 0 && <span>・ 経費 ¥{dl.expenseAmount.toLocaleString()}</span>}
+          {dl && feelingOf(dl.feelingScore) && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5">
+              <span className="text-[13px] leading-none">{feelingOf(dl.feelingScore)!.emoji}</span>
+              <span>{feelingOf(dl.feelingScore)!.label}</span>
+            </span>
+          )}
         </div>
         <ul className="mt-3 space-y-2">
           {items.map((l) => (
@@ -1821,32 +1748,15 @@ function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () =>
                 className="group w-full rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-slate-900 hover:bg-slate-50/60"
               >
                 <div className="flex items-center gap-2">
-                  {feelingOf(l.feelingScore) && (
-                    <span className="text-[14px] leading-none" title={feelingOf(l.feelingScore)!.label}>{feelingOf(l.feelingScore)!.emoji}</span>
-                  )}
                   <span className="rounded-full border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-700">{l.type}</span>
                   <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{l.topic}</span>
                   <span className="ml-auto inline-flex items-center gap-0.5 text-[10px] text-slate-500">
                     <Clock className="h-3 w-3" />
                     {l.hours}h
                   </span>
-                  {typeof l.distanceKm === "number" && (
-                    <span className="text-[10px] text-slate-500">{l.distanceKm}km</span>
-                  )}
-                  {typeof l.contactCount === "number" && (
-                    <span className="inline-flex items-center gap-0.5 text-[10px] text-slate-500">
-                      <Users className="h-3 w-3" />{l.contactCount}
-                    </span>
-                  )}
                 </div>
                 <p className="mt-2 whitespace-pre-wrap text-[12px] leading-relaxed text-slate-800">{l.body}</p>
-                <div className="mt-2 flex items-center justify-between">
-                  {l.expense ? (
-                    <div className="inline-flex items-center gap-1 text-[11px] text-slate-600">
-                      <Wallet className="h-3 w-3" />
-                      ¥{l.expense.toLocaleString()}
-                    </div>
-                  ) : <span />}
+                <div className="mt-2 flex items-center justify-end">
                   <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-400 transition group-hover:text-slate-700">
                     <Pencil className="h-3 w-3" />
                     タップで編集

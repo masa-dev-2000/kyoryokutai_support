@@ -5,6 +5,7 @@
 import { createClient } from "@supabase/supabase-js";
 import {
   mapLog,
+  mapDailyLog,
   mapReport,
   mapExpense,
   mapCase,
@@ -319,24 +320,24 @@ export const supabaseRepos: Repos = {
     },
     async create(b) {
       const occurredAt = toOccurredAt(b.date, b.time);
-      // daily_log を upsert して daily_log_id を結線
       const date = b.date ?? new Date().toISOString().slice(0, 10);
-      const dl = await supabaseRepos.dailyLogs.upsert(b.userId, date);
+      // daily_log を upsert して daily_log_id を結線
+      let dailyLogId = b.dailyLogId ?? null;
+      if (!dailyLogId) {
+        const dl = await supabaseRepos.dailyLogs.upsert(b.userId, date);
+        dailyLogId = dl.id;
+      }
       const { data } = await supabase()
         .from("activity_logs")
         .insert({
           user_id: b.userId,
           municipality_id: MUNI,
-          daily_log_id: dl.id,
+          daily_log_id: dailyLogId,
           activity_type: b.type,
           topic: b.topic,
           hours: b.hours,
-          distance_km: b.distanceKm ?? null,
           body: b.body,
           occurred_at: occurredAt,
-          expense_amount: b.expense ?? null,
-          feeling_score: b.feelingScore ?? null,
-          contact_count: b.contactCount ?? null,
         })
         .select()
         .single();
@@ -347,10 +348,7 @@ export const supabaseRepos: Repos = {
       if (b.type !== undefined) patch.activity_type = b.type;
       if (b.topic !== undefined) patch.topic = b.topic;
       if (b.hours !== undefined) patch.hours = b.hours;
-      if (b.distanceKm !== undefined) patch.distance_km = b.distanceKm;
       if (b.body !== undefined) patch.body = b.body;
-      if (b.feelingScore !== undefined) patch.feeling_score = b.feelingScore;
-      if (b.contactCount !== undefined) patch.contact_count = b.contactCount;
       if (b.date !== undefined || b.time !== undefined) {
         const { data: existing } = await supabase()
           .from("activity_logs")
@@ -376,7 +374,7 @@ export const supabaseRepos: Repos = {
     async listForAI(userId, ym): Promise<LogForAI[]> {
       const { data } = await supabase()
         .from("activity_logs")
-        .select("activity_type, topic, hours, body, occurred_at, expense_amount")
+        .select("activity_type, topic, hours, body, occurred_at")
         .eq("user_id", userId)
         .gte("occurred_at", `${ym}-01`)
         .lt("occurred_at", `${ym}-31T23:59:59`)
@@ -387,13 +385,21 @@ export const supabaseRepos: Repos = {
         hours: r.hours,
         body: r.body,
         log_date: (r.occurred_at as string).slice(0, 10),
-        expense_amount: r.expense_amount ?? null,
+        expense_amount: null,
       }));
     },
   },
 
   dailyLogs: {
-    async upsert(userId, date, note) {
+    async listByUser(userId) {
+      const { data } = await supabase()
+        .from("daily_logs")
+        .select("*")
+        .eq("user_id", userId)
+        .order("log_date", { ascending: false });
+      return (data ?? []).map((r) => mapDailyLog(r));
+    },
+    async upsert(userId, date, fields) {
       const { data: existing } = await supabase()
         .from("daily_logs")
         .select("*")
@@ -401,23 +407,31 @@ export const supabaseRepos: Repos = {
         .eq("log_date", date)
         .maybeSingle();
       if (existing) {
-        if (note !== undefined) {
-          const { data } = await supabase()
-            .from("daily_logs")
-            .update({ note })
-            .eq("id", existing.id)
-            .select()
-            .single();
-          return { id: data!.id, date: data!.log_date, note: data!.note ?? "" };
+        const patch: Record<string, unknown> = {};
+        if (fields?.note !== undefined) patch.note = fields.note;
+        if (fields?.distanceKm !== undefined) patch.distance_km = fields.distanceKm;
+        if (fields?.expenseAmount !== undefined) patch.expense_amount = fields.expenseAmount;
+        if (fields?.feelingScore !== undefined) patch.feeling_score = fields.feelingScore;
+        if (Object.keys(patch).length > 0) {
+          const { data } = await supabase().from("daily_logs").update(patch).eq("id", existing.id).select().single();
+          return mapDailyLog(data!);
         }
-        return { id: existing.id, date: existing.log_date, note: existing.note ?? "" };
+        return mapDailyLog(existing);
       }
       const { data } = await supabase()
         .from("daily_logs")
-        .insert({ user_id: userId, municipality_id: MUNI, log_date: date, note: note ?? null })
+        .insert({
+          user_id: userId,
+          municipality_id: MUNI,
+          log_date: date,
+          note: fields?.note ?? null,
+          distance_km: fields?.distanceKm ?? null,
+          expense_amount: fields?.expenseAmount ?? null,
+          feeling_score: fields?.feelingScore ?? null,
+        })
         .select()
         .single();
-      return { id: data!.id, date: data!.log_date, note: data!.note ?? "" };
+      return mapDailyLog(data!);
     },
     async getByDate(userId, date): Promise<DailyLogDTO | undefined> {
       const { data } = await supabase()
@@ -426,7 +440,7 @@ export const supabaseRepos: Repos = {
         .eq("user_id", userId)
         .eq("log_date", date)
         .maybeSingle();
-      return data ? { id: data.id, date: data.log_date, note: data.note ?? "" } : undefined;
+      return data ? mapDailyLog(data) : undefined;
     },
   },
 

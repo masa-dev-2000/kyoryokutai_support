@@ -1,6 +1,7 @@
 import { all, get, run, genId } from "@/lib/db";
 import {
   mapLog,
+  mapDailyLog,
   mapReport,
   mapExpense,
   mapCase,
@@ -38,13 +39,6 @@ function loadRoutes(): RouteDTO[] {
   }));
 }
 
-function mapDailyLog(r: Record<string, unknown>): DailyLogDTO {
-  return {
-    id: r.id as string,
-    date: r.log_date as string,
-    note: (r.note as string) ?? "",
-  };
-}
 
 function mapHost(r: Record<string, unknown>): HostOrgDTO {
   return {
@@ -222,17 +216,21 @@ export const sqliteRepos: Repos = {
       const date = b.date ?? new Date().toISOString().slice(0, 10);
       const time = b.time ?? new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
       // ADR-021: 活動作成時に当日の daily_log を自動 upsert し daily_log_id を結線する
-      const dlId = genId("dl");
+      let dailyLogId = b.dailyLogId ?? null;
+      if (!dailyLogId) {
+        const dlId = genId("dl");
+        run(
+          `INSERT INTO daily_logs (id,user_id,municipality_id,log_date) VALUES (?,?,?,?)
+           ON CONFLICT(user_id,log_date) DO NOTHING`,
+          [dlId, b.userId, MUNI, date]
+        );
+        const dl = get<{ id: string }>("SELECT id FROM daily_logs WHERE user_id=? AND log_date=?", [b.userId, date]);
+        dailyLogId = dl?.id ?? null;
+      }
       run(
-        `INSERT INTO daily_logs (id,user_id,municipality_id,log_date) VALUES (?,?,?,?)
-         ON CONFLICT(user_id,log_date) DO NOTHING`,
-        [dlId, b.userId, MUNI, date]
-      );
-      const dl = get<{ id: string }>("SELECT id FROM daily_logs WHERE user_id=? AND log_date=?", [b.userId, date]);
-      run(
-        `INSERT INTO activity_logs (id,user_id,municipality_id,daily_log_id,activity_type,topic,hours,distance_km,body,log_date,log_time,expense_amount,feeling_score,contact_count)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, b.userId, MUNI, dl?.id ?? null, b.type, b.topic, b.hours, b.distanceKm ?? null, b.body, date, time, b.expense ?? null, b.feelingScore ?? null, b.contactCount ?? null]
+        `INSERT INTO activity_logs (id,user_id,municipality_id,daily_log_id,activity_type,topic,hours,body,log_date,log_time)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        [id, b.userId, MUNI, dailyLogId, b.type, b.topic, b.hours, b.body, date, time]
       );
       return mapLog(all("SELECT * FROM activity_logs WHERE id=?", [id])[0]);
     },
@@ -244,20 +242,11 @@ export const sqliteRepos: Repos = {
            activity_type=COALESCE(?,activity_type),
            topic=COALESCE(?,topic),
            hours=COALESCE(?,hours),
-           distance_km=CASE WHEN ? IS NOT NULL THEN ? ELSE distance_km END,
            body=COALESCE(?,body),
            log_date=COALESCE(?,log_date),
-           log_time=COALESCE(?,log_time),
-           feeling_score=COALESCE(?,feeling_score),
-           contact_count=COALESCE(?,contact_count)
+           log_time=COALESCE(?,log_time)
          WHERE id=?`,
-        [
-          b.type ?? null, b.topic ?? null, b.hours ?? null,
-          b.distanceKm !== undefined ? 1 : null, b.distanceKm ?? null,
-          b.body ?? null, b.date ?? null, b.time ?? null,
-          b.feelingScore ?? null, b.contactCount ?? null,
-          id,
-        ]
+        [b.type ?? null, b.topic ?? null, b.hours ?? null, b.body ?? null, b.date ?? null, b.time ?? null, id]
       );
       return mapLog(all("SELECT * FROM activity_logs WHERE id=?", [id])[0]);
     },
@@ -266,7 +255,7 @@ export const sqliteRepos: Repos = {
     },
     async listForAI(userId, ym) {
       return all<LogForAI>(
-        "SELECT activity_type,topic,hours,body,log_date,expense_amount FROM activity_logs WHERE user_id=? AND log_date LIKE ? ORDER BY log_date",
+        "SELECT activity_type,topic,hours,body,log_date FROM activity_logs WHERE user_id=? AND log_date LIKE ? ORDER BY log_date",
         [userId, `${ym}%`]
       );
     },
@@ -401,18 +390,28 @@ export const sqliteRepos: Repos = {
   },
 
   dailyLogs: {
-    async upsert(userId, date, note) {
+    async listByUser(userId) {
+      return all("SELECT * FROM daily_logs WHERE user_id=? ORDER BY log_date DESC", [userId]).map(mapDailyLog);
+    },
+    async upsert(userId, date, fields) {
       const existing = get<{ id: string }>("SELECT id FROM daily_logs WHERE user_id=? AND log_date=?", [userId, date]);
       if (existing) {
-        if (note !== undefined) {
-          run("UPDATE daily_logs SET note=?, updated_at=datetime('now') WHERE id=?", [note, existing.id]);
+        const sets: string[] = [];
+        const vals: unknown[] = [];
+        if (fields?.note !== undefined) { sets.push("note=?"); vals.push(fields.note); }
+        if (fields?.distanceKm !== undefined) { sets.push("distance_km=?"); vals.push(fields.distanceKm); }
+        if (fields?.expenseAmount !== undefined) { sets.push("expense_amount=?"); vals.push(fields.expenseAmount); }
+        if (fields?.feelingScore !== undefined) { sets.push("feeling_score=?"); vals.push(fields.feelingScore); }
+        if (sets.length > 0) {
+          sets.push("updated_at=datetime('now')");
+          run(`UPDATE daily_logs SET ${sets.join(",")} WHERE id=?`, [...vals, existing.id]);
         }
         return mapDailyLog(all("SELECT * FROM daily_logs WHERE id=?", [existing.id])[0]);
       }
       const id = genId("dl");
       run(
-        `INSERT INTO daily_logs (id,user_id,municipality_id,log_date,note) VALUES (?,?,?,?,?)`,
-        [id, userId, MUNI, date, note ?? null]
+        `INSERT INTO daily_logs (id,user_id,municipality_id,log_date,note,distance_km,expense_amount,feeling_score) VALUES (?,?,?,?,?,?,?,?)`,
+        [id, userId, MUNI, date, fields?.note ?? null, fields?.distanceKm ?? null, fields?.expenseAmount ?? null, fields?.feelingScore ?? null]
       );
       return mapDailyLog(all("SELECT * FROM daily_logs WHERE id=?", [id])[0]);
     },

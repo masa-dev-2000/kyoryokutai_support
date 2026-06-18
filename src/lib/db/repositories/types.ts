@@ -6,6 +6,7 @@
 
 import type {
   mapLog,
+  mapDailyLog,
   mapReport,
   mapExpense,
   mapCase,
@@ -16,6 +17,7 @@ import type {
 } from "@/lib/api/mappers";
 
 export type ActivityLogDTO = ReturnType<typeof mapLog>;
+export type DailyLogDTO = ReturnType<typeof mapDailyLog>;
 export type ReportDTO = ReturnType<typeof mapReport>;
 export type ExpenseDTO = ReturnType<typeof mapExpense>;
 export type CaseDTO = ReturnType<typeof mapCase>;
@@ -58,7 +60,6 @@ export type ApprovalRaw = {
 };
 
 export type GuidelineRow = { source: string; section: string; body: string };
-export type DailyLogDTO = { id: string; date: string; note: string };
 
 export interface Repos {
   users: {
@@ -99,27 +100,21 @@ export interface Repos {
     listByUser(userId: string): Promise<ActivityLogDTO[]>;
     create(l: {
       userId: string;
+      dailyLogId?: string;
       type: string;
       topic: string;
       hours: number;
-      distanceKm?: number;
       body: string;
       date?: string;
       time?: string;
-      expense?: number;
-      feelingScore?: number;   // #56: 今日の手応え(1〜4)
-      contactCount?: number;   // #56: 接触人数(任意)
     }): Promise<ActivityLogDTO>;
     update(id: string, patch: {
       type?: string;
       topic?: string;
       hours?: number;
-      distanceKm?: number | null;
       body?: string;
       date?: string;
       time?: string;
-      feelingScore?: number;   // #56
-      contactCount?: number;   // #56
     }): Promise<ActivityLogDTO | undefined>;
     delete(id: string): Promise<void>;
     listForAI(userId: string, ym: string): Promise<LogForAI[]>;
@@ -185,7 +180,13 @@ export interface Repos {
     listByMuni(muni: string): Promise<GuidelineRow[]>;
   };
   dailyLogs: {
-    upsert(userId: string, date: string, note?: string): Promise<DailyLogDTO>;
+    listByUser(userId: string): Promise<DailyLogDTO[]>;
+    upsert(userId: string, date: string, fields?: {
+      note?: string;
+      distanceKm?: number;
+      expenseAmount?: number;
+      feelingScore?: number;
+    }): Promise<DailyLogDTO>;
     getByDate(userId: string, date: string): Promise<DailyLogDTO | undefined>;
   };
   consultations: {

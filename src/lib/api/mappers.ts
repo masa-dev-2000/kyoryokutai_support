@@ -17,13 +17,20 @@ export function mapLog(r: Row) {
     type: r.activity_type as string,
     topic: r.topic as string,
     hours: r.hours as number,
-    distanceKm: (r.distance_km as number | null) ?? undefined,
     body: r.body as string,
     date: r.log_date as string,
     time: r.log_time as string,
-    expense: (r.expense_amount as number | null) ?? undefined,
-    feelingScore: (r.feeling_score as number | null) ?? undefined,  // #56
-    contactCount: (r.contact_count as number | null) ?? undefined,  // #56
+  };
+}
+
+export function mapDailyLog(r: Row) {
+  return {
+    id: r.id as string,
+    date: r.log_date as string,
+    note: (r.note as string) ?? undefined,
+    distanceKm: (r.distance_km as number | null) ?? undefined,
+    expenseAmount: (r.expense_amount as number | null) ?? undefined,
+    feelingScore: (r.feeling_score as number | null) ?? undefined,
   };
 }
 

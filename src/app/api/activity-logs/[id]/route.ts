@@ -8,12 +8,9 @@ type PatchBody = {
   type?: string;
   topic?: string;
   hours?: number;
-  distanceKm?: number | null;
   body?: string;
   date?: string;
   time?: string;
-  feelingScore?: number;   // #56
-  contactCount?: number;   // #56
   userId?: string;
 };
 
@@ -26,7 +23,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
   const b = await readJson<PatchBody>(req);
   const repos = getRepos();
-  const updated = await repos.activityLogs.update(id, b);
+  const { userId: _uid, ...patch } = b;
+  const updated = await repos.activityLogs.update(id, patch);
   if (!updated) return bad("Not found", 404);
   // 同月に承認済み月報があれば「提出済」に差し戻す(ADR 設計)
   await revertMonthlyReport(repos, b.userId ?? process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-0000-4000-8000-000000000001", updated.date);
