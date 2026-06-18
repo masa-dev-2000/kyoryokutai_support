@@ -294,6 +294,9 @@ export function MemberApp() {
     setFontLevelState(l);
     localStorage.setItem("fontLevel", l);
   };
+  React.useEffect(() => {
+    document.documentElement.style.zoom = String(FONT_ZOOM[fontLevel]);
+  }, [fontLevel]);
 
   // セッションからログインユーザーの app userId を取得
   React.useEffect(() => {
@@ -431,7 +434,7 @@ export function MemberApp() {
 
   return (
     <AppCtx.Provider value={ctx}>
-      <main className="flex h-screen flex-col bg-white text-slate-900" style={{ zoom: FONT_ZOOM[fontLevel] }}>
+      <main className="flex h-screen flex-col bg-white text-slate-900">
         {/* #49: ヘッダー + タブ欄を上部固定。Sheet は fixed inset-0 で別レイヤーのため競合しない */}
         <div className="sticky top-0 z-20 shrink-0 bg-white">
           <div className="mx-auto w-full max-w-2xl">
