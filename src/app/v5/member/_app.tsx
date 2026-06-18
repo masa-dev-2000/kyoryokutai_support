@@ -215,9 +215,14 @@ export type InlineExpense = {
   receiptDataUrl?: string;
 };
 
+type FontLevel = "normal" | "large" | "xl";
+const FONT_ZOOM: Record<FontLevel, number> = { normal: 1, large: 1.15, xl: 1.3 };
+
 type Ctx = {
   logs: ActivityLog[];
   dailyLogs: DailyLogEntry[];
+  fontLevel: FontLevel;
+  setFontLevel: (l: FontLevel) => void;
   addDailyLog: (dl: {
     date: string;
     distanceKm?: number;
@@ -281,6 +286,14 @@ export function MemberApp() {
   const [plan, setPlan] = React.useState(
     "・夏祭り当日の運営(7/14)\n・移住者向け体験ツアー初回開催(7/27)\n・空き家バンク累計 15 件を目標"
   );
+  const [fontLevel, setFontLevelState] = React.useState<FontLevel>(() => {
+    if (typeof window === "undefined") return "normal";
+    return (localStorage.getItem("fontLevel") as FontLevel) ?? "normal";
+  });
+  const setFontLevel = (l: FontLevel) => {
+    setFontLevelState(l);
+    localStorage.setItem("fontLevel", l);
+  };
 
   // セッションからログインユーザーの app userId を取得
   React.useEffect(() => {
@@ -412,11 +425,13 @@ export function MemberApp() {
     plan,
     setPlan,
     memberId,
+    fontLevel,
+    setFontLevel,
   };
 
   return (
     <AppCtx.Provider value={ctx}>
-      <main className="flex h-screen flex-col bg-white text-slate-900">
+      <main className="flex h-screen flex-col bg-white text-slate-900" style={{ zoom: FONT_ZOOM[fontLevel] }}>
         {/* #49: ヘッダー + タブ欄を上部固定。Sheet は fixed inset-0 で別レイヤーのため競合しない */}
         <div className="sticky top-0 z-20 shrink-0 bg-white">
           <div className="mx-auto w-full max-w-2xl">
@@ -2175,15 +2190,37 @@ function CaseAuthorSheet({ userId, name, area, onClose }: { userId: string; name
 /* -------- 設定メニューシート -------- */
 
 function SettingsMenuSheet({ onClose }: { onClose: () => void }) {
-  const { pushSheet } = useApp();
+  const { pushSheet, fontLevel, setFontLevel } = useApp();
   // #48: 「活動内容を編集」は廃止。活動の種類・テーマは記録フォーム内の「+追加」で管理する。
   const items = [
     { label: "プロフィール", desc: "名前・自治体・自己紹介を編集", icon: <SettingsIcon className="h-4 w-4" />, action: () => pushSheet({ kind: "profile" }) },
+  ];
+  const fontOptions: { level: FontLevel; label: string; size: string }[] = [
+    { level: "normal", label: "標準", size: "text-[13px]" },
+    { level: "large", label: "大", size: "text-[16px]" },
+    { level: "xl", label: "特大", size: "text-[19px]" },
   ];
   return (
     <>
       <SheetHeader title="設定" onClose={onClose} />
       <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+        {/* 文字サイズ */}
+        <div className="mb-5 rounded-xl border border-slate-200 bg-white px-4 py-3">
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">文字の大きさ</div>
+          <div className="flex gap-2">
+            {fontOptions.map((opt) => (
+              <button
+                key={opt.level}
+                onClick={() => setFontLevel(opt.level)}
+                className={`flex-1 rounded-lg border py-2 transition ${fontLevel === opt.level ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-400"}`}
+              >
+                <span className={opt.size}>あ</span>
+                <div className="mt-0.5 text-[10px] opacity-70">{opt.label}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <ul className="space-y-2">
           {items.map((item) => (
             <li key={item.label}>
