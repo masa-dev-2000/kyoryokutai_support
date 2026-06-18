@@ -208,3 +208,28 @@
 
 ### 関連
 - Issue #52(自由入力方式で解消)、#56(隊員側 実装 / open)、#50・#51・#53・#54(実装済・クローズ待ち)
+
+---
+
+## 2026-06-18
+
+### 完了
+- daily_logs を日報の親エンティティとし、distance_km / expense_amount / feeling_score を activity_logs から移管(ADR-023)
+- contact_count を完全削除
+- 活動登録 UI を「1日1フォームに複数活動カード」スタイルに刷新
+- `POST /api/daily-logs` で日報＋複数活動の一括登録を実装
+- GitHub issue #57(文字サイズ設定/老眼対応)を登録
+
+### 変更ファイル
+- `src/lib/db/schema.ts`: daily_logs に distance_km/expense_amount/feeling_score 追加、activity_logs からこれらと contact_count を削除
+- `src/lib/api/mappers.ts`: `mapDailyLog` 関数を追加・export、`mapLog` を簡略化
+- `src/lib/db/repositories/types.ts`: DailyLogDTO 型、dailyLogs.listByUser・upsert シグネチャ更新
+- `src/lib/db/repositories/sqlite.ts` / `supabase.ts`: 上記モデル変更に追従
+- `src/app/api/daily-logs/route.ts`: GET/POST エンドポイント新設
+- `src/app/api/activity-logs/route.ts` / `[id]/route.ts`: 不要フィールド除去
+- `src/app/v5/member/_app.tsx`: ActivityCreateSheet(マルチ活動モード)、DailyLogEntry 型追加
+- `supabase/migrations/20260619_019_daily_log_fields.sql`: 本番 DB に適用済
+
+### 次のアクション
+- Issue #57(文字サイズ/老眼対応)の実装
+- Vercel デプロイ後の動作確認

@@ -745,3 +745,34 @@ daily_logs(日報) ← 新規
 | お知らせの未読はどう知らせる? | タブに数字バッジ |
 
 - Issue #33・#34・#36・#37 クローズ → commit 164c6c2
+
+---
+
+## ADR-023: daily_logs を日報の親エンティティとし、distance_km / expense_amount / feeling_score を移管
+
+**確定日:** 2026-06-18
+
+### Context
+- ADR-021 で「日報・活動記録・経費」の3層モデルを確立したが、`distance_km` / `expense_amount` / `feeling_score` / `contact_count` が `activity_logs` 側に残っていた
+- 隊員ヒアリングで「移動距離や今日の手応えは1日1回記録すればよい」という運用実態が判明
+- 1日に複数の活動を記録する際に、各活動に同じ値を入力させるのは冗長かつ誤りの元
+
+### Decision
+1. `daily_logs` テーブルに `distance_km`, `expense_amount`, `feeling_score` を追加
+2. `activity_logs` テーブルから `distance_km`, `expense_amount`, `feeling_score`, `contact_count` を削除
+3. `POST /api/daily-logs` を新設し、**日報 + 複数活動を一括登録**できるエンドポイントに
+4. 活動登録 UI を「1日1フォームに複数活動カードを並べる」スタイルに刷新
+5. `ActivityCreateSheet` を新規モード(マルチ活動)と編集モード(単一活動)の2モードで実装
+
+### Consequence
+- 隊員は1回のフォーム送信で日報メタ情報(距離・経費・手応え)と複数活動をまとめて保存できる
+- `activity_logs` がシンプルになり `type / topic / hours / body / date / time` のみ
+- Supabase migration `20260619_019_daily_log_fields.sql` で本番 DB に適用済
+- `contact_count` は完全削除(運用上の必要性なしと判断)
+
+### ヒアリング根拠
+| 質問 | 回答 |
+|---|---|
+| 移動距離・手応えは活動ごと? 1日1回? | 1日1回でいい |
+| 接した人数(contact_count)は残す? | いらない |
+| 日報に複数活動を登録したい? | はい |
