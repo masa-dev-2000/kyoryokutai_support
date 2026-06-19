@@ -295,7 +295,13 @@ export function MemberApp() {
     localStorage.setItem("fontLevel", l);
   };
   React.useEffect(() => {
-    document.documentElement.style.zoom = String(FONT_ZOOM[fontLevel]);
+    let el = document.getElementById("__font-zoom");
+    if (!el) {
+      el = document.createElement("style");
+      el.id = "__font-zoom";
+      document.head.appendChild(el);
+    }
+    el.textContent = `html { zoom: ${FONT_ZOOM[fontLevel]}; }`;
   }, [fontLevel]);
 
   // セッションからログインユーザーの app userId を取得
