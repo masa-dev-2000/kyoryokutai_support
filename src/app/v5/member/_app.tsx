@@ -216,7 +216,7 @@ export type InlineExpense = {
 };
 
 type FontLevel = "normal" | "large" | "xl";
-const FONT_ZOOM: Record<FontLevel, number> = { normal: 1, large: 1.15, xl: 1.3 };
+const FONT_ZOOM: Record<FontLevel, number> = { normal: 1, large: 1.5, xl: 2 };
 
 type Ctx = {
   logs: ActivityLog[];
