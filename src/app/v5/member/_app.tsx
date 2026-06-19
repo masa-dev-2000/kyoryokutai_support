@@ -441,8 +441,8 @@ export function MemberApp() {
 
   return (
     <AppCtx.Provider value={ctx}>
-      <main className="flex h-screen flex-col bg-white text-slate-900">
-        {/* #49: ヘッダー + タブ欄を上部固定。Sheet は fixed inset-0 で別レイヤーのため競合しない */}
+      <main className="relative flex h-screen flex-col bg-white text-slate-900">
+        {/* #49: ヘッダー + タブ欄を上部固定。Sheet は absolute inset-0 で zoom の影響下に置く */}
         <div className="sticky top-0 z-20 shrink-0 bg-white">
           <div className="mx-auto w-full max-w-2xl">
             <Header onSettings={() => setSheets([{ kind: "settings-menu" }])} userName={memberName} />
@@ -597,7 +597,7 @@ function ReportTab() {
       {/* FAB: 当日の活動を追加(セカンダリ動線) */}
       <button
         onClick={() => pushSheet({ kind: "activity-create" })}
-        className="fixed bottom-10 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg ring-4 ring-white transition hover:bg-slate-800 active:scale-95"
+        className="absolute bottom-10 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg ring-4 ring-white transition hover:bg-slate-800 active:scale-95"
         style={{ right: "max(1.5rem, calc(50vw - 21rem + 1.5rem))" }}
         aria-label="今日の活動を追加"
       >
@@ -909,7 +909,7 @@ function ExpenseTab() {
 
       <button
         onClick={() => pushSheet({ kind: "expense-create" })}
-        className="fixed bottom-10 z-30 inline-flex h-12 items-center gap-1.5 rounded-full bg-slate-900 px-5 text-[12px] font-bold text-white shadow-lg ring-4 ring-white transition hover:bg-slate-800 active:scale-95"
+        className="absolute bottom-10 z-30 inline-flex h-12 items-center gap-1.5 rounded-full bg-slate-900 px-5 text-[12px] font-bold text-white shadow-lg ring-4 ring-white transition hover:bg-slate-800 active:scale-95"
         style={{ right: "max(1.5rem, calc(50vw - 21rem + 1.5rem))" }}
       >
         <Plus className="h-4 w-4" />
@@ -1131,7 +1131,7 @@ function SheetRoot() {
   const stackDepth = sheets.length;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-white">
+    <div className="absolute inset-0 z-50 flex flex-col bg-white">
       {sheet.kind === "activity-create" && <ActivityCreateSheet onClose={close} editing={sheet.editing} date={sheet.date} />}
       {sheet.kind === "report-day" && <ReportDaySheet date={sheet.date} onClose={close} depth={stackDepth} />}
       {sheet.kind === "report-detail" && <ReportDetailSheet report={sheet.report} onClose={close} />}
