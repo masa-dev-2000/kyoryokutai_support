@@ -218,15 +218,6 @@ export type InlineExpense = {
 type FontLevel = "normal" | "large" | "xl";
 const FONT_SCALE: Record<FontLevel, number> = { normal: 1, large: 1.3, xl: 1.6 };
 
-function buildFontCss(scale: number): string {
-  if (scale === 1) return "";
-  const pxSizes = [8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20, 22, 24];
-  const overrides = pxSizes
-    .map((s) => `.text-\\[${s}px\\]{font-size:${Math.round(s * scale)}px!important}`)
-    .join("");
-  return `html{font-size:${scale * 100}%}${overrides}`;
-}
-
 type Ctx = {
   logs: ActivityLog[];
   dailyLogs: DailyLogEntry[];
@@ -303,15 +294,6 @@ export function MemberApp() {
     setFontLevelState(l);
     localStorage.setItem("fontLevel", l);
   };
-  React.useEffect(() => {
-    let el = document.getElementById("__font-zoom");
-    if (!el) {
-      el = document.createElement("style");
-      el.id = "__font-zoom";
-      document.head.appendChild(el);
-    }
-    el.textContent = buildFontCss(FONT_SCALE[fontLevel]);
-  }, [fontLevel]);
 
   // セッションからログインユーザーの app userId を取得
   React.useEffect(() => {
@@ -447,28 +429,42 @@ export function MemberApp() {
     setFontLevel,
   };
 
+  const scale = FONT_SCALE[fontLevel];
+  // transform: scale() で全要素(文字・余白・アイコン)を比例スケール。
+  // fixed 子孫は transform 祖先を含むブロックに対して固定されるので Sheet/FAB も同倍率になる。
+  const scaleStyle: React.CSSProperties = scale === 1 ? {} : {
+    transform: `scale(${scale})`,
+    transformOrigin: "top left",
+    width: `${100 / scale}vw`,
+    height: `${100 / scale}dvh`,
+  };
+
   return (
     <AppCtx.Provider value={ctx}>
-      <main className="relative flex h-screen flex-col bg-white text-slate-900">
-        {/* #49: ヘッダー + タブ欄を上部固定。Sheet は absolute inset-0 で zoom の影響下に置く */}
-        <div className="sticky top-0 z-20 shrink-0 bg-white">
-          <div className="mx-auto w-full max-w-2xl">
-            <Header onSettings={() => setSheets([{ kind: "settings-menu" }])} userName={memberName} />
-            <Tabs active={tab} onChange={setTab} unread={notices.length} />
-          </div>
-        </div>
+      <div style={{ width: "100vw", height: "100dvh", overflow: "hidden" }}>
+        <div style={scaleStyle}>
+          <main className="flex flex-col bg-white text-slate-900" style={{ height: scale === 1 ? "100dvh" : `${100 / scale}dvh` }}>
+            {/* ヘッダー + タブ */}
+            <div className="sticky top-0 z-20 shrink-0 bg-white">
+              <div className="mx-auto w-full max-w-2xl">
+                <Header onSettings={() => setSheets([{ kind: "settings-menu" }])} userName={memberName} />
+                <Tabs active={tab} onChange={setTab} unread={notices.length} />
+              </div>
+            </div>
 
-        <div className="flex flex-1 flex-col overflow-y-auto px-6 pb-20">
-          <div className="mx-auto w-full max-w-2xl flex-1 py-4">
-            {tab === "report" && <ReportTab />}
-            {tab === "expense" && <ExpenseTab />}
-            {tab === "announce" && <AnnounceTab />}
-            {tab === "case" && <CaseTab />}
-          </div>
-        </div>
+            <div className="flex flex-1 flex-col overflow-y-auto px-6 pb-20">
+              <div className="mx-auto w-full max-w-2xl flex-1 py-4">
+                {tab === "report" && <ReportTab />}
+                {tab === "expense" && <ExpenseTab />}
+                {tab === "announce" && <AnnounceTab />}
+                {tab === "case" && <CaseTab />}
+              </div>
+            </div>
 
-        <SheetRoot />
-      </main>
+            <SheetRoot />
+          </main>
+        </div>
+      </div>
     </AppCtx.Provider>
   );
 }
@@ -605,7 +601,7 @@ function ReportTab() {
       {/* FAB: 当日の活動を追加(セカンダリ動線) */}
       <button
         onClick={() => pushSheet({ kind: "activity-create" })}
-        className="absolute bottom-10 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg ring-4 ring-white transition hover:bg-slate-800 active:scale-95"
+        className="fixed bottom-10 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg ring-4 ring-white transition hover:bg-slate-800 active:scale-95"
         style={{ right: "max(1.5rem, calc(50vw - 21rem + 1.5rem))" }}
         aria-label="今日の活動を追加"
       >
@@ -917,7 +913,7 @@ function ExpenseTab() {
 
       <button
         onClick={() => pushSheet({ kind: "expense-create" })}
-        className="absolute bottom-10 z-30 inline-flex h-12 items-center gap-1.5 rounded-full bg-slate-900 px-5 text-[12px] font-bold text-white shadow-lg ring-4 ring-white transition hover:bg-slate-800 active:scale-95"
+        className="fixed bottom-10 z-30 inline-flex h-12 items-center gap-1.5 rounded-full bg-slate-900 px-5 text-[12px] font-bold text-white shadow-lg ring-4 ring-white transition hover:bg-slate-800 active:scale-95"
         style={{ right: "max(1.5rem, calc(50vw - 21rem + 1.5rem))" }}
       >
         <Plus className="h-4 w-4" />
@@ -1139,7 +1135,7 @@ function SheetRoot() {
   const stackDepth = sheets.length;
 
   return (
-    <div className="absolute inset-0 z-50 flex flex-col bg-white">
+    <div className="fixed inset-0 z-50 flex flex-col bg-white">
       {sheet.kind === "activity-create" && <ActivityCreateSheet onClose={close} editing={sheet.editing} date={sheet.date} />}
       {sheet.kind === "report-day" && <ReportDaySheet date={sheet.date} onClose={close} depth={stackDepth} />}
       {sheet.kind === "report-detail" && <ReportDetailSheet report={sheet.report} onClose={close} />}
