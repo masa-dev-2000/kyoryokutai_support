@@ -301,7 +301,8 @@ export function MemberApp() {
       el.id = "__font-zoom";
       document.head.appendChild(el);
     }
-    el.textContent = `html { zoom: ${FONT_ZOOM[fontLevel]}; }`;
+    // iOS Safari は html への zoom が効かないため body に適用する
+    el.textContent = `body { zoom: ${FONT_ZOOM[fontLevel]}; }`;
   }, [fontLevel]);
 
   // セッションからログインユーザーの app userId を取得
