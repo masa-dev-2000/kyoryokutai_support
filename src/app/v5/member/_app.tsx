@@ -216,7 +216,16 @@ export type InlineExpense = {
 };
 
 type FontLevel = "normal" | "large" | "xl";
-const FONT_ZOOM: Record<FontLevel, number> = { normal: 1, large: 1.5, xl: 2 };
+const FONT_SCALE: Record<FontLevel, number> = { normal: 1, large: 1.3, xl: 1.6 };
+
+function buildFontCss(scale: number): string {
+  if (scale === 1) return "";
+  const pxSizes = [8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20, 22, 24];
+  const overrides = pxSizes
+    .map((s) => `.text-\\[${s}px\\]{font-size:${Math.round(s * scale)}px!important}`)
+    .join("");
+  return `html{font-size:${scale * 100}%}${overrides}`;
+}
 
 type Ctx = {
   logs: ActivityLog[];
@@ -301,8 +310,7 @@ export function MemberApp() {
       el.id = "__font-zoom";
       document.head.appendChild(el);
     }
-    // iOS Safari は html への zoom が効かないため body に適用する
-    el.textContent = `body { zoom: ${FONT_ZOOM[fontLevel]}; }`;
+    el.textContent = buildFontCss(FONT_SCALE[fontLevel]);
   }, [fontLevel]);
 
   // セッションからログインユーザーの app userId を取得
