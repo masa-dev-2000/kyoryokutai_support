@@ -935,7 +935,7 @@ function AnnounceTab() {
   return (
     <div>
       <div className="mb-4 text-center">
-        <h1 className="text-4xl font-bold tracking-tight">お知らせ</h1>
+        <h1 className="text-4xl font-bold tracking-tight">連絡</h1>
         <p className="mt-1 text-[16px] text-slate-500">役場・担当課からのお知らせ</p>
       </div>
       <ul className="space-y-2">
@@ -2454,7 +2454,7 @@ function AnnouncementsSheet({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <SheetHeader title="お知らせ" onClose={onClose} />
+      <SheetHeader title="連絡" onClose={onClose} />
       <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
         {pinned.length > 0 && (
           <>
