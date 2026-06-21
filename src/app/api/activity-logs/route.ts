@@ -1,4 +1,4 @@
-import { ok, readJson } from "@/lib/api/http";
+import { ok, bad, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
 
 export const runtime = "nodejs";
@@ -24,6 +24,7 @@ type CreateBody = {
 
 export async function POST(req: Request) {
   const b = await readJson<CreateBody>(req);
+  if (!b.type || !b.topic || !(b.hours > 0)) return bad("type / topic / hours は必須です");
   const userId = b.userId ?? DEFAULT_USER;
   const repos = getRepos();
   const created = await repos.activityLogs.create({

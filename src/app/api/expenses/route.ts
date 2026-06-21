@@ -1,4 +1,4 @@
-import { ok, readJson } from "@/lib/api/http";
+import { ok, bad, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
 import { expandRoute } from "@/lib/workflow";
 
@@ -26,6 +26,7 @@ type CreateBody = {
 
 export async function POST(req: Request) {
   const b = await readJson<CreateBody>(req);
+  if (!b.title?.trim() || !(b.amount > 0) || !b.purpose?.trim()) return bad("title / amount / purpose は必須です");
   const repos = getRepos();
   const userId = b.userId ?? process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-0000-4000-8000-000000000001";
 
