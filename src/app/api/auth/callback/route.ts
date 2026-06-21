@@ -7,7 +7,9 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/v5/member";
+  // open redirect 防止: next は同一オリジンの相対パスのみ許可
+  const rawNext = searchParams.get("next") ?? "/v5/member";
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/v5/member";
 
   if (!code) {
     return NextResponse.redirect(`${origin}/v5/login?error=missing_code`);
@@ -34,7 +36,7 @@ export async function GET(request: Request) {
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
-    return NextResponse.redirect(`${origin}/v5/login?error=${error.message}`);
+    return NextResponse.redirect(`${origin}/v5/login?error=${encodeURIComponent(error.message)}`);
   }
 
   return NextResponse.redirect(`${origin}${next}`);

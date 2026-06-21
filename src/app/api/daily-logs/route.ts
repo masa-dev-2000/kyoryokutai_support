@@ -57,7 +57,7 @@ export async function POST(req: Request) {
   // 各活動を登録
   const time = new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
   const createdActivities = [];
-  for (const a of b.activities) {
+  for (const a of (Array.isArray(b.activities) ? b.activities : [])) {
     const created = await repos.activityLogs.create({
       userId,
       dailyLogId: dl.id,
