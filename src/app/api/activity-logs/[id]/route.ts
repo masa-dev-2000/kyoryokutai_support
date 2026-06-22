@@ -1,5 +1,6 @@
 import { ok, bad, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
+import { requireSession } from "@/lib/api/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +21,8 @@ async function revertMonthlyReport(repos: ReturnType<typeof getRepos>, userId: s
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const sess = await requireSession();
+  if (sess instanceof Response) return sess;
   const { id } = await params;
   const b = await readJson<PatchBody>(req);
   const repos = getRepos();
@@ -32,6 +35,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const sess = await requireSession();
+  if (sess instanceof Response) return sess;
   const { id } = await params;
   const userId = new URL(req.url).searchParams.get("userId") ?? process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-0000-4000-8000-000000000001";
   const repos = getRepos();

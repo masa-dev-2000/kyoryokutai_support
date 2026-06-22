@@ -1,5 +1,6 @@
 import { ok, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
+import { requireSession } from "@/lib/api/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,11 +15,15 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const sess = await requireSession();
+  if (sess instanceof Response) return sess;
   const { userId = DEFAULT_USER, name, kind = "topic" } = await readJson<{ userId?: string; name: string; kind?: string }>(req);
   return ok(await getRepos().topics.add(userId, name, kind));
 }
 
 export async function DELETE(req: Request) {
+  const sess = await requireSession();
+  if (sess instanceof Response) return sess;
   const sp = new URL(req.url).searchParams;
   const userId = sp.get("userId") ?? DEFAULT_USER;
   const name = sp.get("name") ?? "";

@@ -1,6 +1,7 @@
 import { ok, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
 import { expandRoute } from "@/lib/workflow";
+import { requireSession } from "@/lib/api/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +40,8 @@ export async function GET(req: Request) {
 
 /** POST /api/daily-logs — 日報 + 複数活動を一括登録 */
 export async function POST(req: Request) {
+  const sess = await requireSession();
+  if (sess instanceof Response) return sess;
   const b = await readJson<CreateBody>(req);
   const userId = b.userId ?? DEFAULT_USER;
   const date = b.date ?? new Date().toISOString().slice(0, 10);

@@ -1,5 +1,6 @@
 import { ok, bad, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
+import { requireSession } from "@/lib/api/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +24,8 @@ type CreateBody = {
 };
 
 export async function POST(req: Request) {
+  const sess = await requireSession();
+  if (sess instanceof Response) return sess;
   const b = await readJson<CreateBody>(req);
   if (!b.type || !b.topic || !(b.hours > 0)) return bad("type / topic / hours は必須です");
   const userId = b.userId ?? DEFAULT_USER;

@@ -2,6 +2,7 @@ import { getAIProvider } from "@/lib/ai";
 import type { AIGenerateOptions } from "@/lib/ai";
 import { ok, bad, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
+import { requireSession } from "@/lib/api/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +36,8 @@ const TASK: Record<Body["context"], AIGenerateOptions["task"]> = {
 };
 
 export async function POST(req: Request) {
+  const sess = await requireSession();
+  if (sess instanceof Response) return sess;
   const body = await readJson<Body>(req);
   if (!body.context || !SYSTEM[body.context]) return bad("context が不正です");
 

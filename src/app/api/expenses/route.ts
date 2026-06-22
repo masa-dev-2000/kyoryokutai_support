@@ -1,6 +1,7 @@
 import { ok, bad, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
 import { expandRoute } from "@/lib/workflow";
+import { requireSession } from "@/lib/api/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +26,8 @@ type CreateBody = {
 };
 
 export async function POST(req: Request) {
+  const sess = await requireSession();
+  if (sess instanceof Response) return sess;
   const b = await readJson<CreateBody>(req);
   if (!b.title?.trim() || !(b.amount > 0) || !b.purpose?.trim()) return bad("title / amount / purpose は必須です");
   const repos = getRepos();
