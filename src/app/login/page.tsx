@@ -6,10 +6,16 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { Loader2, Mail, Lock } from "lucide-react";
 import Link from "next/link";
 
+const ROLE_PATH: Record<string, string> = {
+  manager: "/manager",
+  admin: "/admin",
+};
+
 function LoginForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const next = searchParams.get("next") ?? "/v5/member";
+  // ?next= が指定されていればそちら優先、なければロールで振り分け
+  const nextParam = searchParams.get("next");
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -30,10 +36,24 @@ function LoginForm() {
     if (error) {
       setErrorMsg(error.message === "Invalid login credentials" ? "メールアドレスまたはパスワードが正しくありません" : error.message);
       setStatus("error");
-    } else {
-      router.push(next as Parameters<typeof router.push>[0]);
-      router.refresh();
+      return;
     }
+
+    // ロールを取得してリダイレクト先を決定
+    let dest = nextParam ?? "/member";
+    if (!nextParam) {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.ok) {
+          const data = await res.json() as { role?: string };
+          dest = ROLE_PATH[data.role ?? ""] ?? "/member";
+        }
+      } catch {
+        // フォールバック: /member
+      }
+    }
+    router.push(dest as Parameters<typeof router.push>[0]);
+    router.refresh();
   }
 
   return (
@@ -92,14 +112,14 @@ function LoginForm() {
 
       <p className="mt-6 text-center text-[12px] text-slate-500">
         アカウントをお持ちでない方は{" "}
-        <Link href={`/v5/signup?next=${encodeURIComponent(next)}` as never} className="font-semibold text-slate-900 underline underline-offset-2">
+        <Link href="/signup" className="font-semibold text-slate-900 underline underline-offset-2">
           新規登録
         </Link>
       </p>
 
       <p className="mt-3 text-center text-[11px] text-slate-400">
         または{" "}
-        <Link href="/v5/member?demo=true" className="underline underline-offset-2 hover:text-slate-600">
+        <Link href="/member?demo=true" className="underline underline-offset-2 hover:text-slate-600">
           デモを試す(ログイン不要)
         </Link>
       </p>

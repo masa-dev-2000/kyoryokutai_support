@@ -8,11 +8,11 @@ export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
   // open redirect 防止: next は同一オリジンの相対パスのみ許可
-  const rawNext = searchParams.get("next") ?? "/v5/member";
-  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/v5/member";
+  const rawNext = searchParams.get("next") ?? "/member";
+  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/member";
 
   if (!code) {
-    return NextResponse.redirect(`${origin}/v5/login?error=missing_code`);
+    return NextResponse.redirect(`${origin}/login?error=missing_code`);
   }
 
   const cookieStore = await cookies();
@@ -36,7 +36,7 @@ export async function GET(request: Request) {
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
-    return NextResponse.redirect(`${origin}/v5/login?error=${encodeURIComponent(error.message)}`);
+    return NextResponse.redirect(`${origin}/login?error=${encodeURIComponent(error.message)}`);
   }
 
   return NextResponse.redirect(`${origin}${next}`);

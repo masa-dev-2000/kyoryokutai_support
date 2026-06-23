@@ -35,6 +35,6 @@ export async function POST(req: Request) {
     return bad("DB error", 500);
   }
 
-  const url = `${new URL(req.url).origin}/v5/signup?token=${token}`;
+  const url = `${new URL(req.url).origin}/signup?token=${token}`;
   return ok({ token, url, expiresAt });
 }

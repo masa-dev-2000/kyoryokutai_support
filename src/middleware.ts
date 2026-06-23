@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED = ["/v5/member", "/v5/manager", "/v5/admin"];
+const PROTECTED = ["/member", "/manager", "/admin"];
 
 export async function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
@@ -43,7 +43,7 @@ export async function middleware(request: NextRequest) {
 
   if (!user) {
     const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/v5/login";
+    loginUrl.pathname = "/login";
     loginUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(loginUrl);
   }
@@ -52,5 +52,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/v5/member/:path*", "/v5/manager/:path*", "/v5/admin/:path*"],
+  matcher: ["/member/:path*", "/manager/:path*", "/admin/:path*"],
 };

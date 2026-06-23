@@ -453,14 +453,11 @@ export function MemberApp() {
 function Header({ onSettings, userName }: { onSettings: () => void; userName?: string | null }) {
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
-    location.href = "/v5/login";
+    location.href = "/login";
   }
   return (
     <header className="flex items-center justify-between border-b border-slate-100 px-5 py-2.5">
-      <Link href="/v5" className="inline-flex items-center gap-0.5 text-[14px] text-slate-500 hover:text-slate-900">
-        <ChevronLeft className="h-3 w-3" />
-        切替
-      </Link>
+      <span />
       <div className="text-center text-[14px] text-slate-500">
         {userName ?? "田中 さくら"} / 新温泉町
       </div>

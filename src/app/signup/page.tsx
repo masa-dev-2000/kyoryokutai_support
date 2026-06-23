@@ -12,7 +12,7 @@ function SignupForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const token = searchParams.get("token");
-  const next = searchParams.get("next") ?? "/v5/member";
+  const next = searchParams.get("next") ?? "/member";
 
   const [invite, setInvite] = React.useState<InviteInfo | null>(null);
   const [tokenError, setTokenError] = React.useState<string | null>(null);
@@ -106,7 +106,7 @@ function SignupForm() {
         </div>
         <p className="mt-6 text-center text-[12px] text-slate-500">
           すでにアカウントをお持ちの方は{" "}
-          <Link href={`/v5/login` as never} className="font-semibold text-slate-900 underline underline-offset-2">
+          <Link href={`/login` as never} className="font-semibold text-slate-900 underline underline-offset-2">
             ログイン
           </Link>
         </p>
@@ -214,7 +214,7 @@ function SignupForm() {
 
       <p className="mt-6 text-center text-[12px] text-slate-500">
         すでにアカウントをお持ちの方は{" "}
-        <Link href={`/v5/login?next=${encodeURIComponent(next)}` as never} className="font-semibold text-slate-900 underline underline-offset-2">
+        <Link href={`/login?next=${encodeURIComponent(next)}` as never} className="font-semibold text-slate-900 underline underline-offset-2">
           ログイン
         </Link>
       </p>

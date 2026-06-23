@@ -27,5 +27,5 @@ export async function POST(request: Request) {
 
   await supabase.auth.signOut();
 
-  return NextResponse.redirect(`${origin}/v5/login`);
+  return NextResponse.redirect(`${origin}/login`);
 }

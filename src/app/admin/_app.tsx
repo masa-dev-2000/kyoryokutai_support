@@ -238,13 +238,7 @@ export function AdminApp() {
 function Header() {
   return (
     <header className="flex items-center justify-between border-b border-slate-100 px-5 py-2.5">
-      <Link
-        href="/v5"
-        className="inline-flex items-center gap-0.5 text-[11px] text-slate-500 hover:text-slate-900"
-      >
-        <ChevronLeft className="h-3 w-3" />
-        切替
-      </Link>
+      <span />
       <div className="text-center text-[11px] text-slate-500">
         管理者 / 新温泉町
       </div>
