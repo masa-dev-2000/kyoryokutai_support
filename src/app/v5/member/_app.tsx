@@ -73,6 +73,8 @@ type ActivityLog = {
   type: string;
   topic: string;
   hours: number;
+  startTime?: string;   // #59: 開始時刻(HH:MM)
+  endTime?: string;     // #59: 終了時刻(HH:MM)
   body: string;
   date: string;
   time: string;
@@ -222,7 +224,7 @@ type Ctx = {
     date: string;
     distanceKm?: number;
     feelingScore?: number;
-    activities: { type: string; topic: string; hours: number; body: string }[];
+    activities: { type: string; topic: string; hours: number; startTime?: string; endTime?: string; body: string }[];
     expenses?: InlineExpense[];
   }) => Promise<void>;
   addLog: (l: Omit<ActivityLog, "id">) => void | Promise<void>;
@@ -943,7 +945,6 @@ function AnnounceTab() {
     <div>
       <div className="mb-4 text-center">
         <h1 className="text-4xl font-bold tracking-tight">連絡</h1>
-        <p className="mt-1 text-[16px] text-slate-500">役場・担当課からのお知らせ</p>
       </div>
       <ul className="space-y-2">
         {all.map((n) => (
@@ -1233,10 +1234,61 @@ function FeelingPicker({ value, onChange }: { value: number | null; onChange: (v
 /* -------- 活動報告 作成シート -------- */
 // 1 日報に複数の活動を登録できる。移動距離・経費・手応えは日報レベルで入力。
 
+/** #59: "HH:MM" の開始・終了から活動時間(h)を算出。終了が開始以前/未入力なら 0。 */
+function computeHours(start: string, end: string): number {
+  if (!start || !end) return 0;
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) return 0;
+  const mins = eh * 60 + em - (sh * 60 + sm);
+  if (mins <= 0) return 0;
+  return Math.round((mins / 60) * 100) / 100;
+}
+
+/** 開始時刻(HH:MM)に時間数を加算して終了時刻(HH:MM)を返す。旧データ移行時のフォールバック用。 */
+function addHoursToTime(start: string, hours: number): string {
+  const [h, m] = start.split(":").map(Number);
+  const total = (h * 60 + m + Math.round((hours || 0) * 60)) % (24 * 60);
+  const hh = Math.floor(total / 60);
+  const mm = total % 60;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+/** #59: 開始〜終了の時刻ピッカー。算出した活動時間を下に表示する。 */
+function TimeRangeInput({
+  start,
+  end,
+  onStart,
+  onEnd,
+}: {
+  start: string;
+  end: string;
+  onStart: (v: string) => void;
+  onEnd: (v: string) => void;
+}) {
+  const hours = computeHours(start, end);
+  const invalid = !!start && !!end && hours <= 0;
+  return (
+    <div className="mt-1">
+      <div className="flex items-center gap-2">
+        <input type="time" value={start} onChange={(e) => onStart(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-[17px] focus:border-slate-900 focus:outline-none" />
+        <span className="text-[16px] text-slate-500">〜</span>
+        <input type="time" value={end} onChange={(e) => onEnd(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-[17px] focus:border-slate-900 focus:outline-none" />
+      </div>
+      {invalid ? (
+        <p className="mt-1 text-[13px] text-rose-600">終了時刻は開始時刻より後にしてください</p>
+      ) : (
+        <p className="mt-1 text-[13px] text-slate-500">活動時間 <span className="font-bold text-slate-700">{hours}</span> 時間</p>
+      )}
+    </div>
+  );
+}
+
 type InlineActivity = {
   type: string | null;
   topic: string | null;
-  hours: string;
+  startTime: string;
+  endTime: string;
   body: string;
 };
 
@@ -1248,12 +1300,17 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
   // 編集モード: 単一活動を編集
   const [editType, setEditType] = React.useState<string | null>(editing?.type ?? null);
   const [editTopic, setEditTopic] = React.useState<string | null>(editing?.topic ?? null);
-  const [editHours, setEditHours] = React.useState<string>(editing ? String(editing.hours) : "1");
+  // #59: 旧データ(start/end なし)は開始 09:00 + hours から終了を補完
+  const [editStartTime, setEditStartTime] = React.useState<string>(editing?.startTime ?? "09:00");
+  const [editEndTime, setEditEndTime] = React.useState<string>(
+    editing?.endTime ?? (editing ? addHoursToTime(editing.startTime ?? "09:00", editing.hours) : "10:00")
+  );
   const [editBody, setEditBody] = React.useState(editing?.body ?? "");
+  const editHours = computeHours(editStartTime, editEndTime);
 
   // 新規モード: 複数活動 + 日報レベルフィールド
   const [activities, setActivities] = React.useState<InlineActivity[]>([
-    { type: null, topic: null, hours: "1", body: "" },
+    { type: null, topic: null, startTime: "09:00", endTime: "10:00", body: "" },
   ]);
   const [distance, setDistance] = React.useState<string>("");
   const [feeling, setFeeling] = React.useState<number | null>(null);
@@ -1264,7 +1321,7 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
     setActivities((cur) => cur.map((a, i) => (i === idx ? { ...a, ...patch } : a)));
   }
   function addActivity() {
-    setActivities((cur) => [...cur, { type: null, topic: null, hours: "1", body: "" }]);
+    setActivities((cur) => [...cur, { type: null, topic: null, startTime: "09:00", endTime: "10:00", body: "" }]);
   }
   function removeActivity(idx: number) {
     setActivities((cur) => cur.filter((_, i) => i !== idx));
@@ -1290,10 +1347,10 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
 
   const validExpenses = inlineExpenses.filter((e) => e.amount > 0 && e.purpose.trim().length > 0);
   const expenseSum = validExpenses.reduce((s, e) => s + e.amount, 0);
-  const validActivities = activities.filter((a) => !!a.type && !!a.topic && parseFloat(a.hours) > 0);
+  const validActivities = activities.filter((a) => !!a.type && !!a.topic && computeHours(a.startTime, a.endTime) > 0);
 
   const canSave = isEdit
-    ? !!editType && !!editTopic && parseFloat(editHours) > 0 && !saving
+    ? !!editType && !!editTopic && editHours > 0 && !saving
     : validActivities.length > 0 && !saving;
 
   async function save() {
@@ -1304,7 +1361,9 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
         await updateLog(editing!.id, {
           type: editType!,
           topic: editTopic!,
-          hours: parseFloat(editHours),
+          hours: editHours,
+          startTime: editStartTime,
+          endTime: editEndTime,
           body: editBody.trim(),
         });
         showDay(editing!.date);
@@ -1316,7 +1375,9 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
           activities: validActivities.map((a) => ({
             type: a.type!,
             topic: a.topic!,
-            hours: parseFloat(a.hours),
+            hours: computeHours(a.startTime, a.endTime),
+            startTime: a.startTime,
+            endTime: a.endTime,
             body: a.body.trim(),
           })),
           expenses: validExpenses.length > 0 ? validExpenses : undefined,
@@ -1338,10 +1399,7 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
           <Label>活動内容</Label>
           <ChipPicker options={topics} selected={editTopic} onSelect={(c) => setEditTopic(c || null)} onAdd={(v) => { addTopic(v); setEditTopic(v); }} placeholder="例:商店街活性化…" />
           <Label>活動時間</Label>
-          <div className="mt-1 flex items-center gap-2">
-            <input type="number" step="0.5" min="0" value={editHours} onChange={(e) => setEditHours(e.target.value)} className="w-24 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[17px] focus:border-slate-900 focus:outline-none" />
-            <span className="text-[16px] text-slate-600">時間</span>
-          </div>
+          <TimeRangeInput start={editStartTime} end={editEndTime} onStart={setEditStartTime} onEnd={setEditEndTime} />
           <Label>メモ</Label>
           <textarea rows={4} value={editBody} onChange={(e) => setEditBody(e.target.value)} className="mt-1 w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-[17px] focus:border-slate-900 focus:outline-none" />
         </div>
@@ -1389,14 +1447,14 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
                 <Label>内容</Label>
                 <ChipPicker options={topics} selected={a.topic} onSelect={(c) => updateActivity(i, { topic: c || null })} onAdd={(v) => { addTopic(v); updateActivity(i, { topic: v }); }} placeholder="例:空き家バンク、移住相談…" />
               </div>
-              <div className="mt-2 flex items-end gap-4">
-                <div>
-                  <Label>時間</Label>
-                  <div className="mt-1 flex items-center gap-1.5">
-                    <input type="number" step="0.5" min="0" value={a.hours} onChange={(e) => updateActivity(i, { hours: e.target.value })} className="w-20 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[17px] focus:border-slate-900 focus:outline-none" />
-                    <span className="text-[16px] text-slate-600">h</span>
-                  </div>
-                </div>
+              <div className="mt-2">
+                <Label>時間</Label>
+                <TimeRangeInput
+                  start={a.startTime}
+                  end={a.endTime}
+                  onStart={(v) => updateActivity(i, { startTime: v })}
+                  onEnd={(v) => updateActivity(i, { endTime: v })}
+                />
               </div>
               <div className="mt-2">
                 <Label>メモ</Label>
@@ -1533,7 +1591,7 @@ function ActivityDetailSheet({ log, onClose }: { log: ActivityLog; onClose: () =
         <div className="flex items-center gap-2 text-[14px] text-slate-500">
           <span>{formatDateShort(log.date)}</span>
           <span>・</span>
-          <span>{log.time}</span>
+          <span>{log.startTime && log.endTime ? `${log.startTime}〜${log.endTime}` : log.time}</span>
         </div>
         <div className="mt-2 flex items-center gap-2">
           <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[14px] font-bold text-slate-700">{log.type}</span>

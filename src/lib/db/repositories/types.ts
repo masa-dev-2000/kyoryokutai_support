@@ -104,6 +104,8 @@ export interface Repos {
       type: string;
       topic: string;
       hours: number;
+      startTime?: string;
+      endTime?: string;
       body: string;
       date?: string;
       time?: string;
@@ -112,6 +114,8 @@ export interface Repos {
       type?: string;
       topic?: string;
       hours?: number;
+      startTime?: string;
+      endTime?: string;
       body?: string;
       date?: string;
       time?: string;

@@ -228,9 +228,9 @@ export const sqliteRepos: Repos = {
         dailyLogId = dl?.id ?? null;
       }
       run(
-        `INSERT INTO activity_logs (id,user_id,municipality_id,daily_log_id,activity_type,topic,hours,body,log_date,log_time)
-         VALUES (?,?,?,?,?,?,?,?,?,?)`,
-        [id, b.userId, MUNI, dailyLogId, b.type, b.topic, b.hours, b.body, date, time]
+        `INSERT INTO activity_logs (id,user_id,municipality_id,daily_log_id,activity_type,topic,hours,start_time,end_time,body,log_date,log_time)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [id, b.userId, MUNI, dailyLogId, b.type, b.topic, b.hours, b.startTime ?? null, b.endTime ?? null, b.body, date, time]
       );
       return mapLog(all("SELECT * FROM activity_logs WHERE id=?", [id])[0]);
     },
@@ -242,11 +242,13 @@ export const sqliteRepos: Repos = {
            activity_type=COALESCE(?,activity_type),
            topic=COALESCE(?,topic),
            hours=COALESCE(?,hours),
+           start_time=COALESCE(?,start_time),
+           end_time=COALESCE(?,end_time),
            body=COALESCE(?,body),
            log_date=COALESCE(?,log_date),
            log_time=COALESCE(?,log_time)
          WHERE id=?`,
-        [b.type ?? null, b.topic ?? null, b.hours ?? null, b.body ?? null, b.date ?? null, b.time ?? null, id]
+        [b.type ?? null, b.topic ?? null, b.hours ?? null, b.startTime ?? null, b.endTime ?? null, b.body ?? null, b.date ?? null, b.time ?? null, id]
       );
       return mapLog(all("SELECT * FROM activity_logs WHERE id=?", [id])[0]);
     },

@@ -13,6 +13,8 @@ type ActivityInput = {
   type: string;
   topic: string;
   hours: number;
+  startTime?: string;
+  endTime?: string;
   body: string;
 };
 
@@ -67,6 +69,8 @@ export async function POST(req: Request) {
       type: a.type,
       topic: a.topic,
       hours: a.hours,
+      startTime: a.startTime,
+      endTime: a.endTime,
       body: a.body,
       date,
       time,

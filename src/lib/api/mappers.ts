@@ -17,6 +17,8 @@ export function mapLog(r: Row) {
     type: r.activity_type as string,
     topic: r.topic as string,
     hours: r.hours as number,
+    startTime: (r.start_time as string | null) ?? undefined,
+    endTime: (r.end_time as string | null) ?? undefined,
     body: r.body as string,
     date: r.log_date as string,
     time: r.log_time as string,

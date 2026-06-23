@@ -75,6 +75,8 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   activity_type TEXT NOT NULL,
   topic TEXT NOT NULL,
   hours REAL NOT NULL DEFAULT 0,
+  start_time TEXT,                          -- #59: 活動の開始時刻(HH:MM)
+  end_time TEXT,                            -- #59: 活動の終了時刻(HH:MM)。hours は両者から自動計算
   body TEXT NOT NULL DEFAULT '',
   log_date TEXT NOT NULL,
   log_time TEXT NOT NULL DEFAULT '',

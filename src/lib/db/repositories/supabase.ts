@@ -316,6 +316,8 @@ export const supabaseRepos: Repos = {
           activity_type: b.type,
           topic: b.topic,
           hours: b.hours,
+          start_time: b.startTime ?? null,
+          end_time: b.endTime ?? null,
           body: b.body,
           occurred_at: occurredAt,
         })
@@ -328,6 +330,8 @@ export const supabaseRepos: Repos = {
       if (b.type !== undefined) patch.activity_type = b.type;
       if (b.topic !== undefined) patch.topic = b.topic;
       if (b.hours !== undefined) patch.hours = b.hours;
+      if (b.startTime !== undefined) patch.start_time = b.startTime;
+      if (b.endTime !== undefined) patch.end_time = b.endTime;
       if (b.body !== undefined) patch.body = b.body;
       if (b.date !== undefined || b.time !== undefined) {
         const { data: existing } = await supabase()
