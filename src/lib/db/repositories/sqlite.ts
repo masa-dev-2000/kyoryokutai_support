@@ -191,19 +191,19 @@ export const sqliteRepos: Repos = {
 
   topics: {
     async list(userId, kind = "topic") {
-      return all<{ name: string }>("SELECT name FROM activity_topics WHERE user_id=? AND kind=? ORDER BY sort_order", [userId, kind]).map((r) => r.name);
+      const col = kind === "type" ? "activity_type" : "topic";
+      return all<{ name: string }>(
+        `SELECT DISTINCT ${col} AS name FROM activity_logs WHERE user_id=? AND ${col} IS NOT NULL AND ${col} != '' ORDER BY ${col}`,
+        [userId]
+      ).map((r) => r.name);
     },
-    async add(userId, name, kind = "topic") {
-      const exists = all("SELECT 1 FROM activity_topics WHERE user_id=? AND kind=? AND name=?", [userId, kind, name]);
-      if (exists.length === 0) {
-        const n = all<{ c: number }>("SELECT COUNT(*) c FROM activity_topics WHERE user_id=? AND kind=?", [userId, kind])[0].c;
-        run("INSERT INTO activity_topics (id,user_id,municipality_id,name,sort_order,kind) VALUES (?,?,?,?,?,?)", [genId("tp"), userId, MUNI, name, n, kind]);
-      }
-      return all<{ name: string }>("SELECT name FROM activity_topics WHERE user_id=? AND kind=? ORDER BY sort_order", [userId, kind]).map((r) => r.name);
+    async add(_userId, _name, _kind = "topic") {
+      // 候補は activity_logs から自動生成するため、個別追加は不要
+      return [];
     },
-    async remove(userId, name, kind = "topic") {
-      run("DELETE FROM activity_topics WHERE user_id=? AND kind=? AND name=?", [userId, kind, name]);
-      return all<{ name: string }>("SELECT name FROM activity_topics WHERE user_id=? AND kind=? ORDER BY sort_order", [userId, kind]).map((r) => r.name);
+    async remove(_userId, _name, _kind = "topic") {
+      // 候補は activity_logs から自動生成するため、個別削除は不要
+      return [];
     },
   },
 

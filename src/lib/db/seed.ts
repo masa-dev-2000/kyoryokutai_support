@@ -71,13 +71,6 @@ export function seed(db: DatabaseSync) {
       for (const mid of memberIds) insAssign.run(`as_${ai++}`, MUNI, staffId, mid);
     }
 
-    // -- 活動内容テンプレ(m1) --
-    const topics = ["空き家", "移住相談", "町報", "観光協会", "夏祭り"];
-    const insTopic = db.prepare(
-      "INSERT INTO activity_topics (id,user_id,municipality_id,name,sort_order) VALUES (?,?,?,?,?)"
-    );
-    topics.forEach((t, i) => insTopic.run(`t_${i}`, "m1", MUNI, t, i));
-
     // -- 活動ログ(m1) --
     const logs: [string, string, string, number, string, string, string, number | null][] = [
       ["l1", "現場訪問", "空き家", 2, "A 邸内覧、家族 4 人と現地調整。築 80 年、構造は良好。次回 6/15 に再訪。", "2026-06-11", "14:20", null],

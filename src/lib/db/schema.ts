@@ -50,15 +50,6 @@ CREATE TABLE IF NOT EXISTS assignments (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS activity_topics (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  municipality_id TEXT NOT NULL,
-  name TEXT NOT NULL,
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  kind TEXT NOT NULL DEFAULT 'topic',
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
 
 -- ADR-021: 日報(1日のまとめ)。活動記録・経費の上位エンティティ。
 CREATE TABLE IF NOT EXISTS daily_logs (

@@ -345,6 +345,15 @@ export function MemberApp() {
       );
       setDailyLogs((dls) => [result.dailyLog, ...dls.filter((d) => d.date !== result.dailyLog.date)]);
       setLogs((ls) => [...result.activities, ...ls]);
+      // 新規活動保存後に候補を activity_logs から再取得
+      try {
+        const [tp, ty] = await Promise.all([
+          apiGet<string[]>(`/api/topics?userId=${memberId}`),
+          apiGet<string[]>(`/api/topics?userId=${memberId}&kind=type`),
+        ]);
+        setTopics(tp.length > 0 ? tp : DEFAULT_TOPICS);
+        setCustomTypes(ty);
+      } catch { /* noop */ }
       if (result.expensesCreated > 0) {
         try {
           const ex = await apiGet<ExpenseRequest[]>(`/api/expenses?userId=${memberId}`);
@@ -376,18 +385,16 @@ export function MemberApp() {
     },
     topics,
     addTopic: async (t) => {
-      const next = await apiPost<string[]>("/api/topics", { userId: memberId, name: t });
-      setTopics(next);
+      // 候補は activity_logs から自動生成。UI state にのみ即時反映する
+      setTopics((prev) => (prev.includes(t) ? prev : [...prev, t].sort()));
     },
-    removeTopic: async (t) => {
-      const next = await apiDelete<string[]>(`/api/topics?userId=${memberId}&name=${encodeURIComponent(t)}`);
-      setTopics(next);
+    removeTopic: async (_t) => {
+      // 削除は不要(ログ側で管理)
     },
     // #48: 活動の種類(組み込み + ユーザー追加)
     types: [...ACTIVITY_TYPES, ...customTypes.filter((t) => !ACTIVITY_TYPES.includes(t))],
     addType: async (t) => {
-      const next = await apiPost<string[]>("/api/topics", { userId: memberId, name: t, kind: "type" });
-      setCustomTypes(next);
+      setCustomTypes((prev) => (prev.includes(t) ? prev : [...prev, t].sort()));
     },
     expenses,
     addExpense: async (e) => {
