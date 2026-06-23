@@ -40,7 +40,7 @@ export async function GET() {
     .eq("auth_id", user.id)
     .single();
 
-  // auth_id 未紐付けの場合 email で検索してリンク、なければ自動作成
+  // auth_id 未紐付けの場合は email で検索してリンクのみ行う(#64: 自動作成は廃止)
   if (!appUser) {
     const { data: byEmail } = await admin
       .from("users")
@@ -53,21 +53,11 @@ export async function GET() {
       return ok({ authenticated: true, userId: byEmail.id, name: byEmail.name, role: byEmail.role });
     }
 
-    // 新規サインアップユーザー: メタデータから public.users を自動作成
-    const meta = user.user_metadata ?? {};
-    const newName = (meta.name as string | undefined) ?? user.email ?? "未設定";
-    const newMuni = (meta.municipality as string | undefined) ?? null;
-    const { data: created } = await admin
-      .from("users")
-      .insert({ name: newName, email: user.email, role: "member", auth_id: user.id, municipality_id: newMuni })
-      .select("id, name, role")
-      .single();
-
-    if (created) {
-      return ok({ authenticated: true, userId: created.id, name: created.name, role: created.role });
-    }
-
-    return NextResponse.json({ authenticated: true, userId: null, email: user.email }, { status: 200 });
+    // #64: 招待トークン経由で登録されたメアド以外は拒否(自動 member 作成しない)
+    return NextResponse.json(
+      { authenticated: false, error: "not_provisioned", email: user.email },
+      { status: 403 }
+    );
   }
 
   return ok({ authenticated: true, userId: appUser.id, name: appUser.name, role: appUser.role });

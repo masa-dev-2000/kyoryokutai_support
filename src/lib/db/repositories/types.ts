@@ -61,11 +61,28 @@ export type ApprovalRaw = {
 
 export type GuidelineRow = { source: string; section: string; body: string };
 
+export type SuperMuniRow = {
+  id: string;
+  name: string;
+  prefecture: string;
+  members: number;
+  managers: number;
+  admins: number;
+  activityLogs: number;
+};
+export type SuperOverview = {
+  municipalities: SuperMuniRow[];
+  totals: { municipalities: number; members: number; managers: number; admins: number; supers: number };
+};
+
 export interface Repos {
   users: {
     count(): Promise<number>;
     nameOf(id: string): Promise<string | undefined>;
     getProfile(id: string): Promise<{ name: string; municipality: string; bio?: string; assigned_at?: string } | null>;
+  };
+  super: {
+    overview(): Promise<SuperOverview>;
   };
   members: {
     list(): Promise<MemberDTO[]>;

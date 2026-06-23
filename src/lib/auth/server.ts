@@ -47,3 +47,19 @@ export async function getAppUserId(authId: string): Promise<string | null> {
     .single();
   return data?.id ?? null;
 }
+
+/** auth.users.id から users テーブルの role を引く(#64: super ガード用) */
+export async function getSessionRole(authId: string): Promise<string | null> {
+  const { createClient } = await import("@supabase/supabase-js");
+  const admin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } }
+  );
+  const { data } = await admin
+    .from("users")
+    .select("role")
+    .eq("auth_id", authId)
+    .single();
+  return data?.role ?? null;
+}

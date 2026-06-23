@@ -7,8 +7,10 @@ import { Loader2, Mail, Lock } from "lucide-react";
 import Link from "next/link";
 
 const ROLE_PATH: Record<string, string> = {
-  manager: "/manager",
+  super: "/super",
   admin: "/admin",
+  manager: "/manager",
+  member: "/member",
 };
 
 function LoginForm() {
@@ -39,21 +41,31 @@ function LoginForm() {
       return;
     }
 
-    // ロールを取得してリダイレクト先を決定
-    let dest = nextParam ?? "/member";
-    if (!nextParam) {
-      try {
-        const res = await fetch("/api/auth/me");
-        if (res.ok) {
-          const data = await res.json() as { role?: string };
-          dest = ROLE_PATH[data.role ?? ""] ?? "/member";
-        }
-      } catch {
-        // フォールバック: /member
+    // ロールを取得してリダイレクト先を決定(#64: 未登録メアドはここで拒否)
+    try {
+      const res = await fetch("/api/auth/me");
+      if (res.status === 403) {
+        // 招待トークン経由で登録されていないメアド
+        await supabase.auth.signOut();
+        setErrorMsg("このアカウントは未登録です。管理者から招待を受けてください。");
+        setStatus("error");
+        return;
       }
+      if (!res.ok) {
+        await supabase.auth.signOut();
+        setErrorMsg("ログイン情報の確認に失敗しました。時間をおいて再度お試しください。");
+        setStatus("error");
+        return;
+      }
+      const data = await res.json() as { role?: string };
+      const dest = nextParam ?? ROLE_PATH[data.role ?? ""] ?? "/member";
+      router.push(dest as Parameters<typeof router.push>[0]);
+      router.refresh();
+    } catch {
+      await supabase.auth.signOut();
+      setErrorMsg("ログイン情報の確認に失敗しました。時間をおいて再度お試しください。");
+      setStatus("error");
     }
-    router.push(dest as Parameters<typeof router.push>[0]);
-    router.refresh();
   }
 
   return (

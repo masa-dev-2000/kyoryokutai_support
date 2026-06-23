@@ -66,6 +66,33 @@ export const sqliteRepos: Repos = {
     },
   },
 
+  super: {
+    async overview() {
+      const munis = all<{ id: string; name: string; prefecture: string }>(
+        "SELECT id, name, prefecture FROM municipalities ORDER BY prefecture, name"
+      );
+      const municipalities = munis.map((m) => {
+        const cnt = (role: string) =>
+          get<{ c: number }>("SELECT COUNT(*) c FROM users WHERE municipality_id=? AND role=?", [m.id, role])?.c ?? 0;
+        const activityLogs =
+          get<{ c: number }>("SELECT COUNT(*) c FROM activity_logs WHERE municipality_id=?", [m.id])?.c ?? 0;
+        return {
+          id: m.id, name: m.name, prefecture: m.prefecture,
+          members: cnt("member"), managers: cnt("manager"), admins: cnt("admin"), activityLogs,
+        };
+      });
+      const total = (role: string) =>
+        get<{ c: number }>("SELECT COUNT(*) c FROM users WHERE role=?", [role])?.c ?? 0;
+      return {
+        municipalities,
+        totals: {
+          municipalities: munis.length,
+          members: total("member"), managers: total("manager"), admins: total("admin"), supers: total("super"),
+        },
+      };
+    },
+  },
+
   members: {
     async list() {
       return all("SELECT * FROM users WHERE role='member' AND status='active' ORDER BY started_at").map(mapMember);

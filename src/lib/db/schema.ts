@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS users (
   municipality_id TEXT NOT NULL,
   host_organization_id TEXT,
   organization_type TEXT NOT NULL DEFAULT 'member',
-  role TEXT NOT NULL,                 -- member | manager | admin
+  role TEXT NOT NULL,                 -- member | manager | admin | super(#64)
   name TEXT NOT NULL,
   email TEXT,
   role_label TEXT,                    -- 隊員: 役割(移住促進 等)

@@ -73,6 +73,41 @@ export const supabaseRepos: Repos = {
     },
   },
 
+  super: {
+    async overview() {
+      const db = supabase();
+      const [{ data: munis }, { data: users }, { data: logs }] = await Promise.all([
+        db.from("municipalities").select("id, name, prefecture").order("prefecture").order("name"),
+        db.from("users").select("municipality_id, role"),
+        db.from("activity_logs").select("municipality_id"),
+      ]);
+
+      const userRows = (users ?? []) as { municipality_id: string | null; role: string }[];
+      const logRows = (logs ?? []) as { municipality_id: string | null }[];
+
+      const countBy = (muniId: string, role: string) =>
+        userRows.filter((u) => u.municipality_id === muniId && u.role === role).length;
+      const logCount = (muniId: string) =>
+        logRows.filter((l) => l.municipality_id === muniId).length;
+
+      const municipalities = ((munis ?? []) as { id: string; name: string; prefecture: string }[]).map((m) => ({
+        id: m.id, name: m.name, prefecture: m.prefecture,
+        members: countBy(m.id, "member"), managers: countBy(m.id, "manager"),
+        admins: countBy(m.id, "admin"), activityLogs: logCount(m.id),
+      }));
+
+      const totalRole = (role: string) => userRows.filter((u) => u.role === role).length;
+      return {
+        municipalities,
+        totals: {
+          municipalities: municipalities.length,
+          members: totalRole("member"), managers: totalRole("manager"),
+          admins: totalRole("admin"), supers: totalRole("super"),
+        },
+      };
+    },
+  },
+
   members: {
     async list() {
       const { data } = await supabase()
