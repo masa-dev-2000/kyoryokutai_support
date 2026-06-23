@@ -226,7 +226,18 @@ CREATE TABLE IF NOT EXISTS consultations (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_logs_user_date ON activity_logs(user_id, log_date DESC);
+CREATE TABLE IF NOT EXISTS invite_tokens (
+  token TEXT PRIMARY KEY,
+  email TEXT,
+  role TEXT NOT NULL DEFAULT 'member',       -- member | manager | admin
+  municipality_name TEXT NOT NULL DEFAULT '',
+  created_by TEXT,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_invite_tokens_token ON invite_tokens(token, used_at);
 CREATE INDEX IF NOT EXISTS idx_daily_logs_user_date ON daily_logs(user_id, log_date DESC);
 CREATE INDEX IF NOT EXISTS idx_expenses_user ON expenses(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_approvals_muni ON approvals(municipality_id, status);

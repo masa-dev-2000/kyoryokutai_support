@@ -23,7 +23,7 @@ import {
    3. 担当割当: 職員 × 隊員 のマトリクス
    ============================================================ */
 
-type Tab = "members" | "staff" | "assignments" | "hosts" | "routes";
+type Tab = "members" | "staff" | "assignments" | "hosts" | "routes" | "invite";
 
 type HostOrg = { id: string; name: string; kind?: string; contactUserId?: string };
 
@@ -222,6 +222,7 @@ export function AdminApp() {
             {tab === "assignments" && <AssignmentsTab />}
             {tab === "hosts" && <HostsTab />}
             {tab === "routes" && <RoutesTab />}
+            {tab === "invite" && <InviteTab />}
           </div>
         </div>
 
@@ -266,6 +267,7 @@ function Tabs({
       <TabBtn label="担当割当" active={active === "assignments"} onClick={() => onChange("assignments")} />
       <TabBtn label="受入団体" active={active === "hosts"} onClick={() => onChange("hosts")} />
       <TabBtn label="承認ルート" active={active === "routes"} onClick={() => onChange("routes")} />
+      <TabBtn label="招待" active={active === "invite"} onClick={() => onChange("invite")} />
     </nav>
   );
 }
@@ -1066,5 +1068,134 @@ function Input({
       placeholder={placeholder}
       className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-[13px] focus:border-slate-900 focus:outline-none"
     />
+  );
+}
+
+/* -------------------- 招待タブ (#63) -------------------- */
+
+type InviteResult = { token: string; url: string; expiresAt: string };
+
+function InviteTab() {
+  const [email, setEmail] = React.useState("");
+  const [role, setRole] = React.useState<string>("member");
+  const [municipalityName, setMunicipalityName] = React.useState("新温泉町");
+  const [result, setResult] = React.useState<InviteResult | null>(null);
+  const [copied, setCopied] = React.useState(false);
+  const [sending, setSending] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setSending(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await apiPost<InviteResult>("/api/admin/invites", {
+        email: email.trim() || undefined,
+        role,
+        municipalityName: municipalityName.trim(),
+      });
+      setResult(res);
+    } catch {
+      setError("招待リンクの生成に失敗しました");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function copy() {
+    if (!result) return;
+    await navigator.clipboard.writeText(result.url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  const ROLES = [
+    { value: "member", label: "協力隊員" },
+    { value: "manager", label: "役場職員" },
+    { value: "admin", label: "管理者" },
+  ];
+
+  return (
+    <div className="max-w-lg">
+      <h2 className="mb-1 text-[17px] font-bold text-slate-900">招待リンクを発行</h2>
+      <p className="mb-5 text-[13px] text-slate-500">
+        発行したリンクを招待したい相手に共有してください。リンクは 7 日間有効で、1 回のみ使用できます。
+      </p>
+
+      <form onSubmit={handleCreate} className="space-y-4">
+        <div>
+          <label className="block text-[12px] font-medium text-slate-700 mb-1">メールアドレス(任意)</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="指定すると登録時に固定されます"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-[14px] focus:border-slate-900 focus:outline-none"
+          />
+        </div>
+
+        <div>
+          <label className="block text-[12px] font-medium text-slate-700 mb-1">ロール</label>
+          <div className="flex gap-2">
+            {ROLES.map((r) => (
+              <button
+                key={r.value}
+                type="button"
+                onClick={() => setRole(r.value)}
+                className={`rounded-full border px-3 py-1.5 text-[13px] font-semibold transition ${role === r.value ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-600 hover:border-slate-500"}`}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-[12px] font-medium text-slate-700 mb-1">自治体名</label>
+          <input
+            type="text"
+            value={municipalityName}
+            onChange={(e) => setMunicipalityName(e.target.value)}
+            placeholder="新温泉町"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-[14px] focus:border-slate-900 focus:outline-none"
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={sending}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-5 py-2.5 text-[14px] font-semibold text-white transition hover:bg-slate-700 disabled:opacity-60"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {sending ? "生成中…" : "招待リンクを生成"}
+        </button>
+      </form>
+
+      {error && (
+        <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-600">{error}</p>
+      )}
+
+      {result && (
+        <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+          <p className="mb-2 text-[13px] font-semibold text-emerald-800">招待リンクが生成されました</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 truncate rounded-lg border border-emerald-200 bg-white px-3 py-2 text-[12px] text-slate-700">
+              {result.url}
+            </code>
+            <button
+              type="button"
+              onClick={copy}
+              className="shrink-0 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-[13px] font-semibold text-emerald-700 transition hover:bg-emerald-100"
+            >
+              {copied ? <Check className="h-4 w-4 text-emerald-600" /> : "コピー"}
+            </button>
+          </div>
+          <p className="mt-2 text-[12px] text-emerald-600">
+            有効期限: {new Date(result.expiresAt).toLocaleString("ja-JP")}
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
