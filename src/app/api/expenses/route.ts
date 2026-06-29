@@ -1,20 +1,21 @@
 import { ok, bad, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
 import { expandRoute } from "@/lib/workflow";
-import { requireSession } from "@/lib/api/auth";
+import { requireAppUser } from "@/lib/api/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// 単一テナント(対象自治体)の ID。デモ USER とは無関係のテナント定数。
 const MUNI = process.env.NEXT_PUBLIC_DEMO_MUNI_ID ?? "10000000-0000-4000-8000-000000000001";
 
-export async function GET(req: Request) {
-  const userId = new URL(req.url).searchParams.get("userId") ?? process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-0000-4000-8000-000000000001";
-  return ok(await getRepos().expenses.listByUser(userId));
+export async function GET() {
+  const sess = await requireAppUser();
+  if (sess instanceof Response) return sess;
+  return ok(await getRepos().expenses.listByUser(sess.userId));
 }
 
 type CreateBody = {
-  userId?: string;
   title: string;
   amount: number;
   purpose: string;
@@ -26,12 +27,12 @@ type CreateBody = {
 };
 
 export async function POST(req: Request) {
-  const sess = await requireSession();
+  const sess = await requireAppUser();
   if (sess instanceof Response) return sess;
   const b = await readJson<CreateBody>(req);
   if (!b.title?.trim() || !(b.amount > 0) || !b.purpose?.trim()) return bad("title / amount / purpose は必須です");
   const repos = getRepos();
-  const userId = b.userId ?? process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-0000-4000-8000-000000000001";
+  const userId = sess.userId;
 
   // ADR-021: daily_log_id の解決 — 明示指定 > 当日 upsert
   let dailyLogId = b.dailyLogId;

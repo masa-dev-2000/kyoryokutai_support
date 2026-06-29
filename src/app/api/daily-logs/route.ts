@@ -1,13 +1,13 @@
 import { ok, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
 import { expandRoute } from "@/lib/workflow";
-import { requireSession } from "@/lib/api/auth";
+import { requireAppUser } from "@/lib/api/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// 単一テナント(対象自治体)の ID。デモ USER とは無関係のテナント定数。
 const MUNI = process.env.NEXT_PUBLIC_DEMO_MUNI_ID ?? "10000000-0000-4000-8000-000000000001";
-const DEFAULT_USER = process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-0000-4000-8000-000000000001";
 
 type ActivityInput = {
   type: string;
@@ -26,7 +26,6 @@ type InlineExpense = {
 };
 
 type CreateBody = {
-  userId?: string;
   date?: string;
   distanceKm?: number;
   feelingScore?: number;
@@ -34,18 +33,19 @@ type CreateBody = {
   expenses?: InlineExpense[];
 };
 
-/** GET /api/daily-logs?userId=xxx — 日報一覧 */
-export async function GET(req: Request) {
-  const userId = new URL(req.url).searchParams.get("userId") ?? DEFAULT_USER;
-  return ok(await getRepos().dailyLogs.listByUser(userId));
+/** GET /api/daily-logs — ログイン本人の日報一覧 */
+export async function GET() {
+  const sess = await requireAppUser();
+  if (sess instanceof Response) return sess;
+  return ok(await getRepos().dailyLogs.listByUser(sess.userId));
 }
 
 /** POST /api/daily-logs — 日報 + 複数活動を一括登録 */
 export async function POST(req: Request) {
-  const sess = await requireSession();
+  const sess = await requireAppUser();
   if (sess instanceof Response) return sess;
   const b = await readJson<CreateBody>(req);
-  const userId = b.userId ?? DEFAULT_USER;
+  const userId = sess.userId;
   const date = b.date ?? new Date().toISOString().slice(0, 10);
   const repos = getRepos();
 

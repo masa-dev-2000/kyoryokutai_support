@@ -123,6 +123,37 @@ export class MockProvider implements AIProvider {
           ],
         });
 
+      case "vision-coach":
+        return [
+          "いいですね。もう少し具体にしてみましょう。",
+          input ? `今のメモ: ${head}...` : "",
+          "・誰の役に立てたいか(住民/移住者/事業者…)",
+          "・任期の終わりに「これができた」と言いたい状態は?",
+          "たとえば「空き家を活かして、移住者が住み続けられる仕組みを1つ残す」のように、",
+          "1 文にまとめると月ごとの目標に落としやすいです。",
+        ].filter(Boolean).join("\n");
+
+      case "cycle-plan-gen": {
+        // 入力からテーマらしき語を拾って目標に反映(mock は簡易抽出)
+        const m = input.match(/テーマ[:：]\s*([^\n/]+)/);
+        const theme = (m?.[1] ?? "活動").trim().slice(0, 12);
+        return JSON.stringify({
+          monthlyGoal: `${theme}を前に進め、月末までに次の一歩を1つ形にする`,
+          actionPlan: [
+            { week: 1, title: "現状を把握する", actions: [`${theme}の関係者をリストアップ`, "話を聞く相手を3人決める"], expectedOutcome: "誰に何を聞くかが明確になる", checkPoint: "リストができたか" },
+            { week: 2, title: "動いて確かめる", actions: ["現地・関係者を訪ねる", "気づきをメモに残す"], expectedOutcome: "一次情報が集まる", checkPoint: "3件以上動けたか" },
+            { week: 3, title: "案を作る", actions: ["集めた材料から案を下書き", "周囲に相談する"], expectedOutcome: "たたき台ができる", checkPoint: "下書きが1本あるか" },
+            { week: 4, title: "まとめ・次へ", actions: ["案をまとめる", "来月の入口を決める"], expectedOutcome: "成果と次の一歩が見える", checkPoint: "振り返りを書いたか" },
+          ],
+        });
+      }
+
+      case "cycle-adjust-suggest":
+        return JSON.stringify({
+          reply: "承知しました。ご事情に合わせて、負荷の高い週を後ろ倒しに調整しました。無理のない範囲で進めましょう。",
+          actionPlan: null,
+        });
+
       default:
         return input ? `(mock 応答)\n${head}...` : "(mock 応答)";
     }

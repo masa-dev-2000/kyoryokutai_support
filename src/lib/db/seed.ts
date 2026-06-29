@@ -100,12 +100,13 @@ export function seed(db: DatabaseSync) {
       ["a_5", "イベント", "夏祭り", 8, "GW 体験ツアー 1 日目(4/29)。", "2026-04-29", "09:00", 45000],
       ["a_6", "イベント", "夏祭り", 8, "GW 体験ツアー 2 日目(4/30)。", "2026-04-30", "09:00", null],
     ];
+    // ADR-023: expense_amount は daily_logs へ移管済。activity_logs には挿入しない。
     const insLog = db.prepare(
-      `INSERT INTO activity_logs (id,user_id,municipality_id,activity_type,topic,hours,body,log_date,log_time,expense_amount)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`
+      `INSERT INTO activity_logs (id,user_id,municipality_id,activity_type,topic,hours,body,log_date,log_time)
+       VALUES (?,?,?,?,?,?,?,?,?)`
     );
-    for (const [id, type, topic, hours, body, date, time, exp] of logs) {
-      insLog.run(id, "m1", MUNI, type, topic, hours, body, date, time, exp);
+    for (const [id, type, topic, hours, body, date, time] of logs) {
+      insLog.run(id, "m1", MUNI, type, topic, hours, body, date, time);
     }
 
     // -- 月報(m1) --

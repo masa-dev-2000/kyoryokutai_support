@@ -16,6 +16,9 @@ export type AIGenerateOptions = {
     | "monthly-report"
     | "expense-title"
     | "expense-check"
+    | "vision-coach"
+    | "cycle-plan-gen"
+    | "cycle-adjust-suggest"
     | "generic";
   messages: AIMessage[];
   temperature?: number;

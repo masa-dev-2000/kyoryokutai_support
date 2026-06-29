@@ -226,6 +226,33 @@ CREATE TABLE IF NOT EXISTS consultations (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- ADR-024: 任期ビジョン(隊員 1 人 1 レコード、軽量)。月次目標の上位アンカー。
+CREATE TABLE IF NOT EXISTS visions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  body TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(user_id)
+);
+
+-- ADR-024: 月次サイクル(目標 + 週次アクションプラン + 振り返り、1 人 1 か月)。
+-- 活動報告(activity_logs)とは疎結合。比較は別フィーチャーが両者を読んで行う。
+CREATE TABLE IF NOT EXISTS monthly_cycles (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  municipality_id TEXT NOT NULL,
+  year_month TEXT NOT NULL,
+  monthly_goal TEXT,
+  action_plan TEXT,              -- JSON [{week,title,actions[],expectedOutcome,checkPoint}]
+  intake TEXT,                   -- JSON {theme,level,daysPerWeek,specialPlans}
+  reflection TEXT,
+  status TEXT NOT NULL DEFAULT 'planning',  -- planning | active | done
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(user_id, year_month)
+);
+
 CREATE TABLE IF NOT EXISTS invite_tokens (
   token TEXT PRIMARY KEY,
   email TEXT,
@@ -239,6 +266,7 @@ CREATE TABLE IF NOT EXISTS invite_tokens (
 
 CREATE INDEX IF NOT EXISTS idx_invite_tokens_token ON invite_tokens(token, used_at);
 CREATE INDEX IF NOT EXISTS idx_daily_logs_user_date ON daily_logs(user_id, log_date DESC);
+CREATE INDEX IF NOT EXISTS idx_monthly_cycles_user ON monthly_cycles(user_id, year_month DESC);
 CREATE INDEX IF NOT EXISTS idx_expenses_user ON expenses(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_approvals_muni ON approvals(municipality_id, status);
 CREATE INDEX IF NOT EXISTS idx_ann_muni ON announcements(municipality_id, sent_at DESC);

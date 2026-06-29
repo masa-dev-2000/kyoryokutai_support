@@ -1,6 +1,6 @@
 import { ok, bad, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
-import { requireSession } from "@/lib/api/auth";
+import { requireAppUser } from "@/lib/api/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 type PatchBody = { status?: string; amountSettled?: number; hasReceipt?: boolean; settleNote?: string };
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const sess = await requireSession();
+  const sess = await requireAppUser();
   if (sess instanceof Response) return sess;
   const { id } = await params;
   const b = await readJson<PatchBody>(req);

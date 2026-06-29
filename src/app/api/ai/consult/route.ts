@@ -2,7 +2,7 @@ import { getAIProvider } from "@/lib/ai";
 import type { AIGenerateOptions } from "@/lib/ai";
 import { ok, bad, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
-import { requireSession } from "@/lib/api/auth";
+import { requireAppUser } from "@/lib/api/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +10,6 @@ export const dynamic = "force-dynamic";
 type Body = {
   context: "daily-write" | "report-plan" | "expense-purpose" | "case-find" | "polish-memo";
   payload?: { current?: string; title?: string; amount?: string };
-  userId?: string;
 };
 
 const SYSTEM: Record<Body["context"], string> = {
@@ -36,7 +35,7 @@ const TASK: Record<Body["context"], AIGenerateOptions["task"]> = {
 };
 
 export async function POST(req: Request) {
-  const sess = await requireSession();
+  const sess = await requireAppUser();
   if (sess instanceof Response) return sess;
   const body = await readJson<Body>(req);
   if (!body.context || !SYSTEM[body.context]) return bad("context が不正です");
@@ -64,7 +63,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    await getRepos().consultations.log({ userId: body.userId ?? process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-0000-4000-8000-000000000001", contextKind: body.context, input: cur, output: reply });
+    await getRepos().consultations.log({ userId: sess.userId, contextKind: body.context, input: cur, output: reply });
   } catch {
     /* ログ失敗は無視 */
   }

@@ -233,3 +233,117 @@
 ### 次のアクション
 - Issue #57(文字サイズ/老眼対応)の実装
 - Vercel デプロイ後の動作確認
+
+## 2026-06-27
+
+### 完了
+- 1Password CLI を Windows に導入し、`npm run op:doctor` / `npm run typecheck:op` / `npm run build:op` を通した
+- `op run` 用の実行ラッパーを追加し、Windows の PATH 反映前でも 1Password CLI を使えるようにした
+- 月次サイクルの実装方針を ADR-024 として記録し、隊員側の実装スライスを確定した
+
+### 変更ファイル
+- `.env.example` / `.env.1password.example` / `.gitignore` / `package.json` / `package-lock.json`
+- `docs/27_secure_environment.md`
+- `scripts/check-1password-cli.mjs` / `scripts/op-run.mjs`
+- `docs/19_v5_adr.md`: ADR-024 追記
+
+### 次のアクション
+- 月次サイクル専用テーブル(`monthly_cycles`)の schema / repository / API を追加
+- 隊員側 UI に月次目標・週次アクションプラン・振り返りパネルを追加
+- 日報保存後の AI 調整提案をつなぐ
+
+---
+
+## 2026-06-28
+
+### 完了
+- **月次サイクル(ADR-024)Phase A を実装 — 任期ビジョン + 目標 + 週次アクションプランを独立フィーチャーとして単体完結**
+- 設計方針を「疎結合パイプライン」に確定(オーナー判断):機能ごとに独立・データモデルは別々に保持、連結は埋め込みでなく「読んで比較・生成」。ADR-024 の「日報保存後フック」は廃止し、活動報告は無改修・完全独立に。
+- 目標設定は「適度な選択式ヒアリング(方向→レベル→使える時間)→ AIドラフト → 壁打ちで詰める」。確定後の調整は手編集(週カード)＋壁打ち併用。入力画面はスクロールなし1画面・モバイル前提。
+- 既存 `member/_app.tsx`・既存4タブには一切触れず、別ルート `/member/monthly-cycle` で実装。
+
+### 変更ファイル
+- `src/lib/db/schema.ts`: `visions` / `monthly_cycles` テーブル + INDEX
+- `supabase/migrations/20260627_020_monthly_cycles.sql`: Postgres 側(action_plan / intake は jsonb)
+- `src/lib/api/mappers.ts`: `mapVision` / `mapMonthlyCycle`(+ `WeekPlan` / `CycleIntake` 型)
+- `src/lib/db/repositories/{types,sqlite,supabase}.ts`: `visions` / `monthlyCycles`(get/list/upsert)を3層配線
+- `src/lib/ai/{types,bedrock,mock}.ts`: task `vision-coach` / `cycle-plan-gen` / `cycle-adjust-suggest` 追加(mock 応答も実装、cycle-plan-gen は Sonnet・他は Haiku ルーティング)
+- `src/app/api/visions/route.ts` / `monthly-cycles/route.ts`: GET/POST(upsert)
+- `src/app/api/ai/{vision-coach,cycle-plan-gen,cycle-adjust-suggest}/route.ts`: AI 3 ルート(JSON 出力)
+- `src/app/member/monthly-cycle/{page,_app}.tsx`: 自己完結クライアントアプリ(ビジョン壁打ち→3問ヒアリング→ドラフト→壁打ち→確定ホーム→週調整シート)
+
+### 検証
+- `npm run typecheck` クリーン / `next build` 成功(新5 API + `/member/monthly-cycle` 生成確認)
+- SQLite スキーマ in-memory 適用で両テーブル作成・`UNIQUE(user_id,year_month)` / `UNIQUE(user_id)` を確認
+- ランタイム curl 往復はネットワーク不許可で未実施
+
+### 次のアクション(Phase B / 別スライス)
+- `member/_app.tsx` に「月次」タブを統合
+- 達成状況(②活動報告と③の比較)フィーチャー
+- 月次報告書の自動生成(乖離→`monthly_reports`)/ 役場の議会説明資料
+- Supabase 切替時に migration 020 を手動適用
+
+### 関連
+- ADR-024(月次サイクル)、設計方針メモは AI メモリ参照
+
+---
+
+## 2026-06-28(続)
+
+### 完了
+- **デモユーザーを廃止し「実ユーザーのみ」動作に変更(認証本番化の第一歩)**
+- 問題の特定: 全データAPIが `requireSession()` で認証確認はするが、データは**セッション本人ではなく `DEFAULT_USER`(デモのメンバーID)に紐づけ**ていた。`getAppUserId()` は定義のみで未使用。`?demo=true` バイパスも存在。→ ログインしても全員が同一デモユーザーとして動く状態だった。
+- 対応:
+  - `lib/auth/server.ts` に `getAppUser(authId)` 追加(id + role を1クエリ)。
+  - `lib/api/auth.ts` に `requireAppUser()` 追加(セッション→本人解決。未認証401 / 未登録403。**クライアント送信の userId は信用せず常にこの値を使用=なりすまし防止**)。
+  - 全ユーザースコープのAPI(activity-logs / activity-logs[id] / expenses / expenses[id] / monthly-reports / daily-logs / topics / monthly-cycles / visions / ai:consult / ai:monthly-report / ai:cycle-plan-gen / announcements[id]/read)を `requireAppUser` + `sess.userId` に統一。GETルートも認証必須化。`DEFAULT_USER` / `NEXT_PUBLIC_DEMO_MEMBER_ID` フォールバックを全廃。
+  - `middleware.ts` の `?demo=true` バイパス削除。
+  - `member/_app.tsx`: `DEMO_MEMBER_ID` 既定を撤去、`/api/auth/me` 未認証時は `/login` へリダイレクト、データ取得は本人解決後のみ。
+  - `login/page.tsx`: 「デモを試す」リンク削除。
+- 据え置き: `MUNI`(対象自治体)は単一テナント定数として継続(デモUSERとは別概念)。`lib/auth/none.ts` の固定ユーザーは `/api/health` 専用で経路ガードには無関係のため温存。
+- **重要な帰結**: 本変更後、アプリは**実 Supabase セッション + `users` 登録済み**でないと全データが 401/403。動作には (1) Supabase 認証復旧(キー/Email-Password)(2) super 行作成 + auth ユーザー作成 が前提。
+
+### 検証
+- `npm run typecheck` クリーン / `npm run build` 成功(全API再生成)。
+- ランタイム検証は Supabase 認証復旧後に実施(未了)。`DB_PROVIDER=supabase` 前提(本人解決は Supabase 経由のため)。
+
+### 次のアクション
+- (オーナー)Supabase: サービスロールキー更新 / Email-Password 有効化 / super(masa)の auth ユーザー作成
+- super の `public.users` 行作成 SQL を適用 → 初回ログインで auth_id 自動リンク(#64)
+- ログインして実ユーザーで一巡検証(月次サイクル含む)
+
+---
+
+## 2026-06-28(続2 / 別セッション: 活動シート UI ブラッシュアップ)
+
+> 注:本セッションは上記「月次サイクル」「デモユーザー廃止」とは**別の作業ストリーム**。隊員側の既存「活動」タブの UI 改善に専念。
+
+### 完了
+- **4 ロール(隊員/役場/管理者/運営者)の実装機能を棚卸し**(実コード=画面ベース)。ブラッシュアップは「機能ごと」に進める方針で合意
+- **活動作成シートを再設計(ADR-025)**
+  - 入力欄ベタ置き → 「日報ホーム(要約カード一覧)+ 活動入力は全画面モーダル」へ
+  - `ActivityFieldset`(共有フォーム)/ `ActivityEditor`(全画面オーバーレイ)/ `emptyActivity` を新設、単一活動編集も共通化
+  - 新規追加時は直前活動の終了時刻を開始の既定にして連続入力を軽減
+  - 「今日のまとめ」コンパクト化(移動距離1行・余白圧縮)
+  - 手応え `FeelingPicker` はラベル維持 + タッチ 52px(一度絵文字のみに圧縮 → 実機レビューで差し戻し)
+  - 未保存で閉じる際の確認ダイアログ(データ損失防止)
+- **`seed.ts` のバグ修正**:廃止済み列 `activity_logs.expense_amount`(ADR-023 で daily_logs へ移管)を INSERT しており、ローカル SQLite が初回 seed で全 API 500 クラッシュ → activity_logs への挿入を削除
+- **実機検証**(Claude in Chrome / localhost mock + SQLite):活動シートの新フロー・要約カード・時刻引き継ぎ・新「今日のまとめ」をスクショ確認
+- **Vercel デプロイ確認**:最新 main(`0b68f31`)の Production は `state: success`。ただし URL は Vercel Authentication(デプロイ保護)付きで未ログインでは閲覧不可。本セッションの改修は**未コミット・未デプロイ**
+
+### 変更ファイル(本セッション分)
+- `src/app/member/_app.tsx`: 活動シート再設計・まとめコンパクト化・FeelingPicker・閉じる確認
+- `src/lib/db/seed.ts`: activity_logs の expense_amount 挿入を削除(ADR-023 整合)
+
+### ⚠️ 引き継ぎ注意(重要)
+- ローカル確認のため `src/middleware.ts` に一時的に認証スキップ TEMP を入れていたが、中断時に **`git checkout` でコミット済み HEAD に復元して撤去済み**。
+  - ただし HEAD の middleware は **`?demo=true` バイパスが残る版**。**並行ストリームの「`?demo=true` バイパス削除(デモユーザー廃止)」が未コミットだった場合、この checkout で巻き戻った可能性**がある。middleware は「実ユーザーのみ」方針側で再確認・再適用すること。
+- `src/app/api/auth/me/route.ts` は並行ストリームが `AUTH_PROVIDER=none` 対応版に更新済(本セッションでは触っていない)。
+- ローカル mock 起動は `AUTH_PROVIDER=none DB_PROVIDER=sqlite AI_PROVIDER=mock` + ダミー `NEXT_PUBLIC_SUPABASE_URL/ANON_KEY` で実施。middleware/`auth/me` が Supabase 直結で AuthProvider 抽象を経由していない構造的穴があり、`npm run dev:op`(local mock)が素直に動かない。
+
+### 次のアクション(本セッション系)
+- 活動シート改修を typecheck(無関係な `api/ai/vision-coach/route.ts` の既存エラー以外クリーン)→ ブランチ運用でコミット → PR
+- middleware の認証を AuthProvider 抽象経由にし、`AUTH_PROVIDER=none` でローカル動作するよう統一(載せ替え 10 か条の徹底)
+
+### 関連
+- ADR-025(活動シート再設計)、ADR-023(expense_amount 移管)、ADR-016/018(AuthProvider 抽象)

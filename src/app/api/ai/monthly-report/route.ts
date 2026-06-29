@@ -1,18 +1,19 @@
 import { getAIProvider } from "@/lib/ai";
 import { ok, bad, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
-import { requireSession } from "@/lib/api/auth";
+import { requireAppUser } from "@/lib/api/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Body = { userId?: string; ym?: string };
+type Body = { ym?: string };
 
 export async function POST(req: Request) {
-  const sess = await requireSession();
+  const sess = await requireAppUser();
   if (sess instanceof Response) return sess;
-  const { userId = process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-0000-4000-8000-000000000001", ym } = await readJson<Body>(req);
+  const { ym } = await readJson<Body>(req);
   if (!ym) return bad("ym(YYYY-MM)が必要です");
+  const userId = sess.userId;
 
   const logs = await getRepos().activityLogs.listForAI(userId, ym);
   if (logs.length === 0) return bad("対象月の活動記録がありません", 404);

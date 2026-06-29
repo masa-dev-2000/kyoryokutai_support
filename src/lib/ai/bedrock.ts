@@ -24,6 +24,8 @@ const HAIKU_TASKS = new Set<NonNullable<AIGenerateOptions["task"]>>([
   "consult-expense-purpose",
   "consult-case-find",
   "expense-title",
+  "vision-coach",
+  "cycle-adjust-suggest",
 ]);
 
 let _client: BedrockRuntimeClient | null = null;

@@ -9,6 +9,8 @@ import {
   mapNotice,
   mapMember,
   mapStaff,
+  mapVision,
+  mapMonthlyCycle,
 } from "@/lib/api/mappers";
 import type { Repos, RouteDTO, HostOrgDTO, LogForAI, ApprovalRaw, GuidelineRow, RouteStepDTO, DailyLogDTO } from "./types";
 
@@ -453,6 +455,64 @@ export const sqliteRepos: Repos = {
   consultations: {
     async log(c) {
       run("INSERT INTO consultations (id,user_id,context_kind,input_text,output_text) VALUES (?,?,?,?,?)", [genId("cs"), c.userId, c.contextKind, c.input, c.output]);
+    },
+  },
+
+  visions: {
+    async get(userId) {
+      const row = get("SELECT * FROM visions WHERE user_id=?", [userId]);
+      return row ? mapVision(row) : null;
+    },
+    async upsert(userId, body) {
+      const existing = get<{ id: string }>("SELECT id FROM visions WHERE user_id=?", [userId]);
+      if (existing) {
+        run("UPDATE visions SET body=?, updated_at=datetime('now') WHERE id=?", [body, existing.id]);
+        return mapVision(get("SELECT * FROM visions WHERE id=?", [existing.id])!);
+      }
+      const id = genId("vis");
+      run("INSERT INTO visions (id,user_id,body) VALUES (?,?,?)", [id, userId, body]);
+      return mapVision(get("SELECT * FROM visions WHERE id=?", [id])!);
+    },
+  },
+
+  monthlyCycles: {
+    async getByMonth(userId, ym) {
+      const row = get("SELECT * FROM monthly_cycles WHERE user_id=? AND year_month=?", [userId, ym]);
+      return row ? mapMonthlyCycle(row) : null;
+    },
+    async listByUser(userId) {
+      return all("SELECT * FROM monthly_cycles WHERE user_id=? ORDER BY year_month DESC", [userId]).map(mapMonthlyCycle);
+    },
+    async upsert(userId, ym, fields) {
+      const existing = get<{ id: string }>("SELECT id FROM monthly_cycles WHERE user_id=? AND year_month=?", [userId, ym]);
+      if (existing) {
+        const sets: string[] = [];
+        const vals: unknown[] = [];
+        if (fields.monthlyGoal !== undefined) { sets.push("monthly_goal=?"); vals.push(fields.monthlyGoal); }
+        if (fields.actionPlan !== undefined) { sets.push("action_plan=?"); vals.push(JSON.stringify(fields.actionPlan)); }
+        if (fields.intake !== undefined) { sets.push("intake=?"); vals.push(fields.intake ? JSON.stringify(fields.intake) : null); }
+        if (fields.reflection !== undefined) { sets.push("reflection=?"); vals.push(fields.reflection); }
+        if (fields.status !== undefined) { sets.push("status=?"); vals.push(fields.status); }
+        if (sets.length > 0) {
+          sets.push("updated_at=datetime('now')");
+          run(`UPDATE monthly_cycles SET ${sets.join(",")} WHERE id=?`, [...vals, existing.id]);
+        }
+        return mapMonthlyCycle(get("SELECT * FROM monthly_cycles WHERE id=?", [existing.id])!);
+      }
+      const id = genId("mc");
+      run(
+        `INSERT INTO monthly_cycles (id,user_id,municipality_id,year_month,monthly_goal,action_plan,intake,reflection,status)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
+        [
+          id, userId, MUNI, ym,
+          fields.monthlyGoal ?? null,
+          JSON.stringify(fields.actionPlan ?? []),
+          fields.intake ? JSON.stringify(fields.intake) : null,
+          fields.reflection ?? null,
+          fields.status ?? "planning",
+        ]
+      );
+      return mapMonthlyCycle(get("SELECT * FROM monthly_cycles WHERE id=?", [id])!);
     },
   },
 };
