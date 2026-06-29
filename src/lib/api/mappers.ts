@@ -49,6 +49,42 @@ export function mapReport(r: Row) {
   };
 }
 
+// ADR-024: 月次サイクルの週次アクション 1 件
+export type WeekPlan = {
+  week: number;
+  title: string;
+  actions: string[];
+  expectedOutcome: string;
+  checkPoint: string;
+};
+// ADR-024: ヒアリング回答(✏️編集で該当カードを復元するのに使う)
+export type CycleIntake = {
+  theme: string;
+  level: string;
+  daysPerWeek: number;
+  specialPlans: string[];
+};
+
+export function mapVision(r: Row) {
+  return {
+    id: r.id as string,
+    body: (r.body as string | null) ?? "",
+  };
+}
+
+export function mapMonthlyCycle(r: Row) {
+  const ym = r.year_month as string;
+  return {
+    id: r.id as string,
+    ym,
+    monthlyGoal: (r.monthly_goal as string | null) ?? "",
+    actionPlan: j<WeekPlan[]>(r.action_plan, []),
+    intake: j<CycleIntake | null>(r.intake, null),
+    reflection: (r.reflection as string | null) ?? "",
+    status: (r.status as string) ?? "planning",
+  };
+}
+
 export function mapExpense(r: Row) {
   const citations = j<{ source: string; quote: string }[]>(r.citations, []);
   return {

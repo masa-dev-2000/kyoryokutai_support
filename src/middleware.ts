@@ -14,6 +14,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next({ request });
   }
 
+  // ローカル/未接続環境では認証をスキップ(AUTH_PROVIDER=none もしくは Supabase 未設定)。
+  // これが無いと createServerClient が undefined URL で実行時エラーになる。
+  if (process.env.AUTH_PROVIDER === "none" || !process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    return NextResponse.next({ request });
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(

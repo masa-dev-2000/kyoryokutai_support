@@ -3,12 +3,21 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { getRepos } from "@/lib/db/repositories";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** GET /api/auth/me — セッションユーザーの app userId・role を返す */
 export async function GET() {
+  // ローカル開発(docs/27: AUTH_PROVIDER=none)は固定の開発ユーザー。
+  // データ層(requireAppUser)と同じ id を返して整合させる。本番は通らない。
+  if (process.env.AUTH_PROVIDER === "none") {
+    const userId = process.env.DEV_USER_ID ?? process.env.DEMO_USER_ID ?? "m1";
+    const name = (await getRepos().users.nameOf(userId)) ?? "開発ユーザー";
+    return ok({ authenticated: true, userId, name, role: process.env.DEV_USER_ROLE ?? "member" });
+  }
+
   const cookieStore = await cookies();
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

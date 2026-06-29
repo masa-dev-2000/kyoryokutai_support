@@ -254,8 +254,6 @@ type Ctx = {
   memberId: string;
 };
 
-const DEMO_MEMBER_ID = process.env.NEXT_PUBLIC_DEMO_MEMBER_ID ?? "a1000000-0000-4000-8000-000000000001";
-
 const AppCtx = React.createContext<Ctx | null>(null);
 const useApp = () => {
   const c = React.useContext(AppCtx);
@@ -265,7 +263,7 @@ const useApp = () => {
 
 export function MemberApp() {
   const [tab, setTab] = React.useState<Tab>("report");
-  const [memberId, setMemberId] = React.useState(DEMO_MEMBER_ID);
+  const [memberId, setMemberId] = React.useState("");
   const [memberName, setMemberName] = React.useState<string | null>(null);
   // 初期値は空(マウント後にバックエンドの実データで置換)
   const [logs, setLogs] = React.useState<ActivityLog[]>([]);
@@ -283,30 +281,35 @@ export function MemberApp() {
   const [plan, setPlan] = React.useState(
     "・夏祭り当日の運営(7/14)\n・移住者向け体験ツアー初回開催(7/27)\n・空き家バンク累計 15 件を目標"
   );
-  // セッションからログインユーザーの app userId を取得
+  // セッションからログインユーザーの app userId を取得(未ログイン/未登録はログインへ)
   React.useEffect(() => {
     apiGet<{ authenticated: boolean; userId?: string; name?: string }>("/api/auth/me")
       .then((me) => {
         if (me.authenticated && me.userId) {
           setMemberId(me.userId);
           setMemberName(me.name ?? null);
+        } else {
+          window.location.href = "/login?next=/member";
         }
       })
-      .catch(() => { /* 未ログイン or ネットワークエラー → デモ UUID のまま */ });
+      .catch(() => {
+        window.location.href = "/login?next=/member";
+      });
   }, []);
 
   // バックエンドから初期データ取得(Supabase + API Routes)
   React.useEffect(() => {
+    if (!memberId) return; // ログイン本人の解決待ち
     let alive = true;
     (async () => {
       try {
         const [lg, dl, tp, ty, ex, rp, cs, ns, rl] = await Promise.all([
-          apiGet<ActivityLog[]>(`/api/activity-logs?userId=${memberId}`),
-          apiGet<DailyLogEntry[]>(`/api/daily-logs?userId=${memberId}`),
-          apiGet<string[]>(`/api/topics?userId=${memberId}`),
-          apiGet<string[]>(`/api/topics?userId=${memberId}&kind=type`),
-          apiGet<ExpenseRequest[]>(`/api/expenses?userId=${memberId}`),
-          apiGet<Report[]>(`/api/monthly-reports?userId=${memberId}`),
+          apiGet<ActivityLog[]>(`/api/activity-logs`),
+          apiGet<DailyLogEntry[]>(`/api/daily-logs`),
+          apiGet<string[]>(`/api/topics`),
+          apiGet<string[]>(`/api/topics?kind=type`),
+          apiGet<ExpenseRequest[]>(`/api/expenses`),
+          apiGet<Report[]>(`/api/monthly-reports`),
           apiGet<{ cases: CaseItem[]; trend: TrendItem[] }>(`/api/cases`),
           apiGet<Notice[]>(`/api/announcements`),
           apiGet<Notice[]>(`/api/announcements?kinds=rule,qa`),
@@ -1208,7 +1211,7 @@ function ChipPicker({
 // 絵文字を 1 タップで選ぶだけ。もう一度押すと解除(任意項目)。
 function FeelingPicker({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
   return (
-    <div className="mt-1 grid grid-cols-4 gap-2">
+    <div className="mt-1 grid grid-cols-4 gap-1.5">
       {FEELINGS.map((f) => {
         const active = value === f.score;
         return (
@@ -1216,11 +1219,12 @@ function FeelingPicker({ value, onChange }: { value: number | null; onChange: (v
             key={f.score}
             type="button"
             aria-pressed={active}
+            aria-label={f.label}
             onClick={() => onChange(active ? null : f.score)}
-            className={`flex flex-col items-center gap-0.5 rounded-xl border py-2 transition ${active ? "border-slate-900 bg-slate-50" : "border-slate-200 hover:border-slate-400"}`}
+            className={`flex min-h-[52px] flex-col items-center justify-center gap-0.5 rounded-xl border py-1.5 transition ${active ? "border-slate-900 bg-slate-50" : "border-slate-200 hover:border-slate-400"}`}
           >
-            <span className="text-[22px] leading-none">{f.emoji}</span>
-            <span className={`text-[13px] ${active ? "font-bold text-slate-900" : "text-slate-500"}`}>{f.label}</span>
+            <span className="text-[20px] leading-none">{f.emoji}</span>
+            <span className={`text-[11px] leading-none ${active ? "font-bold text-slate-900" : "text-slate-500"}`}>{f.label}</span>
           </button>
         );
       })}
@@ -1289,40 +1293,84 @@ type InlineActivity = {
   body: string;
 };
 
+function emptyActivity(startTime = "09:00"): InlineActivity {
+  return { type: null, topic: null, startTime, endTime: addHoursToTime(startTime, 1), body: "" };
+}
+
+/** 1 活動分の入力フォーム(種類・内容・時間・メモ)。日報の新規入力モーダルと単一活動編集の両方で使う。 */
+function ActivityFieldset({ value, onChange }: { value: InlineActivity; onChange: (patch: Partial<InlineActivity>) => void }) {
+  const { types, topics, addType, addTopic } = useApp();
+  return (
+    <>
+      <Label>活動の種類</Label>
+      <ChipPicker options={types} selected={value.type} onSelect={(c) => onChange({ type: c || null })} onAdd={(v) => { addType(v); onChange({ type: v }); }} placeholder="例:研修、地域PR…" />
+      <Label>活動内容</Label>
+      <ChipPicker options={topics} selected={value.topic} onSelect={(c) => onChange({ topic: c || null })} onAdd={(v) => { addTopic(v); onChange({ topic: v }); }} placeholder="例:空き家バンク、移住相談…" />
+      <Label>活動時間</Label>
+      <TimeRangeInput start={value.startTime} end={value.endTime} onStart={(v) => onChange({ startTime: v })} onEnd={(v) => onChange({ endTime: v })} />
+      <Label>メモ</Label>
+      <textarea rows={4} value={value.body} onChange={(e) => onChange({ body: e.target.value })} placeholder="例:A 邸を内覧、移住希望者と一緒に。築 80 年だが構造良好。" className="mt-1 w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-[17px] focus:border-slate-900 focus:outline-none" />
+    </>
+  );
+}
+
+/** 1 活動を 1 画面で入力する全画面モーダル。日報シートの上に重ねて表示する。 */
+function ActivityEditor({ initial, isNew, onCancel, onSubmit }: { initial: InlineActivity; isNew: boolean; onCancel: () => void; onSubmit: (a: InlineActivity) => void }) {
+  const [draft, setDraft] = React.useState<InlineActivity>(initial);
+  const canSubmit = !!draft.type && !!draft.topic && computeHours(draft.startTime, draft.endTime) > 0;
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col bg-white">
+      <SheetHeader title={isNew ? "活動を追加" : "活動を編集"} onClose={onCancel} backLabel="戻る" />
+      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+        <ActivityFieldset value={draft} onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))} />
+      </div>
+      <div className="border-t border-slate-200 bg-white px-5 py-3">
+        <div className="mx-auto max-w-2xl">
+          <button onClick={() => canSubmit && onSubmit(draft)} disabled={!canSubmit} className="w-full rounded-xl bg-slate-900 py-3 text-[17px] font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400">
+            {isNew ? "追加する" : "保存する"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; editing?: ActivityLog; date?: string }) {
-  const { addDailyLog, updateLog, topics, addTopic, types, addType, showDay } = useApp();
+  const { addDailyLog, updateLog, showDay } = useApp();
   const isEdit = !!editing;
   const targetDate = editing?.date ?? date ?? todayKey();
 
-  // 編集モード: 単一活動を編集
-  const [editType, setEditType] = React.useState<string | null>(editing?.type ?? null);
-  const [editTopic, setEditTopic] = React.useState<string | null>(editing?.topic ?? null);
-  // #59: 旧データ(start/end なし)は開始 09:00 + hours から終了を補完
-  const [editStartTime, setEditStartTime] = React.useState<string>(editing?.startTime ?? "09:00");
-  const [editEndTime, setEditEndTime] = React.useState<string>(
-    editing?.endTime ?? (editing ? addHoursToTime(editing.startTime ?? "09:00", editing.hours) : "10:00")
-  );
-  const [editBody, setEditBody] = React.useState(editing?.body ?? "");
-  const editHours = computeHours(editStartTime, editEndTime);
+  // 編集モード: 単一活動を編集(#59: 旧データは開始 09:00 + hours から終了を補完)
+  const [editDraft, setEditDraft] = React.useState<InlineActivity>(() => ({
+    type: editing?.type ?? null,
+    topic: editing?.topic ?? null,
+    startTime: editing?.startTime ?? "09:00",
+    endTime: editing?.endTime ?? (editing ? addHoursToTime(editing.startTime ?? "09:00", editing.hours) : "10:00"),
+    body: editing?.body ?? "",
+  }));
+  const editHours = computeHours(editDraft.startTime, editDraft.endTime);
 
-  // 新規モード: 複数活動 + 日報レベルフィールド
-  const [activities, setActivities] = React.useState<InlineActivity[]>([
-    { type: null, topic: null, startTime: "09:00", endTime: "10:00", body: "" },
-  ]);
+  // 新規モード: 複数活動 + 日報レベルフィールド。活動は要約カードで一覧し、入力は別モーダルで行う。
+  const [activities, setActivities] = React.useState<InlineActivity[]>([]);
+  const [editor, setEditor] = React.useState<{ index: number | null } | null>(null);
   const [distance, setDistance] = React.useState<string>("");
   const [feeling, setFeeling] = React.useState<number | null>(null);
   const [inlineExpenses, setInlineExpenses] = React.useState<InlineExpense[]>([]);
   const [saving, setSaving] = React.useState(false);
 
-  function updateActivity(idx: number, patch: Partial<InlineActivity>) {
-    setActivities((cur) => cur.map((a, i) => (i === idx ? { ...a, ...patch } : a)));
-  }
-  function addActivity() {
-    setActivities((cur) => [...cur, { type: null, topic: null, startTime: "09:00", endTime: "10:00", body: "" }]);
-  }
   function removeActivity(idx: number) {
     setActivities((cur) => cur.filter((_, i) => i !== idx));
   }
+  function submitActivity(a: InlineActivity) {
+    setActivities((cur) => (editor?.index == null ? [...cur, a] : cur.map((x, i) => (i === editor.index ? a : x))));
+    setEditor(null);
+  }
+  // 新規追加時は直前の活動の終了時刻を開始の初期値にして連続入力を楽にする
+  const editorInitial: InlineActivity | null = editor
+    ? editor.index == null
+      ? emptyActivity(activities[activities.length - 1]?.endTime ?? "09:00")
+      : activities[editor.index]
+    : null;
 
   function addExpense() {
     setInlineExpenses((cur) => [...cur, { title: "", amount: 0, purpose: "", hasReceipt: false }]);
@@ -1344,11 +1392,10 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
 
   const validExpenses = inlineExpenses.filter((e) => e.amount > 0 && e.purpose.trim().length > 0);
   const expenseSum = validExpenses.reduce((s, e) => s + e.amount, 0);
-  const validActivities = activities.filter((a) => !!a.type && !!a.topic && computeHours(a.startTime, a.endTime) > 0);
 
   const canSave = isEdit
-    ? !!editType && !!editTopic && editHours > 0 && !saving
-    : validActivities.length > 0 && !saving;
+    ? !!editDraft.type && !!editDraft.topic && editHours > 0 && !saving
+    : activities.length > 0 && !saving;
 
   async function save() {
     if (!canSave) return;
@@ -1356,12 +1403,12 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
     try {
       if (isEdit) {
         await updateLog(editing!.id, {
-          type: editType!,
-          topic: editTopic!,
+          type: editDraft.type!,
+          topic: editDraft.topic!,
           hours: editHours,
-          startTime: editStartTime,
-          endTime: editEndTime,
-          body: editBody.trim(),
+          startTime: editDraft.startTime,
+          endTime: editDraft.endTime,
+          body: editDraft.body.trim(),
         });
         showDay(editing!.date);
       } else {
@@ -1369,7 +1416,7 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
           date: targetDate,
           distanceKm: distance ? parseFloat(distance) : undefined,
           feelingScore: feeling ?? undefined,
-          activities: validActivities.map((a) => ({
+          activities: activities.map((a) => ({
             type: a.type!,
             topic: a.topic!,
             hours: computeHours(a.startTime, a.endTime),
@@ -1386,19 +1433,20 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
     }
   }
 
+  // ③ 未保存の入力がある状態で閉じる時は確認(データ損失防止)
+  const isDirty =
+    !isEdit && (activities.length > 0 || distance.trim() !== "" || feeling != null || inlineExpenses.length > 0);
+  function handleClose() {
+    if (isDirty && !window.confirm("入力中の内容は保存されません。閉じてもよろしいですか?")) return;
+    onClose();
+  }
+
   if (isEdit) {
     return (
       <>
         <SheetHeader title="活動を編集" onClose={onClose} />
         <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
-          <Label>活動の種類</Label>
-          <ChipPicker options={types} selected={editType} onSelect={(c) => setEditType(c || null)} onAdd={(v) => { addType(v); setEditType(v); }} placeholder="例:研修、地域PR…" />
-          <Label>活動内容</Label>
-          <ChipPicker options={topics} selected={editTopic} onSelect={(c) => setEditTopic(c || null)} onAdd={(v) => { addTopic(v); setEditTopic(v); }} placeholder="例:商店街活性化…" />
-          <Label>活動時間</Label>
-          <TimeRangeInput start={editStartTime} end={editEndTime} onStart={setEditStartTime} onEnd={setEditEndTime} />
-          <Label>メモ</Label>
-          <textarea rows={4} value={editBody} onChange={(e) => setEditBody(e.target.value)} className="mt-1 w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-[17px] focus:border-slate-900 focus:outline-none" />
+          <ActivityFieldset value={editDraft} onChange={(patch) => setEditDraft((d) => ({ ...d, ...patch }))} />
         </div>
         <div className="border-t border-slate-200 bg-white px-5 py-3">
           <div className="mx-auto max-w-2xl">
@@ -1413,82 +1461,94 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
 
   return (
     <>
-      <SheetHeader title={`${formatDateShort(targetDate)} の日報`} onClose={onClose} />
+      <SheetHeader title={`${formatDateShort(targetDate)} の日報`} onClose={handleClose} />
       <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
 
-        {/* 活動リスト */}
+        {/* 活動リスト(要約カード。入力は別モーダル) */}
         <div className="mb-2 flex items-center justify-between">
           <span className="text-[14px] font-bold uppercase tracking-wider text-slate-500">活動</span>
-          <button type="button" onClick={addActivity} className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[14px] font-semibold text-slate-700 hover:border-slate-900 hover:bg-slate-50">
-            <Plus className="h-3 w-3" />
-            活動を追加
-          </button>
+          <span className="text-[13px] text-slate-400">{activities.length} 件</span>
         </div>
 
-        <div className="space-y-3">
-          {activities.map((a, i) => (
-            <div key={i} className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-[13px] font-bold text-slate-400">活動 {i + 1}</span>
-                {activities.length > 1 && (
-                  <button type="button" onClick={() => removeActivity(i)} className="text-[13px] text-slate-400 hover:text-rose-600">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-              <div className="mt-2">
-                <Label>種類</Label>
-                <ChipPicker options={types} selected={a.type} onSelect={(c) => updateActivity(i, { type: c || null })} onAdd={(v) => { addType(v); updateActivity(i, { type: v }); }} placeholder="例:研修、地域PR…" />
-              </div>
-              <div className="mt-2">
-                <Label>内容</Label>
-                <ChipPicker options={topics} selected={a.topic} onSelect={(c) => updateActivity(i, { topic: c || null })} onAdd={(v) => { addTopic(v); updateActivity(i, { topic: v }); }} placeholder="例:空き家バンク、移住相談…" />
-              </div>
-              <div className="mt-2">
-                <Label>時間</Label>
-                <TimeRangeInput
-                  start={a.startTime}
-                  end={a.endTime}
-                  onStart={(v) => updateActivity(i, { startTime: v })}
-                  onEnd={(v) => updateActivity(i, { endTime: v })}
-                />
-              </div>
-              <div className="mt-2">
-                <Label>メモ</Label>
-                <textarea rows={3} value={a.body} onChange={(e) => updateActivity(i, { body: e.target.value })} placeholder="例:A 邸を内覧、移住希望者と一緒に。築 80 年だが構造良好。" className="mt-1 w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-[17px] focus:border-slate-900 focus:outline-none" />
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* 日報レベルのフィールド */}
-        <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-          <div className="mb-3 text-[14px] font-bold uppercase tracking-wider text-slate-500">今日のまとめ</div>
-
-          <Label>移動距離(任意)</Label>
-          <div className="mt-1 flex items-center gap-2">
-            <input type="number" step="0.1" min="0" value={distance} onChange={(e) => setDistance(e.target.value)} placeholder="例:12.5" className="w-24 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[17px] focus:border-slate-900 focus:outline-none" />
-            <span className="text-[16px] text-slate-600">km</span>
-          </div>
-
-          <Label>今日の手応え(任意)</Label>
-          <FeelingPicker value={feeling} onChange={setFeeling} />
-          <div className="mt-1 text-[13px] text-slate-400">
-            「今日のコンディション」です。役場には推移だけが共有されます。
-          </div>
-
-          <Label
-            right={
-              <button type="button" onClick={addExpense} className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[14px] font-semibold text-slate-700 hover:border-slate-900 hover:bg-slate-50">
-                <Plus className="h-3 w-3" />
-                経費を追加
-              </button>
-            }
+        {activities.length === 0 ? (
+          <button
+            type="button"
+            onClick={() => setEditor({ index: null })}
+            className="flex w-full flex-col items-center gap-1 rounded-xl border border-dashed border-slate-300 bg-white px-3 py-7 text-slate-500 hover:border-slate-900 hover:bg-slate-50"
           >
-            💴 経費(任意)
-          </Label>
+            <Plus className="h-5 w-5" />
+            <span className="text-[15px] font-semibold">活動を追加</span>
+            <span className="text-[13px] text-slate-400">この日の活動を 1 件ずつ記録します</span>
+          </button>
+        ) : (
+          <>
+            <div className="space-y-2">
+              {activities.map((a, i) => {
+                const h = computeHours(a.startTime, a.endTime);
+                return (
+                  <div key={i} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white py-2.5 pl-3 pr-2">
+                    <button type="button" onClick={() => setEditor({ index: i })} className="min-w-0 flex-1 text-left">
+                      <div className="flex items-center gap-2">
+                        {a.type && <span className="shrink-0 rounded-full bg-slate-900 px-2.5 py-0.5 text-[13px] font-medium text-white">{a.type}</span>}
+                        <span className="truncate text-[16px] font-semibold text-slate-900">{a.topic}</span>
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-1.5 text-[13px] text-slate-500">
+                        <Clock className="h-3 w-3 shrink-0" />
+                        <span className="shrink-0">{a.startTime}–{a.endTime}</span>
+                        <span className="shrink-0 font-bold text-slate-600">{h}h</span>
+                        {a.body.trim() && <span className="truncate">· {a.body.trim()}</span>}
+                      </div>
+                    </button>
+                    <Pencil className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+                    <button type="button" onClick={() => removeActivity(i)} className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={() => setEditor({ index: null })}
+              className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-xl border border-slate-300 bg-white py-2.5 text-[15px] font-semibold text-slate-700 hover:border-slate-900 hover:bg-slate-50"
+            >
+              <Plus className="h-4 w-4" />
+              活動を追加
+            </button>
+          </>
+        )}
+
+        {/* 日報レベルのフィールド(コンパクト) */}
+        <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+          <div className="mb-2 flex items-baseline gap-2">
+            <span className="text-[13px] font-bold uppercase tracking-wider text-slate-500">今日のまとめ</span>
+            <span className="text-[12px] text-slate-400">任意</span>
+          </div>
+
+          {/* 移動距離 */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[13px] text-slate-500">移動</span>
+            <input type="number" step="0.1" min="0" value={distance} onChange={(e) => setDistance(e.target.value)} placeholder="0" className="w-16 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[16px] focus:border-slate-900 focus:outline-none" />
+            <span className="text-[13px] text-slate-500">km</span>
+          </div>
+
+          {/* 手応え(ラベル付き・タッチ確保) */}
+          <div className="mt-2.5 flex items-baseline gap-2">
+            <span className="text-[13px] text-slate-500">手応え</span>
+            <span className="text-[12px] text-slate-400">※ 役場には推移のみ共有</span>
+          </div>
+          <FeelingPicker value={feeling} onChange={setFeeling} />
+
+          {/* 経費 */}
+          <div className="mt-3 flex items-center justify-between">
+            <span className="text-[13px] font-bold uppercase tracking-wider text-slate-500">💴 経費</span>
+            <button type="button" onClick={addExpense} className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[14px] font-semibold text-slate-700 hover:border-slate-900 hover:bg-slate-50">
+              <Plus className="h-3 w-3" />
+              経費を追加
+            </button>
+          </div>
           {inlineExpenses.length === 0 ? (
-            <div className="mt-1 rounded-xl border border-dashed border-slate-300 bg-white px-3 py-4 text-center text-[14px] text-slate-500">
+            <div className="mt-1 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2.5 text-center text-[13px] text-slate-500">
               支出があれば「<strong>+ 経費を追加</strong>」
             </div>
           ) : (
@@ -1545,10 +1605,19 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
       <div className="border-t border-slate-200 bg-white px-5 py-3">
         <div className="mx-auto max-w-2xl">
           <button onClick={save} disabled={!canSave} className="w-full rounded-xl bg-slate-900 py-3 text-[17px] font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400">
-            {saving ? "記録中…" : `${validActivities.length} 件の活動を記録する`}
+            {saving ? "記録中…" : activities.length > 0 ? `${activities.length} 件の活動を記録する` : "活動を追加してください"}
           </button>
         </div>
       </div>
+
+      {editor && editorInitial && (
+        <ActivityEditor
+          initial={editorInitial}
+          isNew={editor.index == null}
+          onCancel={() => setEditor(null)}
+          onSubmit={submitActivity}
+        />
+      )}
     </>
   );
 }

@@ -128,13 +128,6 @@ function LoginForm() {
           新規登録
         </Link>
       </p>
-
-      <p className="mt-3 text-center text-[11px] text-slate-400">
-        または{" "}
-        <Link href="/member?demo=true" className="underline underline-offset-2 hover:text-slate-600">
-          デモを試す(ログイン不要)
-        </Link>
-      </p>
     </div>
   );
 }

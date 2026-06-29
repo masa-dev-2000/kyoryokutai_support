@@ -13,6 +13,8 @@ import {
   mapNotice,
   mapMember,
   mapStaff,
+  mapVision,
+  mapMonthlyCycle,
 } from "@/lib/api/mappers";
 import type {
   Repos,
@@ -701,4 +703,73 @@ export const supabaseRepos: Repos = {
       });
     },
   },
+
+  visions: {
+    async get(userId) {
+      const { data } = await supabase().from("visions").select("*").eq("user_id", userId).maybeSingle();
+      return data ? mapVision(data) : null;
+    },
+    async upsert(userId, body) {
+      const { data } = await supabase()
+        .from("visions")
+        .upsert({ user_id: userId, body, updated_at: new Date().toISOString() }, { onConflict: "user_id" })
+        .select()
+        .single();
+      return mapVision(data!);
+    },
+  },
+
+  monthlyCycles: {
+    async getByMonth(userId, ym) {
+      const { data } = await supabase()
+        .from("monthly_cycles")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("year_month", ym)
+        .maybeSingle();
+      return data ? mapMonthlyCycle(toCycleRow(data)) : null;
+    },
+    async listByUser(userId) {
+      const { data } = await supabase()
+        .from("monthly_cycles")
+        .select("*")
+        .eq("user_id", userId)
+        .order("year_month", { ascending: false });
+      return (data ?? []).map((r) => mapMonthlyCycle(toCycleRow(r)));
+    },
+    async upsert(userId, ym, fields) {
+      const { data: existing } = await supabase()
+        .from("monthly_cycles")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("year_month", ym)
+        .maybeSingle();
+      const patch: Record<string, unknown> = {};
+      if (fields.monthlyGoal !== undefined) patch.monthly_goal = fields.monthlyGoal;
+      if (fields.actionPlan !== undefined) patch.action_plan = fields.actionPlan;
+      if (fields.intake !== undefined) patch.intake = fields.intake ?? null;
+      if (fields.reflection !== undefined) patch.reflection = fields.reflection;
+      if (fields.status !== undefined) patch.status = fields.status;
+      if (existing) {
+        patch.updated_at = new Date().toISOString();
+        const { data } = await supabase().from("monthly_cycles").update(patch).eq("id", existing.id).select().single();
+        return mapMonthlyCycle(toCycleRow(data!));
+      }
+      const { data } = await supabase()
+        .from("monthly_cycles")
+        .insert({ user_id: userId, municipality_id: MUNI, year_month: ym, ...patch })
+        .select()
+        .single();
+      return mapMonthlyCycle(toCycleRow(data!));
+    },
+  },
 };
+
+// jsonb(action_plan / intake)を mapper(j() で string をパース)に渡せるよう文字列化
+function toCycleRow(r: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...r,
+    action_plan: JSON.stringify(r.action_plan ?? []),
+    intake: r.intake ? JSON.stringify(r.intake) : null,
+  };
+}

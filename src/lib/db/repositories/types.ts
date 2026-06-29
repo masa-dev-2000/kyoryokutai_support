@@ -14,6 +14,10 @@ import type {
   mapNotice,
   mapMember,
   mapStaff,
+  mapVision,
+  mapMonthlyCycle,
+  WeekPlan,
+  CycleIntake,
 } from "@/lib/api/mappers";
 
 export type ActivityLogDTO = ReturnType<typeof mapLog>;
@@ -25,6 +29,9 @@ export type ApprovalDTO = ReturnType<typeof mapApproval>;
 export type NoticeDTO = ReturnType<typeof mapNotice>;
 export type MemberDTO = ReturnType<typeof mapMember>;
 export type StaffDTO = ReturnType<typeof mapStaff>;
+export type VisionDTO = ReturnType<typeof mapVision>;
+export type MonthlyCycleDTO = ReturnType<typeof mapMonthlyCycle>;
+export type { WeekPlan, CycleIntake };
 
 export type TrendDTO = { id: string; title: string; count: number };
 export type HostOrgDTO = { id: string; name: string; kind?: string; contactUserId?: string };
@@ -212,5 +219,22 @@ export interface Repos {
   };
   consultations: {
     log(c: { userId: string; contextKind: string; input: string; output: string }): Promise<void>;
+  };
+  // ADR-024: 任期ビジョン(隊員 1 人 1 レコード)
+  visions: {
+    get(userId: string): Promise<VisionDTO | null>;
+    upsert(userId: string, body: string): Promise<VisionDTO>;
+  };
+  // ADR-024: 月次サイクル(目標 + 週次アクションプラン + 振り返り)
+  monthlyCycles: {
+    getByMonth(userId: string, ym: string): Promise<MonthlyCycleDTO | null>;
+    listByUser(userId: string): Promise<MonthlyCycleDTO[]>;
+    upsert(userId: string, ym: string, fields: {
+      monthlyGoal?: string;
+      actionPlan?: WeekPlan[];
+      intake?: CycleIntake | null;
+      reflection?: string;
+      status?: string;
+    }): Promise<MonthlyCycleDTO>;
   };
 }
