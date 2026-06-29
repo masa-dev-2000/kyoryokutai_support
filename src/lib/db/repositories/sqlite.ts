@@ -93,6 +93,29 @@ export const sqliteRepos: Repos = {
         },
       };
     },
+
+    async createMunicipality(m) {
+      const id = genId("muni");
+      run("INSERT INTO municipalities (id,name,prefecture,annual_budget) VALUES (?,?,?,?)", [id, m.name, m.prefecture, m.annualBudget ?? 2000000]);
+      return { id, name: m.name, prefecture: m.prefecture };
+    },
+
+    async createAdminInvite(a) {
+      const muni = get<{ name: string }>("SELECT name FROM municipalities WHERE id=?", [a.municipalityId]);
+      // admin を pre-provision(/api/auth/me が email で auth_id を紐づけられるよう先に行を作る)
+      run(
+        `INSERT INTO users (id,municipality_id,organization_type,role,name,email,status)
+         VALUES (?,?,?,?,?,?,?)`,
+        [genId("adm"), a.municipalityId, "municipality", "admin", a.name, a.email, "active"]
+      );
+      const token = Array.from(crypto.getRandomValues(new Uint8Array(24))).map((b) => b.toString(16).padStart(2, "0")).join("");
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      run(
+        `INSERT INTO invite_tokens (token,email,role,municipality_name,created_by,expires_at) VALUES (?,?,?,?,?,?)`,
+        [token, a.email, "admin", muni?.name ?? "", a.createdBy, expiresAt]
+      );
+      return { token, expiresAt };
+    },
   },
 
   members: {

@@ -108,6 +108,39 @@ export const supabaseRepos: Repos = {
         },
       };
     },
+
+    async createMunicipality(m) {
+      const { data } = await supabase()
+        .from("municipalities")
+        .insert({ name: m.name, prefecture: m.prefecture, annual_budget: m.annualBudget ?? 2000000 })
+        .select("id,name,prefecture")
+        .single();
+      return { id: data!.id, name: data!.name, prefecture: data!.prefecture };
+    },
+
+    async createAdminInvite(a) {
+      const { data: muni } = await supabase().from("municipalities").select("name").eq("id", a.municipalityId).maybeSingle();
+      // admin を pre-provision(/api/auth/me が email で auth_id を紐づけられるよう先に行を作る)
+      await supabase().from("users").insert({
+        municipality_id: a.municipalityId,
+        organization_type: "municipality",
+        role: "admin",
+        name: a.name,
+        email: a.email,
+        status: "active",
+      });
+      const token = Array.from(crypto.getRandomValues(new Uint8Array(24))).map((b) => b.toString(16).padStart(2, "0")).join("");
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      await supabase().from("invite_tokens").insert({
+        token,
+        email: a.email,
+        role: "admin",
+        municipality_name: muni?.name ?? "",
+        created_by: a.createdBy,
+        expires_at: expiresAt,
+      });
+      return { token, expiresAt };
+    },
   },
 
   members: {
