@@ -90,6 +90,10 @@ export interface Repos {
   };
   super: {
     overview(): Promise<SuperOverview>;
+    /** #65: 運営者が自治体を新規作成 */
+    createMunicipality(m: { name: string; prefecture: string; annualBudget?: number }): Promise<{ id: string; name: string; prefecture: string }>;
+    /** #65: 指定自治体の admin を pre-provision + 招待トークン発行(url は Route 側で付与) */
+    createAdminInvite(a: { municipalityId: string; email: string; name: string; createdBy: string }): Promise<{ token: string; expiresAt: string }>;
   };
   members: {
     list(): Promise<MemberDTO[]>;
