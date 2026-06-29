@@ -82,6 +82,70 @@ export type SuperOverview = {
   totals: { municipalities: number; members: number; managers: number; admins: number; supers: number };
 };
 
+// 自治体ドリルダウン詳細(super)
+export type SuperMuniDetail = {
+  municipality: { id: string; name: string; prefecture: string; annualBudget: number };
+  members: { id: string; name: string; role: string; term: string; startedAt: string; status: string }[];
+  staff: { id: string; name: string; title: string; dept: string; role: "manager" | "admin"; email: string }[];
+  activity: { totalLogs: number; logsThisMonth: number; lastActivityDate: string | null };
+  pendingApprovals: { total: number; recent: ApprovalDTO[] };
+};
+
+// アカウント/ロール管理(super)
+export type SuperUserRow = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  status: string;
+  organizationType: string;
+  municipalityId: string | null;
+  municipalityName: string;
+  activityLogs: number;
+  createdAt: string;
+};
+
+// 契約・課金管理(super)。専用カラム(contract_*)に保存。
+export type ContractDTO = {
+  municipalityId: string;
+  name: string;
+  plan: "year1" | "year2" | "year3";
+  contractStatus: "trial" | "active" | "suspended" | "ended";
+  annualBudget: number;
+  contractStart?: string;
+  contractEnd?: string;
+};
+export type ContractPatch = {
+  plan?: ContractDTO["plan"];
+  contractStatus?: ContractDTO["contractStatus"];
+  annualBudget?: number;
+  contractStart?: string;
+  contractEnd?: string;
+};
+
+// 横断 KPI / 分析(super)
+export type SuperAnalytics = {
+  generatedAt: string;
+  totals: {
+    members: number;
+    activityLogs: number;
+    municipalities: number;
+    logsThisMonth: number;
+    logsPrevMonth: number;
+    logsPerMemberPerWeek: number;
+  };
+  trend: { ym: string; logs: number }[]; // 直近6ヶ月
+  byMunicipality: {
+    id: string;
+    name: string;
+    prefecture: string;
+    members: number;
+    activityLogs: number;
+    logsThisMonth: number;
+    logsPerMemberPerWeek: number;
+  }[];
+};
+
 export interface Repos {
   users: {
     count(): Promise<number>;
@@ -94,6 +158,18 @@ export interface Repos {
     createMunicipality(m: { name: string; prefecture: string; annualBudget?: number }): Promise<{ id: string; name: string; prefecture: string }>;
     /** #65: 指定自治体の admin を pre-provision + 招待トークン発行(url は Route 側で付与) */
     createAdminInvite(a: { municipalityId: string; email: string; name: string; createdBy: string }): Promise<{ token: string; expiresAt: string }>;
+    /** #66: 自治体ドリルダウン詳細(隊員・職員・活動・保留承認) */
+    municipalityDetail(municipalityId: string): Promise<SuperMuniDetail | null>;
+    /** #66: 全自治体横断のユーザー一覧 */
+    listUsers(opts?: { municipalityId?: string; role?: string; status?: string }): Promise<SuperUserRow[]>;
+    /** #66: ユーザーの role/status/所属自治体を更新 */
+    updateUser(id: string, patch: { role?: string; status?: string; municipalityId?: string }): Promise<SuperUserRow | undefined>;
+    /** #66: 契約情報の取得 */
+    getContract(municipalityId: string): Promise<ContractDTO | null>;
+    /** #66: 契約情報の部分更新 */
+    updateContract(municipalityId: string, patch: ContractPatch): Promise<ContractDTO | null>;
+    /** #66: 全国横断 KPI */
+    analytics(): Promise<SuperAnalytics>;
   };
   members: {
     list(): Promise<MemberDTO[]>;

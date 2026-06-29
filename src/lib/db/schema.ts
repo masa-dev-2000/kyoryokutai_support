@@ -10,6 +10,10 @@ CREATE TABLE IF NOT EXISTS municipalities (
   name TEXT NOT NULL,
   prefecture TEXT NOT NULL,
   annual_budget INTEGER NOT NULL DEFAULT 2000000,
+  contract_plan TEXT,
+  contract_status TEXT,
+  contract_start TEXT,
+  contract_end TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

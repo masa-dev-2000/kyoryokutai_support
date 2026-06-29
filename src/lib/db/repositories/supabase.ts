@@ -25,9 +25,96 @@ import type {
   GuidelineRow,
   RouteStepDTO,
   DailyLogDTO,
+  SuperMuniDetail,
+  SuperUserRow,
+  ContractDTO,
+  SuperAnalytics,
 } from "./types";
 
 const MUNI = "10000000-0000-4000-8000-000000000001";
+
+// 当月 / N ヶ月前の 'YYYY-MM' を返す(ローカル時刻基準)
+function ymOffset(offset: number): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + offset);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// 'YYYY-MM' → JST 月初・翌月初の ISO 文字列([gte, lt) 範囲)。
+// sqlite 版の log_date(JST 日付文字列)LIKE 'YYYY-MM%' と一致させるための境界。
+function jstMonthRange(ym: string): { gte: string; lt: string } {
+  const [y, m] = ym.split("-").map(Number);
+  const ny = m === 12 ? y + 1 : y;
+  const nm = m === 12 ? 1 : m + 1;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return {
+    gte: `${y}-${pad(m)}-01T00:00:00+09:00`,
+    lt: `${ny}-${pad(nm)}-01T00:00:00+09:00`,
+  };
+}
+
+// activity_logs を month 範囲(+任意の municipality)で count(行は返さない)。
+async function countLogsInMonth(
+  db: ReturnType<typeof supabase>,
+  ym: string,
+  municipalityId?: string,
+): Promise<number> {
+  const { gte, lt } = jstMonthRange(ym);
+  let q = db
+    .from("activity_logs")
+    .select("*", { count: "exact", head: true })
+    .gte("occurred_at", gte)
+    .lt("occurred_at", lt);
+  if (municipalityId) q = q.eq("municipality_id", municipalityId);
+  const { count } = await q;
+  return count ?? 0;
+}
+
+// activity_logs の総数を count(任意の municipality 絞り込み付き)。
+async function countLogsTotal(
+  db: ReturnType<typeof supabase>,
+  municipalityId?: string,
+): Promise<number> {
+  let q = db.from("activity_logs").select("*", { count: "exact", head: true });
+  if (municipalityId) q = q.eq("municipality_id", municipalityId);
+  const { count } = await q;
+  return count ?? 0;
+}
+
+// users の件数を count(role / status / municipality 絞り込み付き)。
+async function countUsers(
+  db: ReturnType<typeof supabase>,
+  filters: { role?: string; status?: string; municipalityId?: string },
+): Promise<number> {
+  let q = db.from("users").select("*", { count: "exact", head: true });
+  if (filters.role) q = q.eq("role", filters.role);
+  if (filters.status) q = q.eq("status", filters.status);
+  if (filters.municipalityId) q = q.eq("municipality_id", filters.municipalityId);
+  const { count } = await q;
+  return count ?? 0;
+}
+
+// municipalities の contract_* 専用カラム → ContractDTO に合成
+function buildContract(row: {
+  id: string;
+  name: string;
+  annual_budget: number;
+  contract_plan: string | null;
+  contract_status: string | null;
+  contract_start: string | null;
+  contract_end: string | null;
+}): ContractDTO {
+  return {
+    municipalityId: row.id,
+    name: row.name,
+    plan: (row.contract_plan as ContractDTO["plan"]) ?? "year1",
+    contractStatus: (row.contract_status as ContractDTO["contractStatus"]) ?? "trial",
+    annualBudget: row.annual_budget,
+    contractStart: row.contract_start ?? undefined,
+    contractEnd: row.contract_end ?? undefined,
+  };
+}
 
 function supabase() {
   return createClient(
@@ -140,6 +227,220 @@ export const supabaseRepos: Repos = {
         expires_at: expiresAt,
       });
       return { token, expiresAt };
+    },
+
+    async municipalityDetail(municipalityId): Promise<SuperMuniDetail | null> {
+      const db = supabase();
+      const { data: m } = await db
+        .from("municipalities")
+        .select("id, name, prefecture, annual_budget")
+        .eq("id", municipalityId)
+        .maybeSingle();
+      if (!m) return null;
+
+      const [
+        { data: memberRows },
+        { data: staffRows },
+        { data: lastLogRows },
+        { data: pendingRows },
+        { count: pendingCount },
+        totalLogs,
+        logsThisMonth,
+      ] = await Promise.all([
+        db.from("users").select("id, name, role_label, term, started_at, status").eq("municipality_id", municipalityId).eq("role", "member").order("started_at").limit(1000),
+        db.from("users").select("id, name, title, department, role, email").eq("municipality_id", municipalityId).in("role", ["manager", "admin"]).order("created_at").limit(1000),
+        db.from("activity_logs").select("occurred_at").eq("municipality_id", municipalityId).order("occurred_at", { ascending: false }).limit(1),
+        db.from("approvals").select("*").eq("municipality_id", municipalityId).eq("status", "pending").order("created_at").limit(5),
+        db.from("approvals").select("*", { count: "exact", head: true }).eq("municipality_id", municipalityId).eq("status", "pending"),
+        countLogsTotal(db, municipalityId),
+        countLogsInMonth(db, ymOffset(0), municipalityId),
+      ]);
+
+      const members = (memberRows ?? []).map((r) => ({
+        id: r.id as string,
+        name: r.name as string,
+        role: (r.role_label as string) ?? "",
+        term: (r.term as string) ?? "",
+        startedAt: (r.started_at as string) ?? "未設定",
+        status: (r.status as string) ?? "active",
+      }));
+      const staff = (staffRows ?? []).map((r) => ({
+        id: r.id as string,
+        name: r.name as string,
+        title: (r.title as string) ?? "職員",
+        dept: (r.department as string) ?? "",
+        role: r.role as "manager" | "admin",
+        email: (r.email as string) ?? "",
+      }));
+
+      const lastLogs = (lastLogRows ?? []) as { occurred_at: string }[];
+      const lastActivityDate = lastLogs.length ? lastLogs[0].occurred_at.slice(0, 10) : null;
+
+      const recent = (pendingRows ?? []).map((r) => mapApproval({
+        ...r,
+        citations: JSON.stringify(r.citations ?? []),
+        detail: JSON.stringify(r.detail ?? {}),
+        steps: JSON.stringify(r.steps ?? []),
+      }));
+
+      return {
+        municipality: { id: m.id, name: m.name, prefecture: m.prefecture, annualBudget: m.annual_budget },
+        members,
+        staff,
+        activity: { totalLogs, logsThisMonth, lastActivityDate },
+        pendingApprovals: { total: pendingCount ?? 0, recent },
+      };
+    },
+
+    async listUsers(opts): Promise<SuperUserRow[]> {
+      const db = supabase();
+      let query = db.from("users").select("id, name, email, role, status, organization_type, municipality_id, created_at").order("created_at").limit(1000);
+      if (opts?.municipalityId) query = query.eq("municipality_id", opts.municipalityId);
+      if (opts?.role) query = query.eq("role", opts.role);
+      if (opts?.status) query = query.eq("status", opts.status);
+      const [{ data: users }, { data: munis }] = await Promise.all([
+        query,
+        db.from("municipalities").select("id, name").limit(1000),
+      ]);
+      const muniName = new Map<string, string>();
+      for (const m of (munis ?? []) as { id: string; name: string }[]) muniName.set(m.id, m.name);
+
+      const userRows = (users ?? []) as Record<string, unknown>[];
+      // 各ユーザーの活動記録数は head count で正確に取得(全件取得は 1000 行上限で頭打ちになるため)。
+      const logCounts = await Promise.all(
+        userRows.map(async (u) => {
+          const { count } = await db
+            .from("activity_logs")
+            .select("*", { count: "exact", head: true })
+            .eq("user_id", u.id as string);
+          return count ?? 0;
+        }),
+      );
+
+      return userRows.map((u, i) => {
+        const mid = (u.municipality_id as string | null) ?? null;
+        return {
+          id: u.id as string,
+          name: u.name as string,
+          email: (u.email as string) ?? "",
+          role: u.role as string,
+          status: (u.status as string) ?? "active",
+          organizationType: (u.organization_type as string) ?? "",
+          municipalityId: mid,
+          municipalityName: mid ? muniName.get(mid) ?? "" : "",
+          activityLogs: logCounts[i],
+          createdAt: (u.created_at as string) ?? "",
+        };
+      });
+    },
+
+    async updateUser(id, patch): Promise<SuperUserRow | undefined> {
+      const upd: Record<string, unknown> = {};
+      if (patch.role !== undefined) upd.role = patch.role;
+      if (patch.status !== undefined) upd.status = patch.status;
+      if (patch.municipalityId !== undefined) upd.municipality_id = patch.municipalityId;
+      if (Object.keys(upd).length) {
+        await supabase().from("users").update(upd).eq("id", id);
+      }
+      return (await supabaseRepos.super.listUsers()).find((u) => u.id === id);
+    },
+
+    async getContract(municipalityId): Promise<ContractDTO | null> {
+      const { data } = await supabase()
+        .from("municipalities")
+        .select("id, name, annual_budget, contract_plan, contract_status, contract_start, contract_end")
+        .eq("id", municipalityId)
+        .maybeSingle();
+      if (!data) return null;
+      return buildContract(data);
+    },
+
+    async updateContract(municipalityId, patch): Promise<ContractDTO | null> {
+      const db = supabase();
+      const { data: cur } = await db
+        .from("municipalities")
+        .select("id")
+        .eq("id", municipalityId)
+        .maybeSingle();
+      if (!cur) return null;
+      const upd: Record<string, unknown> = {};
+      if (patch.plan !== undefined) upd.contract_plan = patch.plan;
+      if (patch.contractStatus !== undefined) upd.contract_status = patch.contractStatus;
+      if (patch.contractStart !== undefined) upd.contract_start = patch.contractStart;
+      if (patch.contractEnd !== undefined) upd.contract_end = patch.contractEnd;
+      if (patch.annualBudget !== undefined) upd.annual_budget = patch.annualBudget;
+      const { data } = await db
+        .from("municipalities")
+        .update(upd)
+        .eq("id", municipalityId)
+        .select("id, name, annual_budget, contract_plan, contract_status, contract_start, contract_end")
+        .single();
+      return buildContract(data!);
+    },
+
+    async analytics(): Promise<SuperAnalytics> {
+      const db = supabase();
+      const thisYm = ymOffset(0);
+      const prevYm = ymOffset(-1);
+
+      // 一覧表示に必要な municipalities 行のみ取得。集計は全て count クエリで正確に出す。
+      const [
+        { data: munis },
+        totalMembers,
+        totalLogs,
+        logsThisMonth,
+        logsPrevMonth,
+        trendCounts,
+      ] = await Promise.all([
+        db.from("municipalities").select("id, name, prefecture").order("prefecture").order("name").limit(1000),
+        countUsers(db, { role: "member", status: "active" }),
+        countLogsTotal(db),
+        countLogsInMonth(db, thisYm),
+        countLogsInMonth(db, prevYm),
+        Promise.all(
+          Array.from({ length: 6 }, (_, i) => ymOffset(-(5 - i))).map((ym) => countLogsInMonth(db, ym)),
+        ),
+      ]);
+
+      const muniRows = (munis ?? []) as { id: string; name: string; prefecture: string }[];
+
+      const trend = Array.from({ length: 6 }, (_, i) => ({
+        ym: ymOffset(-(5 - i)),
+        logs: trendCounts[i],
+      }));
+
+      const byMunicipality = await Promise.all(
+        muniRows.map(async (m) => {
+          const [members, activityLogs, mThisMonth] = await Promise.all([
+            countUsers(db, { role: "member", status: "active", municipalityId: m.id }),
+            countLogsTotal(db, m.id),
+            countLogsInMonth(db, thisYm, m.id),
+          ]);
+          return {
+            id: m.id,
+            name: m.name,
+            prefecture: m.prefecture,
+            members,
+            activityLogs,
+            logsThisMonth: mThisMonth,
+            logsPerMemberPerWeek: Math.round((mThisMonth / Math.max(members, 1) / 4.345) * 10) / 10,
+          };
+        }),
+      );
+
+      return {
+        generatedAt: new Date().toISOString(),
+        totals: {
+          members: totalMembers,
+          activityLogs: totalLogs,
+          municipalities: muniRows.length,
+          logsThisMonth,
+          logsPrevMonth,
+          logsPerMemberPerWeek: Math.round((logsThisMonth / Math.max(totalMembers, 1) / 4.345) * 10) / 10,
+        },
+        trend,
+        byMunicipality,
+      };
     },
   },
 
