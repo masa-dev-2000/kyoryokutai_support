@@ -276,6 +276,8 @@ export interface Repos {
     /** 隊員が月報を役場に提出(同月の下書きがあれば更新、なければ作成)。status=submitted */
     submit(b: { userId: string; ym: string; markdown: string; plan?: string }): Promise<ReportDTO>;
     markApproved(id: string): Promise<void>;
+    /** 役場が月報を差戻し → status=rejected(隊員が修正・再提出できる状態に戻す) */
+    markRejected(id: string): Promise<void>;
     /** 活動報告を編集/削除した場合、同月の承認済み月報を「提出済」に差し戻す */
     revertToSubmitted(userId: string, ym: string): Promise<void>;
   };
