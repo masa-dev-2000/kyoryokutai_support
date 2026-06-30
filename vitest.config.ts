@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig, configDefaults } from "vitest/config";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 // ユニットテスト基盤。
@@ -19,5 +19,8 @@ export default defineConfig({
     },
     // node:sqlite 等の重い初期化を考慮し直列実行(共有DBファイルの競合回避)。
     fileParallelism: false,
+    // .claude/worktrees 配下は他セッションの作業ツリー。リポジトリ内に存在するため
+    // 既定の glob が拾ってしまう → 除外する。e2e(別ツール)も対象外にする。
+    exclude: [...configDefaults.exclude, ".claude/worktrees/**", "**/e2e/**"],
   },
 });
