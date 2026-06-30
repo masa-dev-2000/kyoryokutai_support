@@ -162,6 +162,26 @@ export const sqliteRepos: Repos = {
       return { id, name: m.name, prefecture: m.prefecture };
     },
 
+    async updateMunicipality(id, patch) {
+      run(
+        `UPDATE municipalities SET
+           name=COALESCE(?,name),
+           prefecture=COALESCE(?,prefecture),
+           annual_budget=COALESCE(?,annual_budget)
+         WHERE id=?`,
+        [patch.name ?? null, patch.prefecture ?? null, patch.annualBudget ?? null, id]
+      );
+      const m = get<{ id: string; name: string; prefecture: string }>(
+        "SELECT id, name, prefecture FROM municipalities WHERE id=?",
+        [id]
+      );
+      return m ?? null;
+    },
+
+    async deleteMunicipality(id): Promise<void> {
+      run("DELETE FROM municipalities WHERE id=?", [id]);
+    },
+
     async createAdminInvite(a) {
       const muni = get<{ name: string }>("SELECT name FROM municipalities WHERE id=?", [a.municipalityId]);
       // admin を pre-provision(/api/auth/me が email で auth_id を紐づけられるよう先に行を作る)

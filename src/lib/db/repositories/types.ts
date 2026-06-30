@@ -168,6 +168,10 @@ export interface Repos {
     overview(): Promise<SuperOverview>;
     /** #65: 運営者が自治体を新規作成 */
     createMunicipality(m: { name: string; prefecture: string; annualBudget?: number }): Promise<{ id: string; name: string; prefecture: string }>;
+    /** 自治体の名称/都道府県/年間予算を部分更新 */
+    updateMunicipality(id: string, patch: { name?: string; prefecture?: string; annualBudget?: number }): Promise<{ id: string; name: string; prefecture: string } | null>;
+    /** 自治体を削除(所属ユーザーの有無チェックは呼び出し側で行う) */
+    deleteMunicipality(id: string): Promise<void>;
     /** #65: 指定自治体の admin を pre-provision + 招待トークン発行(url は Route 側で付与) */
     createAdminInvite(a: { municipalityId: string; email: string; name: string; createdBy: string }): Promise<{ token: string; expiresAt: string }>;
     /** #66: 自治体ドリルダウン詳細(隊員・職員・活動・保留承認) */

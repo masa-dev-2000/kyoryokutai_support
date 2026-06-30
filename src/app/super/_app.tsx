@@ -18,6 +18,7 @@ import {
   TrendingUp,
   TrendingDown,
   Trash2,
+  Pencil,
 } from "lucide-react";
 import type {
   SuperMuniDetail,
@@ -164,6 +165,8 @@ export function SuperApp() {
           detail={detail}
           error={detailErr}
           onClose={() => setDetailId(null)}
+          onReload={() => { if (detailId) openDetail(detailId); loadOverview(); }}
+          onAfterDelete={() => { setDetailId(null); loadOverview(); }}
         />
       )}
     </main>
@@ -263,11 +266,31 @@ function DetailSheet({
   detail,
   error,
   onClose,
+  onReload,
+  onAfterDelete,
 }: {
   detail: SuperMuniDetail | null;
   error: string | null;
   onClose: () => void;
+  onReload: () => void;
+  onAfterDelete: () => void;
 }) {
+  const [editing, setEditing] = React.useState(false);
+  const [opErr, setOpErr] = React.useState<string | null>(null);
+
+  async function remove() {
+    if (!detail) return;
+    if (!window.confirm(`自治体「${detail.municipality.name}」を削除します。元に戻せません。よろしいですか?`)) return;
+    setOpErr(null);
+    try {
+      await apiDelete(`/api/super/municipalities/${detail.municipality.id}`);
+      onAfterDelete();
+    } catch (e) {
+      // 所属ユーザーが居る場合はサーバ側で 409。メッセージを表示。
+      setOpErr(e instanceof Error ? e.message : "削除に失敗しました");
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <div className="absolute inset-0 bg-slate-900/30" onClick={onClose} />
@@ -283,17 +306,43 @@ function DetailSheet({
         )}
         {detail && (
           <div className="p-6">
-            <div className="mb-6 flex items-start justify-between">
+            <div className="mb-6 flex items-start justify-between gap-3">
               <div>
                 <div className="text-[17px] font-bold">{detail.municipality.name}</div>
                 <div className="mt-0.5 text-[12px] text-slate-500">
                   {detail.municipality.prefecture}・年間予算 {detail.municipality.annualBudget.toLocaleString()} 円
                 </div>
               </div>
-              <button onClick={onClose} className="text-slate-400 hover:text-slate-900">
-                <X className="h-5 w-5" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => { setOpErr(null); setEditing(true); }}
+                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
+                >
+                  <Pencil className="h-3 w-3" /> 編集
+                </button>
+                <button
+                  onClick={remove}
+                  className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50"
+                >
+                  <Trash2 className="h-3 w-3" /> 削除
+                </button>
+                <button onClick={onClose} className="ml-1 text-slate-400 hover:text-slate-900">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
+
+            {opErr && (
+              <div className="mb-4 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[12px] text-red-700">{opErr}</div>
+            )}
+
+            {editing && (
+              <MuniEditModal
+                muni={detail.municipality}
+                onClose={() => setEditing(false)}
+                onSaved={() => { setEditing(false); onReload(); }}
+              />
+            )}
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <StatCard icon={<Users className="h-4 w-4" />} label="隊員" value={detail.members.length} />
@@ -674,6 +723,49 @@ function MuniModal({ onClose, onCreated }: { onClose: () => void; onCreated: () 
         {err && <p className="text-[12px] text-rose-500">{err}</p>}
         <button onClick={submit} disabled={busy} className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">
           {busy ? "作成中…" : "作成する"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function MuniEditModal({
+  muni,
+  onClose,
+  onSaved,
+}: {
+  muni: { id: string; name: string; prefecture: string; annualBudget: number };
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = React.useState(muni.name);
+  const [prefecture, setPrefecture] = React.useState(muni.prefecture);
+  const [budget, setBudget] = React.useState(String(muni.annualBudget));
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState("");
+
+  async function submit() {
+    if (!name.trim() || !prefecture.trim()) { setErr("自治体名・都道府県は必須です"); return; }
+    setBusy(true); setErr("");
+    try {
+      await apiPatch(`/api/super/municipalities/${muni.id}`, {
+        name: name.trim(),
+        prefecture: prefecture.trim(),
+        annualBudget: Number(budget) || 0,
+      });
+      onSaved();
+    } catch (e) { setErr((e as Error).message); setBusy(false); }
+  }
+
+  return (
+    <Modal title="自治体を編集" onClose={onClose}>
+      <div className="space-y-3">
+        <Field label="自治体名"><input value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></Field>
+        <Field label="都道府県"><input value={prefecture} onChange={(e) => setPrefecture(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></Field>
+        <Field label="年間活動費枠(円)"><input value={budget} onChange={(e) => setBudget(e.target.value)} inputMode="numeric" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></Field>
+        {err && <p className="text-[12px] text-rose-500">{err}</p>}
+        <button onClick={submit} disabled={busy} className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">
+          {busy ? "保存中…" : "保存する"}
         </button>
       </div>
     </Modal>
