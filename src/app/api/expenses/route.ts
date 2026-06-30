@@ -23,6 +23,7 @@ type CreateBody = {
   /** ADR-021: 日報から経費を起票する場合に渡す。省略時は当日の日報を自動 upsert して結線する */
   dailyLogId?: string;
   date?: string;
+  receiptKey?: string;
 };
 
 export async function POST(req: Request) {
@@ -41,7 +42,7 @@ export async function POST(req: Request) {
     dailyLogId = dl.id;
   }
 
-  const created = await repos.expenses.create({ userId, title: b.title, amount: b.amount, purpose: b.purpose, status: b.status, category: b.category, dailyLogId });
+  const created = await repos.expenses.create({ userId, title: b.title, amount: b.amount, purpose: b.purpose, status: b.status, category: b.category, dailyLogId, receiptKey: b.receiptKey });
 
   // 役場側の承認キューに投入(隊員申請 → 役場が見える、ADR-012)
   const memberName = (await repos.users.nameOf(userId)) ?? "隊員";

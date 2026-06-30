@@ -23,6 +23,11 @@ import type {
   GuidelineRow,
   RouteStepDTO,
   DailyLogDTO,
+  SuperMuniDetail,
+  SuperUserRow,
+  ContractDTO,
+  ContractPatch,
+  SuperAnalytics,
 } from "./types";
 
 const MUNI = "10000000-0000-4000-8000-000000000001";
@@ -42,6 +47,29 @@ function toLogRow(r: Record<string, unknown>): Record<string, unknown> {
     ...r,
     log_date: oa ? oa.slice(0, 10) : r.log_date,
     log_time: oa ? oa.slice(11, 16) : r.log_time ?? "",
+  };
+}
+
+// 当月 / N ヶ月前の 'YYYY-MM' を返す(ローカル時刻基準)
+function ymOffset(offset: number): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + offset);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// settings(jsonb)→ contract 部分を ContractDTO に合成
+function buildContract(row: { id: string; name: string; annual_budget: number; settings?: Record<string, unknown> | null }): ContractDTO {
+  const settings = (row.settings ?? {}) as { contract?: Record<string, unknown> };
+  const c = settings.contract ?? {};
+  return {
+    municipalityId: row.id,
+    name: row.name,
+    plan: (c.plan as ContractDTO["plan"]) ?? "year1",
+    contractStatus: (c.contractStatus as ContractDTO["contractStatus"]) ?? "trial",
+    annualBudget: row.annual_budget,
+    contractStart: (c.start as string) ?? undefined,
+    contractEnd: (c.end as string) ?? undefined,
   };
 }
 
@@ -104,6 +132,196 @@ export const supabaseRepos: Repos = {
           members: totalRole("member"), managers: totalRole("manager"),
           admins: totalRole("admin"), supers: totalRole("super"),
         },
+      };
+    },
+
+    async municipalityDetail(municipalityId): Promise<SuperMuniDetail | null> {
+      const db = supabase();
+      const { data: m } = await db
+        .from("municipalities")
+        .select("id, name, prefecture, annual_budget")
+        .eq("id", municipalityId)
+        .maybeSingle();
+      if (!m) return null;
+
+      const [{ data: memberRows }, { data: staffRows }, { data: logRows }, { data: pendingRows }] = await Promise.all([
+        db.from("users").select("id, name, role_label, term, started_at, status").eq("municipality_id", municipalityId).eq("role", "member").order("started_at"),
+        db.from("users").select("id, name, title, department, role, email").eq("municipality_id", municipalityId).in("role", ["manager", "admin"]).order("created_at"),
+        db.from("activity_logs").select("occurred_at").eq("municipality_id", municipalityId).order("occurred_at", { ascending: false }),
+        db.from("approvals").select("*").eq("municipality_id", municipalityId).eq("status", "pending").order("created_at"),
+      ]);
+
+      const members = (memberRows ?? []).map((r) => ({
+        id: r.id as string,
+        name: r.name as string,
+        role: (r.role_label as string) ?? "",
+        term: (r.term as string) ?? "",
+        startedAt: (r.started_at as string) ?? "未設定",
+        status: (r.status as string) ?? "active",
+      }));
+      const staff = (staffRows ?? []).map((r) => ({
+        id: r.id as string,
+        name: r.name as string,
+        title: (r.title as string) ?? "職員",
+        dept: (r.department as string) ?? "",
+        role: r.role as "manager" | "admin",
+        email: (r.email as string) ?? "",
+      }));
+
+      const logs = (logRows ?? []) as { occurred_at: string }[];
+      const thisYm = ymOffset(0);
+      const logsThisMonth = logs.filter((l) => (l.occurred_at ?? "").slice(0, 7) === thisYm).length;
+      const lastActivityDate = logs.length ? logs[0].occurred_at.slice(0, 10) : null;
+
+      const pending = pendingRows ?? [];
+      const recent = pending.slice(0, 5).map((r) => mapApproval({
+        ...r,
+        citations: JSON.stringify(r.citations ?? []),
+        detail: JSON.stringify(r.detail ?? {}),
+        steps: JSON.stringify(r.steps ?? []),
+      }));
+
+      return {
+        municipality: { id: m.id, name: m.name, prefecture: m.prefecture, annualBudget: m.annual_budget },
+        members,
+        staff,
+        activity: { totalLogs: logs.length, logsThisMonth, lastActivityDate },
+        pendingApprovals: { total: pending.length, recent },
+      };
+    },
+
+    async listUsers(opts): Promise<SuperUserRow[]> {
+      const db = supabase();
+      let query = db.from("users").select("id, name, email, role, status, organization_type, municipality_id, created_at").order("created_at");
+      if (opts?.municipalityId) query = query.eq("municipality_id", opts.municipalityId);
+      if (opts?.role) query = query.eq("role", opts.role);
+      if (opts?.status) query = query.eq("status", opts.status);
+      const [{ data: users }, { data: munis }, { data: logs }] = await Promise.all([
+        query,
+        db.from("municipalities").select("id, name"),
+        db.from("activity_logs").select("user_id"),
+      ]);
+      const muniName = new Map<string, string>();
+      for (const m of (munis ?? []) as { id: string; name: string }[]) muniName.set(m.id, m.name);
+      const logCount = new Map<string, number>();
+      for (const l of (logs ?? []) as { user_id: string }[]) logCount.set(l.user_id, (logCount.get(l.user_id) ?? 0) + 1);
+
+      return ((users ?? []) as Record<string, unknown>[]).map((u) => {
+        const mid = (u.municipality_id as string | null) ?? null;
+        return {
+          id: u.id as string,
+          name: u.name as string,
+          email: (u.email as string) ?? "",
+          role: u.role as string,
+          status: (u.status as string) ?? "active",
+          organizationType: (u.organization_type as string) ?? "",
+          municipalityId: mid,
+          municipalityName: mid ? muniName.get(mid) ?? "" : "",
+          activityLogs: logCount.get(u.id as string) ?? 0,
+          createdAt: (u.created_at as string) ?? "",
+        };
+      });
+    },
+
+    async updateUser(id, patch): Promise<SuperUserRow | undefined> {
+      const upd: Record<string, unknown> = {};
+      if (patch.role !== undefined) upd.role = patch.role;
+      if (patch.status !== undefined) upd.status = patch.status;
+      if (patch.municipalityId !== undefined) upd.municipality_id = patch.municipalityId;
+      if (Object.keys(upd).length) {
+        await supabase().from("users").update(upd).eq("id", id);
+      }
+      return (await supabaseRepos.super.listUsers()).find((u) => u.id === id);
+    },
+
+    async getContract(municipalityId): Promise<ContractDTO | null> {
+      const { data } = await supabase()
+        .from("municipalities")
+        .select("id, name, annual_budget, settings")
+        .eq("id", municipalityId)
+        .maybeSingle();
+      if (!data) return null;
+      return buildContract(data);
+    },
+
+    async updateContract(municipalityId, patch): Promise<ContractDTO | null> {
+      const db = supabase();
+      const { data: cur } = await db
+        .from("municipalities")
+        .select("id, name, annual_budget, settings")
+        .eq("id", municipalityId)
+        .maybeSingle();
+      if (!cur) return null;
+      const settings = ((cur.settings ?? {}) as { contract?: Record<string, unknown> });
+      const contract = { ...(settings.contract ?? {}) };
+      if (patch.plan !== undefined) contract.plan = patch.plan;
+      if (patch.contractStatus !== undefined) contract.contractStatus = patch.contractStatus;
+      if (patch.contractStart !== undefined) contract.start = patch.contractStart;
+      if (patch.contractEnd !== undefined) contract.end = patch.contractEnd;
+      const nextSettings = { ...settings, contract };
+      const upd: Record<string, unknown> = { settings: nextSettings };
+      if (patch.annualBudget !== undefined) upd.annual_budget = patch.annualBudget;
+      const { data } = await db
+        .from("municipalities")
+        .update(upd)
+        .eq("id", municipalityId)
+        .select("id, name, annual_budget, settings")
+        .single();
+      return buildContract(data!);
+    },
+
+    async analytics(): Promise<SuperAnalytics> {
+      const db = supabase();
+      const [{ data: munis }, { data: users }, { data: logs }] = await Promise.all([
+        db.from("municipalities").select("id, name, prefecture").order("prefecture").order("name"),
+        db.from("users").select("municipality_id, role, status"),
+        db.from("activity_logs").select("municipality_id, occurred_at"),
+      ]);
+
+      const muniRows = (munis ?? []) as { id: string; name: string; prefecture: string }[];
+      const userRows = (users ?? []) as { municipality_id: string | null; role: string; status: string }[];
+      const logRows = (logs ?? []) as { municipality_id: string | null; occurred_at: string }[];
+      const ymOf = (l: { occurred_at: string }) => (l.occurred_at ?? "").slice(0, 7);
+
+      const totalMembers = userRows.filter((u) => u.role === "member" && u.status === "active").length;
+      const totalLogs = logRows.length;
+      const thisYm = ymOffset(0);
+      const prevYm = ymOffset(-1);
+      const logsThisMonth = logRows.filter((l) => ymOf(l) === thisYm).length;
+      const logsPrevMonth = logRows.filter((l) => ymOf(l) === prevYm).length;
+
+      const trend = Array.from({ length: 6 }, (_, i) => {
+        const ym = ymOffset(-(5 - i));
+        return { ym, logs: logRows.filter((l) => ymOf(l) === ym).length };
+      });
+
+      const byMunicipality = muniRows.map((m) => {
+        const members = userRows.filter((u) => u.municipality_id === m.id && u.role === "member" && u.status === "active").length;
+        const muniLogs = logRows.filter((l) => l.municipality_id === m.id);
+        const mThisMonth = muniLogs.filter((l) => ymOf(l) === thisYm).length;
+        return {
+          id: m.id,
+          name: m.name,
+          prefecture: m.prefecture,
+          members,
+          activityLogs: muniLogs.length,
+          logsThisMonth: mThisMonth,
+          logsPerMemberPerWeek: Math.round((mThisMonth / Math.max(members, 1) / 4.345) * 10) / 10,
+        };
+      });
+
+      return {
+        generatedAt: new Date().toISOString(),
+        totals: {
+          members: totalMembers,
+          activityLogs: totalLogs,
+          municipalities: muniRows.length,
+          logsThisMonth,
+          logsPrevMonth,
+          logsPerMemberPerWeek: Math.round((logsThisMonth / Math.max(totalMembers, 1) / 4.345) * 10) / 10,
+        },
+        trend,
+        byMunicipality,
       };
     },
   },
@@ -487,7 +705,8 @@ export const supabaseRepos: Repos = {
           status: b.status ?? "申請中",
           ai_note: "AI 判定材料は申請後に表示されます。",
           citations: [],
-          has_receipt: false,
+          has_receipt: !!b.receiptKey,
+          receipt_key: b.receiptKey ?? null,
         })
         .select()
         .single();
@@ -508,7 +727,8 @@ export const supabaseRepos: Repos = {
           status: b.status ?? "申請中",
           ai_note: "日報経由の経費(ADR-014)。AI 判定材料は申請後に表示されます。",
           citations: [],
-          has_receipt: b.hasReceipt,
+          has_receipt: b.hasReceipt || !!b.receiptKey,
+          receipt_key: b.receiptKey ?? null,
         })
         .select()
         .single();
@@ -519,6 +739,7 @@ export const supabaseRepos: Repos = {
       if (b.status !== undefined) patch.status = b.status;
       if (b.amountSettled !== undefined) patch.amount_settled = b.amountSettled;
       if (b.hasReceipt !== undefined) patch.has_receipt = b.hasReceipt;
+      if (b.receiptKey !== undefined) patch.receipt_key = b.receiptKey;
       if (b.settleNote !== undefined) patch.settle_note = b.settleNote;
       const { data } = await supabase()
         .from("expenses")
@@ -538,6 +759,26 @@ export const supabaseRepos: Repos = {
         .eq("user_id", userId)
         .order("year_month", { ascending: false });
       return (data ?? []).map(mapReport);
+    },
+    async submit(b) {
+      const { data: existing } = await supabase()
+        .from("monthly_reports")
+        .select("id")
+        .eq("user_id", b.userId)
+        .eq("year_month", b.ym)
+        .maybeSingle();
+      if (existing) {
+        const patch: Record<string, unknown> = { status: "submitted", status_label: "提出済", summary: b.markdown };
+        if (b.plan !== undefined) patch.plan_next = b.plan;
+        const { data } = await supabase().from("monthly_reports").update(patch).eq("id", existing.id).select().single();
+        return mapReport(data!);
+      }
+      const { data } = await supabase()
+        .from("monthly_reports")
+        .insert({ user_id: b.userId, municipality_id: MUNI, year_month: b.ym, status: "submitted", status_label: "提出済", summary: b.markdown, plan_next: b.plan ?? null })
+        .select()
+        .single();
+      return mapReport(data!);
     },
     async markApproved(id) {
       await supabase()

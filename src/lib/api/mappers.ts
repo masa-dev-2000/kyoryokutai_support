@@ -46,6 +46,8 @@ export function mapReport(r: Row) {
     ym,
     status,
     statusLabel: (r.status_label as string) ?? "",
+    bodyMd: (r.summary as string | null) ?? "",
+    planNext: (r.plan_next as string | null) ?? "",
   };
 }
 
@@ -62,6 +64,7 @@ export function mapExpense(r: Row) {
     citation: citations[0] ?? { source: "", quote: "" },
     createdAt: (r.created_at as string)?.slice(0, 10) ?? "",
     hasReceipt: !!(r.has_receipt as number),
+    receiptKey: (r.receipt_key as string | null) ?? null,
     expenseKind: r.expense_kind as string,
     parentExpenseId: (r.parent_expense_id as string | null) ?? undefined,
   };

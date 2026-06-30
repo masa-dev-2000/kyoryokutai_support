@@ -21,7 +21,34 @@ import {
   AlertCircle,
   CalendarDays,
   Receipt,
+  Sparkles,
+  Copy,
+  Download,
+  Loader2,
 } from "lucide-react";
+
+/* -------- 実データ DTO(サーバの mappers と形を一致させたクライアント側型)-------- */
+type MemberDTO = { id: string; name: string; role: string; startedAt?: string; term?: string };
+type ReportDTO = { id: string; ym: string; status: string; yearMonth?: string; statusLabel?: string };
+type LogForAI = { activity_type: string; topic: string; hours: number; body: string; log_date: string; expense_amount: number | null };
+
+// 月報タブで使う隊員(実 id 付き)。id があるときだけ AI 生成・実ログ取得が可能。
+type Member = { id?: string; name: string; initials: string; role: string };
+
+// AI 報告書生成の結果(結果シートで表示)
+type ReportResult = {
+  title: string;
+  loading: boolean;
+  markdown?: string;
+  error?: string;
+  meta?: { provider: string; model: string; logCount?: number; memberCount?: number };
+};
+
+// 表示名から簡易イニシャルを作る(実データには initials が無いため)
+function initialsOf(name: string): string {
+  const given = name.split(/\s+/).pop() ?? name;
+  return given.slice(0, 2);
+}
 
 /* ============================================================
    v5 役場アプリ ─ 検索エンジン型・3 機能(承認 / 月報 / お知らせ)
@@ -313,16 +340,24 @@ const initialApprovals: Approval[] = [
 type Sheet =
   | { kind: "approval-detail"; approval: Approval }
   | { kind: "reject-comment"; approval: Approval }
-  | { kind: "member-month-detail"; member: string; ym: string }
-  | { kind: "report-day"; member: string; date: string }
+  | { kind: "member-month-detail"; userId?: string; member: string; ym: string }
+  | { kind: "report-day"; userId?: string; member: string; date: string }
   | { kind: "notice-targets" }
   | { kind: "notice-detail"; notice: NoticeItem }
+  | { kind: "report-result" }
   | { kind: "settings" }
   | null;
 
 type Ctx = {
   managed: string[];
   setManaged: (m: string[]) => void;
+  // 実データの隊員一覧(取得失敗時はモック ALL_MEMBERS にフォールバック)
+  members: Member[];
+  // 隊員名 → 月(YYYY-MM)→ ステータス。実データ取得失敗時はモック monthlyStatusMap。
+  statusByMember: Record<string, Record<string, MemberStatus>> | null;
+  // AI 報告書生成
+  reportResult: ReportResult | null;
+  generateReport: (title: string, endpoint: string, body: object) => void;
   approvals: Approval[];
   viewerRole: ApproverType; // PoC: ヘッダーで切替する承認者視点(本番では認証ロールで自動決定)
   setViewerRole: (r: ApproverType) => void;
@@ -355,10 +390,53 @@ export function ManagerApp() {
     ALL_MEMBERS.slice(0, 5).map((m) => m.name)
   );
   const [sheet, setSheet] = React.useState<Sheet>(null);
+  // 実データ(失敗時はモックのまま)
+  const [members, setMembers] = React.useState<Member[]>(ALL_MEMBERS);
+  const [statusByMember, setStatusByMember] = React.useState<Record<string, Record<string, MemberStatus>> | null>(null);
+  const [reportResult, setReportResult] = React.useState<ReportResult | null>(null);
 
   React.useEffect(() => {
     setNoticeTargets((cur) => cur.filter((n) => managed.includes(n)));
   }, [managed]);
+
+  // 隊員一覧(実 id 付き)と月報ステータスを取得。失敗時はモック表示を維持。
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const ms = await apiGet<MemberDTO[]>("/api/members");
+        const mapped: Member[] = ms.map((m) => ({ id: m.id, name: m.name, role: m.role, initials: initialsOf(m.name) }));
+        setMembers(mapped);
+        const entries = await Promise.all(
+          mapped.map(async (m) => {
+            try {
+              const reps = await apiGet<ReportDTO[]>(`/api/monthly-reports?userId=${m.id}`);
+              const byYm: Record<string, MemberStatus> = {};
+              for (const r of reps) {
+                byYm[r.ym] = (["submitted", "approved", "draft"].includes(r.status) ? r.status : "draft") as MemberStatus;
+              }
+              return [m.name, byYm] as const;
+            } catch {
+              return [m.name, {} as Record<string, MemberStatus>] as const;
+            }
+          })
+        );
+        setStatusByMember(Object.fromEntries(entries));
+      } catch {
+        /* オフライン時はモックのまま */
+      }
+    })();
+  }, []);
+
+  const generateReport = React.useCallback(async (title: string, endpoint: string, body: object) => {
+    setReportResult({ title, loading: true });
+    setSheet({ kind: "report-result" });
+    try {
+      const r = await apiPost<{ markdown: string; provider: string; model: string; logCount?: number; memberCount?: number }>(endpoint, body);
+      setReportResult({ title, loading: false, markdown: r.markdown, meta: r });
+    } catch (e) {
+      setReportResult({ title, loading: false, error: (e as Error).message });
+    }
+  }, []);
 
   // バックエンドから承認キュー・お知らせを取得(状態機械はサーバ側 ADR-015)
   const refetchApprovals = React.useCallback(async () => {
@@ -379,6 +457,10 @@ export function ManagerApp() {
   const ctx: Ctx = {
     managed,
     setManaged,
+    members,
+    statusByMember,
+    reportResult,
+    generateReport,
     approvals,
     viewerRole,
     setViewerRole,
@@ -707,22 +789,26 @@ const statusMeta: Record<MemberStatus, { label: string; className: string }> = {
 };
 
 function ReportTab() {
-  const { managed, openSheet } = useApp();
+  const { managed, openSheet, members, statusByMember, reportResult, generateReport } = useApp();
   const [ym, setYm] = React.useState("2026-05");
   const [q, setQ] = React.useState("");
 
-  const roster = ALL_MEMBERS.filter((m) => managed.includes(m.name));
+  const roster = members.filter((m) => managed.includes(m.name));
   const filtered = roster.filter((m) => (q.trim() ? m.name.includes(q) || m.role.includes(q) : true));
 
   const idx = AVAILABLE_MONTHS.findIndex((m) => m.id === ym);
   const prevMonth = idx > 0 ? AVAILABLE_MONTHS[idx - 1] : null;
   const nextMonth = idx < AVAILABLE_MONTHS.length - 1 ? AVAILABLE_MONTHS[idx + 1] : null;
   const current = AVAILABLE_MONTHS[idx];
-  const statusMap = monthlyStatusMap[ym] ?? {};
+  // 実データ(statusByMember)があればそれを、無ければモック monthlyStatusMap を使う。
+  const statusOf = (name: string): MemberStatus =>
+    statusByMember ? (statusByMember[name]?.[ym] ?? "none") : (monthlyStatusMap[ym]?.[name] ?? "none");
 
   // 月ごとの状況サマリ
   const counts: Record<MemberStatus, number> = { submitted: 0, approved: 0, draft: 0, none: 0 };
-  for (const m of roster) counts[statusMap[m.name] ?? "none"]++;
+  for (const m of roster) counts[statusOf(m.name)]++;
+
+  const generating = reportResult?.loading ?? false;
 
   return (
     <div className="text-center">
@@ -760,6 +846,19 @@ function ReportTab() {
         ))}
       </div>
 
+      {/* 自治体集約:担当隊員全員の当月活動を 1 本の報告書にまとめる */}
+      <div className="mx-auto mt-3 max-w-md">
+        <button
+          onClick={() => generateReport(`${current.label} 自治体月次報告`, "/api/ai/municipal-report", { ym })}
+          disabled={generating}
+          className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-slate-900 px-3.5 py-1.5 text-[11px] font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+          全員分を報告書にまとめる
+        </button>
+        <p className="mt-1 text-[10px] text-slate-400">AI が担当隊員全員の活動を束ねて月次報告の下書きを作ります。</p>
+      </div>
+
       <SearchBox value={q} onChange={setQ} placeholder="隊員名・役割で絞る" />
 
       {filtered.length === 0 ? (
@@ -770,12 +869,12 @@ function ReportTab() {
           style={{ gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))" }}
         >
           {filtered.map((m) => {
-            const status = statusMap[m.name] ?? "none";
+            const status = statusOf(m.name);
             const s = statusMeta[status];
             return (
               <button
                 key={m.name}
-                onClick={() => openSheet({ kind: "member-month-detail", member: m.name, ym })}
+                onClick={() => openSheet({ kind: "member-month-detail", userId: m.id, member: m.name, ym })}
                 className="flex flex-col items-center gap-1.5 rounded-lg border border-slate-200 bg-white p-3 text-center transition hover:border-slate-400 hover:shadow-sm"
               >
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-[11px] font-bold text-slate-700 ring-1 ring-slate-200">
@@ -928,10 +1027,11 @@ function SheetRoot() {
     <div className="fixed inset-0 z-50 flex flex-col bg-white">
       {sheet.kind === "approval-detail" && <ApprovalDetailSheet approval={sheet.approval} onClose={close} />}
       {sheet.kind === "reject-comment" && <RejectSheet approval={sheet.approval} onClose={close} />}
-      {sheet.kind === "member-month-detail" && <MemberMonthSheet name={sheet.member} ym={sheet.ym} onClose={close} />}
-      {sheet.kind === "report-day" && <ReportDaySheet name={sheet.member} date={sheet.date} onClose={close} />}
+      {sheet.kind === "member-month-detail" && <MemberMonthSheet userId={sheet.userId} name={sheet.member} ym={sheet.ym} onClose={close} />}
+      {sheet.kind === "report-day" && <ReportDaySheet userId={sheet.userId} name={sheet.member} date={sheet.date} onClose={close} />}
       {sheet.kind === "notice-targets" && <TargetsSheet onClose={close} />}
       {sheet.kind === "notice-detail" && <NoticeDetailSheet notice={sheet.notice} onClose={close} />}
+      {sheet.kind === "report-result" && <ReportResultSheet onClose={close} />}
       {sheet.kind === "settings" && <SettingsSheet onClose={close} />}
     </div>
   );
@@ -1202,13 +1302,54 @@ function RejectSheet({ approval, onClose }: { approval: Approval; onClose: () =>
 
 /* -------- 隊員 × 月 詳細シート(カレンダー + サマリ + グラフ)-------- */
 
-function MemberMonthSheet({ name, ym, onClose }: { name: string; ym: string; onClose: () => void }) {
-  const { openSheet } = useApp();
-  const member = ALL_MEMBERS.find((m) => m.name === name);
-  const status = monthlyStatusMap[ym]?.[name] ?? "none";
+// 指定隊員 × 月の活動ログを実データで取得(失敗・id 無しはモック memberLogs にフォールバック)
+function useMonthlyLogs(userId: string | undefined, ym: string, fallbackName: string) {
+  const [state, setState] = React.useState<{ logs: ActivityLog[]; loading: boolean }>(() => {
+    const mock = (memberLogs[fallbackName] ?? []).filter((l) => l.date.startsWith(ym));
+    return userId ? { logs: [], loading: true } : { logs: mock, loading: false };
+  });
+  React.useEffect(() => {
+    const mock = (memberLogs[fallbackName] ?? []).filter((l) => l.date.startsWith(ym));
+    if (!userId) {
+      setState({ logs: mock, loading: false });
+      return;
+    }
+    let cancelled = false;
+    setState({ logs: [], loading: true });
+    apiGet<LogForAI[]>(`/api/activity-logs/monthly?userId=${userId}&ym=${ym}`)
+      .then((rows) => {
+        if (cancelled) return;
+        setState({
+          logs: rows.map((r) => ({
+            date: r.log_date,
+            type: r.activity_type,
+            topic: r.topic,
+            hours: r.hours,
+            body: r.body,
+            expense: r.expense_amount ?? undefined,
+          })),
+          loading: false,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ logs: mock, loading: false });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, ym, fallbackName]);
+  return state;
+}
+
+function MemberMonthSheet({ userId, name, ym, onClose }: { userId?: string; name: string; ym: string; onClose: () => void }) {
+  const { openSheet, members, statusByMember, reportResult, generateReport } = useApp();
+  const member = members.find((m) => (userId ? m.id === userId : m.name === name));
+  const status: MemberStatus = statusByMember
+    ? (statusByMember[name]?.[ym] ?? "none")
+    : (monthlyStatusMap[ym]?.[name] ?? "none");
   const s = statusMeta[status];
 
-  const logs = (memberLogs[name] ?? []).filter((l) => l.date.startsWith(ym));
+  const { logs, loading } = useMonthlyLogs(userId, ym, name);
   const totalHours = logs.reduce((a, l) => a + l.hours, 0);
   const totalExpense = logs.reduce((a, l) => a + (l.expense ?? 0), 0);
   const totalCount = logs.length;
@@ -1256,7 +1397,25 @@ function MemberMonthSheet({ name, ym, onClose }: { name: string; ym: string; onC
           <SummaryCell icon={<Wallet className="h-3.5 w-3.5" />} value={`¥${totalExpense.toLocaleString()}`} label="経費使用" />
         </div>
 
-        {totalCount === 0 ? (
+        {/* この隊員の当月活動を月次報告(5 章)にまとめる */}
+        <button
+          onClick={() => generateReport(`${name} ・ ${monthLabel} の月報`, "/api/ai/monthly-report", { userId, ym })}
+          disabled={reportResult?.loading || loading || totalCount === 0 || !userId}
+          className="mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-900 bg-slate-900 px-4 py-2.5 text-[12px] font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {reportResult?.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          報告書形式でまとめる
+        </button>
+        {!userId && (
+          <p className="mt-1 text-center text-[10px] text-slate-400">実データ未接続のため、この隊員は AI 生成できません。</p>
+        )}
+
+        {loading ? (
+          <div className="mt-8 flex flex-col items-center gap-2 py-10 text-slate-400">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span className="text-[11px]">活動記録を読み込み中…</span>
+          </div>
+        ) : totalCount === 0 ? (
           <EmptyState message={`${monthLabel} の活動記録がまだありません。`} />
         ) : (
           <>
@@ -1271,7 +1430,7 @@ function MemberMonthSheet({ name, ym, onClose }: { name: string; ym: string; onC
                   c === null ? <div key={i} /> : (
                     <button
                       key={i}
-                      onClick={() => c.logs.length > 0 && openSheet({ kind: "report-day", member: name, date: c.date })}
+                      onClick={() => c.logs.length > 0 && openSheet({ kind: "report-day", userId, member: name, date: c.date })}
                       disabled={c.logs.length === 0}
                       className={`relative aspect-square rounded-lg border text-left text-[10px] transition ${
                         c.logs.length > 0
@@ -1346,8 +1505,9 @@ function SummaryCell({ icon, value, label, suffix }: { icon: React.ReactNode; va
   );
 }
 
-function ReportDaySheet({ name, date, onClose }: { name: string; date: string; onClose: () => void }) {
-  const logs = (memberLogs[name] ?? []).filter((l) => l.date === date);
+function ReportDaySheet({ userId, name, date, onClose }: { userId?: string; name: string; date: string; onClose: () => void }) {
+  const { logs: monthLogs } = useMonthlyLogs(userId, date.slice(0, 7), name);
+  const logs = monthLogs.filter((l) => l.date === date);
   const totalHours = logs.reduce((s, l) => s + l.hours, 0);
   const totalExpense = logs.reduce((s, l) => s + (l.expense ?? 0), 0);
   const [, m, d] = date.split("-");
@@ -1511,6 +1671,158 @@ function SettingsSheet({ onClose }: { onClose: () => void }) {
         <div className="mt-8 text-[10px] text-slate-400">
           ※ 通知先メールアドレス・ガードレールルール集の編集は本機能に追加予定。
         </div>
+      </div>
+    </>
+  );
+}
+
+/* -------- AI 報告書 結果シート(per-member / 自治体集約 共通) -------- */
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Markdown を Word が解釈できる HTML に変換(依存追加なしで .doc 出力するため)。
+function markdownToWordHtml(md: string, title: string): string {
+  const out: string[] = [];
+  let inList = false;
+  const closeList = () => {
+    if (inList) {
+      out.push("</ul>");
+      inList = false;
+    }
+  };
+  for (const raw of md.split(/\r?\n/)) {
+    const line = raw.trimEnd();
+    if (!line.trim()) {
+      closeList();
+      continue;
+    }
+    let m: RegExpMatchArray | null;
+    if ((m = line.match(/^(#{1,6})\s+(.*)/))) {
+      closeList();
+      const lvl = Math.min(m[1].length, 3);
+      out.push(`<h${lvl}>${escapeHtml(m[2])}</h${lvl}>`);
+    } else if ((m = line.match(/^[-*・]\s*(.*)/))) {
+      if (!inList) {
+        out.push("<ul>");
+        inList = true;
+      }
+      out.push(`<li>${escapeHtml(m[1])}</li>`);
+    } else {
+      closeList();
+      out.push(`<p>${escapeHtml(line)}</p>`);
+    }
+  }
+  closeList();
+  return (
+    "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>" +
+    `<head><meta charset='utf-8'><title>${escapeHtml(title)}</title></head>` +
+    `<body style="font-family:'Yu Gothic','游ゴシック',sans-serif;line-height:1.7;font-size:11pt;">${out.join("")}</body></html>`
+  );
+}
+
+function ReportResultSheet({ onClose }: { onClose: () => void }) {
+  const { reportResult } = useApp();
+  const [copied, setCopied] = React.useState(false);
+  // AI 生成結果を編集可能にする。生成結果が届いたら本文を流し込む。
+  const [text, setText] = React.useState("");
+  React.useEffect(() => {
+    if (reportResult?.markdown != null) setText(reportResult.markdown);
+  }, [reportResult?.markdown]);
+
+  if (!reportResult) return null;
+  const { title, loading, markdown, error, meta } = reportResult;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* noop */
+    }
+  };
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const u = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = u;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(u);
+  };
+  const downloadWord = () => {
+    if (!text.trim()) return;
+    // 先頭の BOM で文字化けを防ぐ。Word は application/msword の HTML をそのまま開ける。
+    triggerDownload(new Blob(["﻿", markdownToWordHtml(text, title)], { type: "application/msword" }), `${title}.doc`);
+  };
+  const downloadMd = () => {
+    if (!text.trim()) return;
+    triggerDownload(new Blob([text], { type: "text/markdown;charset=utf-8" }), `${title}.md`);
+  };
+
+  return (
+    <>
+      <SheetHeader
+        title="報告書(AI 生成・編集可)"
+        onClose={onClose}
+        right={
+          markdown ? (
+            <button onClick={copy} className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-900 hover:underline">
+              <Copy className="h-3.5 w-3.5" />
+              {copied ? "コピー済" : "コピー"}
+            </button>
+          ) : undefined
+        }
+      />
+      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+        <h1 className="text-lg font-bold tracking-tight">{title}</h1>
+
+        {loading && (
+          <div className="mt-10 flex flex-col items-center gap-2 text-slate-400">
+            <Loader2 className="h-6 w-6 animate-spin" />
+            <span className="text-[12px]">AI が報告書を作成しています…</span>
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-[12px] text-rose-700">
+            生成に失敗しました：{error}
+          </div>
+        )}
+
+        {markdown && (
+          <>
+            <p className="mt-2 text-[11px] text-slate-500">内容を確認・修正してから Word でダウンロードできます。</p>
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              spellCheck={false}
+              className="mt-3 min-h-[55vh] w-full resize-y rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-4 text-[13px] leading-relaxed text-slate-800 focus:border-slate-900 focus:bg-white focus:outline-none"
+            />
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button onClick={downloadWord} className="inline-flex items-center gap-1.5 rounded-full border border-slate-900 bg-slate-900 px-3.5 py-1.5 text-[11px] font-bold text-white hover:bg-slate-800">
+                <Download className="h-3.5 w-3.5" />
+                Word でダウンロード
+              </button>
+              <button onClick={downloadMd} className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-bold text-slate-700 hover:border-slate-900">
+                <Download className="h-3.5 w-3.5" />
+                .md
+              </button>
+              <button onClick={copy} className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-bold text-slate-700 hover:border-slate-900">
+                <Copy className="h-3.5 w-3.5" />
+                {copied ? "コピーしました" : "コピー"}
+              </button>
+            </div>
+            {meta && (
+              <p className="mt-3 text-[10px] text-slate-400">
+                {meta.provider} / {meta.model}
+                {meta.memberCount != null && ` ・ 隊員 ${meta.memberCount} 名`}
+                {meta.logCount != null && ` ・ 活動 ${meta.logCount} 件`}
+              </p>
+            )}
+          </>
+        )}
       </div>
     </>
   );
