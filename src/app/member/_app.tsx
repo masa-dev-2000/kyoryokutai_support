@@ -764,10 +764,11 @@ function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) 
                 {c.logs.length > 0 ? (
                   <>
                     <span className="absolute right-1 top-0.5 text-[12px] font-bold text-slate-500">{c.logs.length}件</span>
-                    <span className="absolute bottom-3 left-1 right-1 text-[12px] font-semibold text-slate-700">
+                    <span className="absolute bottom-3 left-1 right-1 hidden text-[12px] font-semibold text-slate-700 sm:block">
                       {c.logs.reduce((s, l) => s + l.hours, 0)}h
                     </span>
-                    {(() => { const d = monthDailyLogs.find((d) => d.date === c.date); return d?.expenseAmount ? <span className="absolute bottom-0.5 left-1 right-1 truncate text-[10px] text-slate-500">¥{Math.round(d.expenseAmount / 100) / 10}k</span> : null; })()}
+                    {(() => { const d = monthDailyLogs.find((d) => d.date === c.date); return d?.expenseAmount ? <span className="absolute bottom-0.5 left-1 right-1 hidden truncate text-[10px] text-slate-500 sm:block">¥{Math.round(d.expenseAmount / 100) / 10}k</span> : null; })()}
+                    <span className="absolute bottom-1.5 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-slate-400 sm:hidden" />
                   </>
                 ) : (
                   <Plus className="absolute bottom-1 right-1 h-2.5 w-2.5 text-slate-300" />
