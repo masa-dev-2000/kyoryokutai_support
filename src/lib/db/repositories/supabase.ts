@@ -25,9 +25,121 @@ import type {
   GuidelineRow,
   RouteStepDTO,
   DailyLogDTO,
+  SuperMuniDetail,
+  SuperUserRow,
+  ContractDTO,
+  SuperAnalytics,
+  BudgetLineDTO,
 } from "./types";
+import { BUDGET_CATEGORIES, DEFAULT_ALLOCATION, currentFiscalYear } from "@/lib/budget";
 
 const MUNI = "10000000-0000-4000-8000-000000000001";
+
+// 当月 / N ヶ月前の 'YYYY-MM' を返す(ローカル時刻基準)
+function ymOffset(offset: number): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + offset);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// 'YYYY-MM' → JST 月初・翌月初の ISO 文字列([gte, lt) 範囲)。
+// sqlite 版の log_date(JST 日付文字列)LIKE 'YYYY-MM%' と一致させるための境界。
+function jstMonthRange(ym: string): { gte: string; lt: string } {
+  const [y, m] = ym.split("-").map(Number);
+  const ny = m === 12 ? y + 1 : y;
+  const nm = m === 12 ? 1 : m + 1;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return {
+    gte: `${y}-${pad(m)}-01T00:00:00+09:00`,
+    lt: `${ny}-${pad(nm)}-01T00:00:00+09:00`,
+  };
+}
+
+// activity_logs を month 範囲(+任意の municipality)で count(行は返さない)。
+async function countLogsInMonth(
+  db: ReturnType<typeof supabase>,
+  ym: string,
+  municipalityId?: string,
+): Promise<number> {
+  const { gte, lt } = jstMonthRange(ym);
+  let q = db
+    .from("activity_logs")
+    .select("*", { count: "exact", head: true })
+    .gte("occurred_at", gte)
+    .lt("occurred_at", lt);
+  if (municipalityId) q = q.eq("municipality_id", municipalityId);
+  const { count } = await q;
+  return count ?? 0;
+}
+
+// activity_logs の総数を count(任意の municipality 絞り込み付き)。
+async function countLogsTotal(
+  db: ReturnType<typeof supabase>,
+  municipalityId?: string,
+): Promise<number> {
+  let q = db.from("activity_logs").select("*", { count: "exact", head: true });
+  if (municipalityId) q = q.eq("municipality_id", municipalityId);
+  const { count } = await q;
+  return count ?? 0;
+}
+
+// users の件数を count(role / status / municipality 絞り込み付き)。
+async function countUsers(
+  db: ReturnType<typeof supabase>,
+  filters: { role?: string; status?: string; municipalityId?: string },
+): Promise<number> {
+  let q = db.from("users").select("*", { count: "exact", head: true });
+  if (filters.role) q = q.eq("role", filters.role);
+  if (filters.status) q = q.eq("status", filters.status);
+  if (filters.municipalityId) q = q.eq("municipality_id", filters.municipalityId);
+  const { count } = await q;
+  return count ?? 0;
+}
+
+// municipalities の contract_* 専用カラム → ContractDTO に合成
+function buildContract(row: {
+  id: string;
+  name: string;
+  annual_budget: number;
+  contract_plan: string | null;
+  contract_status: string | null;
+  contract_start: string | null;
+  contract_end: string | null;
+}): ContractDTO {
+  return {
+    municipalityId: row.id,
+    name: row.name,
+    plan: (row.contract_plan as ContractDTO["plan"]) ?? "year1",
+    contractStatus: (row.contract_status as ContractDTO["contractStatus"]) ?? "trial",
+    annualBudget: row.annual_budget,
+    contractStart: row.contract_start ?? undefined,
+    contractEnd: row.contract_end ?? undefined,
+  };
+}
+
+// 年度 "YYYY"(4 月始まり)→ [開始日, 翌年度開始日)
+function fyRange(fy: string): [string, string] {
+  const y = Number(fy);
+  return [`${y}-04-01`, `${y + 1}-04-01`];
+}
+
+// 新規隊員に当年度の費目別予算枠(既定配分)を投入(重複は無視)。
+async function seedDefaultBudgetSb(userId: string) {
+  const fy = currentFiscalYear();
+  await supabase()
+    .from("budget_allocations")
+    .upsert(
+      BUDGET_CATEGORIES.map((category) => ({
+        municipality_id: MUNI,
+        user_id: userId,
+        fiscal_year: fy,
+        category,
+        amount_limit: DEFAULT_ALLOCATION[category] ?? 0,
+      })),
+      { onConflict: "user_id,fiscal_year,category", ignoreDuplicates: true }
+    );
+}
 
 function supabase() {
   return createClient(
@@ -141,6 +253,220 @@ export const supabaseRepos: Repos = {
       });
       return { token, expiresAt };
     },
+
+    async municipalityDetail(municipalityId): Promise<SuperMuniDetail | null> {
+      const db = supabase();
+      const { data: m } = await db
+        .from("municipalities")
+        .select("id, name, prefecture, annual_budget")
+        .eq("id", municipalityId)
+        .maybeSingle();
+      if (!m) return null;
+
+      const [
+        { data: memberRows },
+        { data: staffRows },
+        { data: lastLogRows },
+        { data: pendingRows },
+        { count: pendingCount },
+        totalLogs,
+        logsThisMonth,
+      ] = await Promise.all([
+        db.from("users").select("id, name, role_label, term, started_at, status").eq("municipality_id", municipalityId).eq("role", "member").order("started_at").limit(1000),
+        db.from("users").select("id, name, title, department, role, email").eq("municipality_id", municipalityId).in("role", ["manager", "admin"]).order("created_at").limit(1000),
+        db.from("activity_logs").select("occurred_at").eq("municipality_id", municipalityId).order("occurred_at", { ascending: false }).limit(1),
+        db.from("approvals").select("*").eq("municipality_id", municipalityId).eq("status", "pending").order("created_at").limit(5),
+        db.from("approvals").select("*", { count: "exact", head: true }).eq("municipality_id", municipalityId).eq("status", "pending"),
+        countLogsTotal(db, municipalityId),
+        countLogsInMonth(db, ymOffset(0), municipalityId),
+      ]);
+
+      const members = (memberRows ?? []).map((r) => ({
+        id: r.id as string,
+        name: r.name as string,
+        role: (r.role_label as string) ?? "",
+        term: (r.term as string) ?? "",
+        startedAt: (r.started_at as string) ?? "未設定",
+        status: (r.status as string) ?? "active",
+      }));
+      const staff = (staffRows ?? []).map((r) => ({
+        id: r.id as string,
+        name: r.name as string,
+        title: (r.title as string) ?? "職員",
+        dept: (r.department as string) ?? "",
+        role: r.role as "manager" | "admin",
+        email: (r.email as string) ?? "",
+      }));
+
+      const lastLogs = (lastLogRows ?? []) as { occurred_at: string }[];
+      const lastActivityDate = lastLogs.length ? lastLogs[0].occurred_at.slice(0, 10) : null;
+
+      const recent = (pendingRows ?? []).map((r) => mapApproval({
+        ...r,
+        citations: JSON.stringify(r.citations ?? []),
+        detail: JSON.stringify(r.detail ?? {}),
+        steps: JSON.stringify(r.steps ?? []),
+      }));
+
+      return {
+        municipality: { id: m.id, name: m.name, prefecture: m.prefecture, annualBudget: m.annual_budget },
+        members,
+        staff,
+        activity: { totalLogs, logsThisMonth, lastActivityDate },
+        pendingApprovals: { total: pendingCount ?? 0, recent },
+      };
+    },
+
+    async listUsers(opts): Promise<SuperUserRow[]> {
+      const db = supabase();
+      let query = db.from("users").select("id, name, email, role, status, organization_type, municipality_id, created_at").order("created_at").limit(1000);
+      if (opts?.municipalityId) query = query.eq("municipality_id", opts.municipalityId);
+      if (opts?.role) query = query.eq("role", opts.role);
+      if (opts?.status) query = query.eq("status", opts.status);
+      const [{ data: users }, { data: munis }] = await Promise.all([
+        query,
+        db.from("municipalities").select("id, name").limit(1000),
+      ]);
+      const muniName = new Map<string, string>();
+      for (const m of (munis ?? []) as { id: string; name: string }[]) muniName.set(m.id, m.name);
+
+      const userRows = (users ?? []) as Record<string, unknown>[];
+      // 各ユーザーの活動記録数は head count で正確に取得(全件取得は 1000 行上限で頭打ちになるため)。
+      const logCounts = await Promise.all(
+        userRows.map(async (u) => {
+          const { count } = await db
+            .from("activity_logs")
+            .select("*", { count: "exact", head: true })
+            .eq("user_id", u.id as string);
+          return count ?? 0;
+        }),
+      );
+
+      return userRows.map((u, i) => {
+        const mid = (u.municipality_id as string | null) ?? null;
+        return {
+          id: u.id as string,
+          name: u.name as string,
+          email: (u.email as string) ?? "",
+          role: u.role as string,
+          status: (u.status as string) ?? "active",
+          organizationType: (u.organization_type as string) ?? "",
+          municipalityId: mid,
+          municipalityName: mid ? muniName.get(mid) ?? "" : "",
+          activityLogs: logCounts[i],
+          createdAt: (u.created_at as string) ?? "",
+        };
+      });
+    },
+
+    async updateUser(id, patch): Promise<SuperUserRow | undefined> {
+      const upd: Record<string, unknown> = {};
+      if (patch.role !== undefined) upd.role = patch.role;
+      if (patch.status !== undefined) upd.status = patch.status;
+      if (patch.municipalityId !== undefined) upd.municipality_id = patch.municipalityId;
+      if (Object.keys(upd).length) {
+        await supabase().from("users").update(upd).eq("id", id);
+      }
+      return (await supabaseRepos.super.listUsers()).find((u) => u.id === id);
+    },
+
+    async getContract(municipalityId): Promise<ContractDTO | null> {
+      const { data } = await supabase()
+        .from("municipalities")
+        .select("id, name, annual_budget, contract_plan, contract_status, contract_start, contract_end")
+        .eq("id", municipalityId)
+        .maybeSingle();
+      if (!data) return null;
+      return buildContract(data);
+    },
+
+    async updateContract(municipalityId, patch): Promise<ContractDTO | null> {
+      const db = supabase();
+      const { data: cur } = await db
+        .from("municipalities")
+        .select("id")
+        .eq("id", municipalityId)
+        .maybeSingle();
+      if (!cur) return null;
+      const upd: Record<string, unknown> = {};
+      if (patch.plan !== undefined) upd.contract_plan = patch.plan;
+      if (patch.contractStatus !== undefined) upd.contract_status = patch.contractStatus;
+      if (patch.contractStart !== undefined) upd.contract_start = patch.contractStart;
+      if (patch.contractEnd !== undefined) upd.contract_end = patch.contractEnd;
+      if (patch.annualBudget !== undefined) upd.annual_budget = patch.annualBudget;
+      const { data } = await db
+        .from("municipalities")
+        .update(upd)
+        .eq("id", municipalityId)
+        .select("id, name, annual_budget, contract_plan, contract_status, contract_start, contract_end")
+        .single();
+      return buildContract(data!);
+    },
+
+    async analytics(): Promise<SuperAnalytics> {
+      const db = supabase();
+      const thisYm = ymOffset(0);
+      const prevYm = ymOffset(-1);
+
+      // 一覧表示に必要な municipalities 行のみ取得。集計は全て count クエリで正確に出す。
+      const [
+        { data: munis },
+        totalMembers,
+        totalLogs,
+        logsThisMonth,
+        logsPrevMonth,
+        trendCounts,
+      ] = await Promise.all([
+        db.from("municipalities").select("id, name, prefecture").order("prefecture").order("name").limit(1000),
+        countUsers(db, { role: "member", status: "active" }),
+        countLogsTotal(db),
+        countLogsInMonth(db, thisYm),
+        countLogsInMonth(db, prevYm),
+        Promise.all(
+          Array.from({ length: 6 }, (_, i) => ymOffset(-(5 - i))).map((ym) => countLogsInMonth(db, ym)),
+        ),
+      ]);
+
+      const muniRows = (munis ?? []) as { id: string; name: string; prefecture: string }[];
+
+      const trend = Array.from({ length: 6 }, (_, i) => ({
+        ym: ymOffset(-(5 - i)),
+        logs: trendCounts[i],
+      }));
+
+      const byMunicipality = await Promise.all(
+        muniRows.map(async (m) => {
+          const [members, activityLogs, mThisMonth] = await Promise.all([
+            countUsers(db, { role: "member", status: "active", municipalityId: m.id }),
+            countLogsTotal(db, m.id),
+            countLogsInMonth(db, thisYm, m.id),
+          ]);
+          return {
+            id: m.id,
+            name: m.name,
+            prefecture: m.prefecture,
+            members,
+            activityLogs,
+            logsThisMonth: mThisMonth,
+            logsPerMemberPerWeek: Math.round((mThisMonth / Math.max(members, 1) / 4.345) * 10) / 10,
+          };
+        }),
+      );
+
+      return {
+        generatedAt: new Date().toISOString(),
+        totals: {
+          members: totalMembers,
+          activityLogs: totalLogs,
+          municipalities: muniRows.length,
+          logsThisMonth,
+          logsPrevMonth,
+          logsPerMemberPerWeek: Math.round((logsThisMonth / Math.max(totalMembers, 1) / 4.345) * 10) / 10,
+        },
+        trend,
+        byMunicipality,
+      };
+    },
   },
 
   members: {
@@ -157,7 +483,10 @@ export const supabaseRepos: Repos = {
       if (m.id) {
         const { data } = await supabase()
           .from("users")
-          .update({ name: m.name, role_label: m.role, started_at: m.startedAt ?? null, term: m.term ?? "1 年目" })
+          .update({
+            name: m.name, role_label: m.role, started_at: m.startedAt ?? null, term: m.term ?? "1 年目",
+            host_organization_id: m.hostOrganizationId ?? null, approval_route_id: m.approvalRouteId ?? null,
+          })
           .eq("id", m.id)
           .select()
           .single();
@@ -168,6 +497,8 @@ export const supabaseRepos: Repos = {
         .insert({
           municipality_id: MUNI,
           organization_type: "member",
+          host_organization_id: m.hostOrganizationId ?? null,
+          approval_route_id: m.approvalRouteId ?? null,
           role: "member",
           name: m.name,
           role_label: m.role,
@@ -177,6 +508,8 @@ export const supabaseRepos: Repos = {
         })
         .select()
         .single();
+      // 新規隊員に当年度の費目別予算枠(既定配分)を自動生成
+      if (data?.id) await seedDefaultBudgetSb(data.id);
       return mapMember(data!);
     },
     async retire(id) {
@@ -311,6 +644,16 @@ export const supabaseRepos: Repos = {
           })),
       }));
     },
+    async getForUser(userId) {
+      const { data: u } = await supabase()
+        .from("users")
+        .select("approval_route_id")
+        .eq("id", userId)
+        .single();
+      if (!u?.approval_route_id) return null;
+      const list = await supabaseRepos.routes.list();
+      return list.find((r) => r.id === u.approval_route_id) ?? null;
+    },
     async create(r) {
       const { data: route } = await supabase()
         .from("approval_routes")
@@ -333,9 +676,76 @@ export const supabaseRepos: Repos = {
       const list = await supabaseRepos.routes.list();
       return list.find((x) => x.id === route.id);
     },
+    async upsert(r) {
+      if (!r.id) return supabaseRepos.routes.create(r);
+      await supabase()
+        .from("approval_routes")
+        .update({ name: r.name, kind: r.kind, is_default: r.isDefault ?? false })
+        .eq("id", r.id);
+      await supabase().from("approval_route_steps").delete().eq("route_id", r.id); // 全置換
+      if (r.steps?.length) {
+        await supabase().from("approval_route_steps").insert(
+          r.steps.map((s) => ({
+            route_id: r.id,
+            step_no: s.stepNo,
+            approver_type: s.approverType,
+            approver_label: s.approverLabel,
+            department: s.department ?? null,
+            host_organization_id: s.hostOrganizationId ?? null,
+          }))
+        );
+      }
+      const list = await supabaseRepos.routes.list();
+      return list.find((x) => x.id === r.id);
+    },
     async remove(id) {
       await supabase().from("approval_route_steps").delete().eq("route_id", id);
       await supabase().from("approval_routes").delete().eq("id", id);
+    },
+  },
+
+  budgets: {
+    async summaryByUser(userId, fiscalYear) {
+      const { data: allocs } = await supabase()
+        .from("budget_allocations")
+        .select("category, amount_limit")
+        .eq("user_id", userId)
+        .eq("fiscal_year", fiscalYear);
+      const limitMap: Record<string, number> = {};
+      for (const a of allocs ?? []) limitMap[a.category as string] = a.amount_limit as number;
+      const [start, end] = fyRange(fiscalYear);
+      const { data: exps } = await supabase()
+        .from("expenses")
+        .select("category, amount_requested, status, created_at")
+        .eq("user_id", userId)
+        .neq("status", "差戻し")
+        .gte("created_at", start)
+        .lt("created_at", end);
+      const usedMap: Record<string, number> = {};
+      for (const e of exps ?? []) {
+        const cat = (e.category as string) ?? "活動費";
+        usedMap[cat] = (usedMap[cat] ?? 0) + ((e.amount_requested as number) ?? 0);
+      }
+      return BUDGET_CATEGORIES.map((category): BudgetLineDTO => {
+        const amountLimit = limitMap[category] ?? 0;
+        const used = usedMap[category] ?? 0;
+        return { category, amountLimit, used, remaining: amountLimit - used };
+      });
+    },
+    async upsert(userId, fiscalYear, allocations) {
+      await supabase()
+        .from("budget_allocations")
+        .upsert(
+          allocations.map((a) => ({
+            municipality_id: MUNI,
+            user_id: userId,
+            fiscal_year: fiscalYear,
+            category: a.category,
+            amount_limit: a.amountLimit,
+          })),
+          { onConflict: "user_id,fiscal_year,category" }
+        );
+      return supabaseRepos.budgets.summaryByUser(userId, fiscalYear);
     },
   },
 
@@ -522,7 +932,8 @@ export const supabaseRepos: Repos = {
           status: b.status ?? "申請中",
           ai_note: "AI 判定材料は申請後に表示されます。",
           citations: [],
-          has_receipt: false,
+          has_receipt: !!b.receiptKey,
+          receipt_key: b.receiptKey ?? null,
         })
         .select()
         .single();
@@ -543,7 +954,8 @@ export const supabaseRepos: Repos = {
           status: b.status ?? "申請中",
           ai_note: "日報経由の経費(ADR-014)。AI 判定材料は申請後に表示されます。",
           citations: [],
-          has_receipt: b.hasReceipt,
+          has_receipt: b.hasReceipt || !!b.receiptKey,
+          receipt_key: b.receiptKey ?? null,
         })
         .select()
         .single();
@@ -554,6 +966,7 @@ export const supabaseRepos: Repos = {
       if (b.status !== undefined) patch.status = b.status;
       if (b.amountSettled !== undefined) patch.amount_settled = b.amountSettled;
       if (b.hasReceipt !== undefined) patch.has_receipt = b.hasReceipt;
+      if (b.receiptKey !== undefined) patch.receipt_key = b.receiptKey;
       if (b.settleNote !== undefined) patch.settle_note = b.settleNote;
       const { data } = await supabase()
         .from("expenses")
@@ -573,6 +986,26 @@ export const supabaseRepos: Repos = {
         .eq("user_id", userId)
         .order("year_month", { ascending: false });
       return (data ?? []).map(mapReport);
+    },
+    async submit(b) {
+      const { data: existing } = await supabase()
+        .from("monthly_reports")
+        .select("id")
+        .eq("user_id", b.userId)
+        .eq("year_month", b.ym)
+        .maybeSingle();
+      if (existing) {
+        const patch: Record<string, unknown> = { status: "submitted", status_label: "提出済", summary: b.markdown };
+        if (b.plan !== undefined) patch.plan_next = b.plan;
+        const { data } = await supabase().from("monthly_reports").update(patch).eq("id", existing.id).select().single();
+        return mapReport(data!);
+      }
+      const { data } = await supabase()
+        .from("monthly_reports")
+        .insert({ user_id: b.userId, municipality_id: MUNI, year_month: b.ym, status: "submitted", status_label: "提出済", summary: b.markdown, plan_next: b.plan ?? null })
+        .select()
+        .single();
+      return mapReport(data!);
     },
     async markApproved(id) {
       await supabase()

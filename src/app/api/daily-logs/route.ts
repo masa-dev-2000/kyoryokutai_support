@@ -1,6 +1,6 @@
 import { ok, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
-import { expandRoute } from "@/lib/workflow";
+import { expandRoute, expandAssignedRoute } from "@/lib/workflow";
 import { requireAppUser } from "@/lib/api/auth";
 
 export const runtime = "nodejs";
@@ -23,6 +23,7 @@ type InlineExpense = {
   amount: number;
   purpose: string;
   hasReceipt?: boolean;
+  receiptKey?: string;
 };
 
 type CreateBody = {
@@ -80,6 +81,8 @@ export async function POST(req: Request) {
 
   // 経費明細を登録
   const memberName = (await repos.users.nameOf(userId)) ?? "隊員";
+  // ADR-012: 隊員に割り当てられたルートを優先(委託型=団体ステップ含む)。未割当は既定。
+  const assigned = await repos.routes.getForUser(userId);
   for (let i = 0; i < expenses.length; i++) {
     const e = expenses[i];
     const activityLogId = createdActivities[0]?.id;
@@ -91,10 +94,12 @@ export async function POST(req: Request) {
       title: e.title?.trim() || e.purpose.slice(0, 15),
       amount: e.amount,
       purpose: e.purpose.trim(),
-      hasReceipt: !!e.hasReceipt,
+      hasReceipt: !!e.hasReceipt || !!e.receiptKey,
+      receiptKey: e.receiptKey,
       status: "申請中",
     });
-    const { routeName, steps } = expandRoute("経費", "担当課");
+    const { routeName, steps } =
+      assigned && assigned.steps.length ? expandAssignedRoute(assigned) : expandRoute("経費", "担当課");
     await repos.approvals.enqueue({
       muni: MUNI,
       kind: "経費",
@@ -106,6 +111,7 @@ export async function POST(req: Request) {
         kind: "経費",
         purpose: exp.purpose,
         amount: exp.amount,
+        category: exp.category,
         payee: "",
         paidDate: date,
         receipt: e.hasReceipt,

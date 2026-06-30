@@ -5,7 +5,7 @@ import { requireAppUser } from "@/lib/api/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type PatchBody = { status?: string; amountSettled?: number; hasReceipt?: boolean; settleNote?: string };
+type PatchBody = { status?: string; amountSettled?: number; hasReceipt?: boolean; settleNote?: string; receiptKey?: string };
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const sess = await requireAppUser();

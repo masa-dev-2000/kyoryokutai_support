@@ -10,6 +10,11 @@ CREATE TABLE IF NOT EXISTS municipalities (
   name TEXT NOT NULL,
   prefecture TEXT NOT NULL,
   annual_budget INTEGER NOT NULL DEFAULT 2000000,
+  contract_plan TEXT,
+  contract_status TEXT,
+  contract_start TEXT,
+  contract_end TEXT,
+  settings TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -48,6 +53,19 @@ CREATE TABLE IF NOT EXISTS assignments (
   staff_id TEXT NOT NULL,
   member_id TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- 費目別予算枠(隊員 × 年度 × 費目)。活動費 200 万を費目別に配分し、流用不可の早期検知に使う。
+CREATE TABLE IF NOT EXISTS budget_allocations (
+  id TEXT PRIMARY KEY,
+  municipality_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  fiscal_year TEXT NOT NULL,
+  category TEXT NOT NULL,
+  amount_limit INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(user_id, fiscal_year, category)
 );
 
 
@@ -119,6 +137,7 @@ CREATE TABLE IF NOT EXISTS expenses (
   payee TEXT,
   paid_date TEXT,
   has_receipt INTEGER NOT NULL DEFAULT 0,
+  receipt_key TEXT,                             -- Storage 上の領収書キー(/api/files で配信)
   settle_note TEXT,
   ai_note TEXT,
   citations TEXT,                               -- JSON [{source,quote}]

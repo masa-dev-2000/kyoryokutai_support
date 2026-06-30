@@ -12,10 +12,73 @@ import {
   mapVision,
   mapMonthlyCycle,
 } from "@/lib/api/mappers";
-import type { Repos, RouteDTO, HostOrgDTO, LogForAI, ApprovalRaw, GuidelineRow, RouteStepDTO, DailyLogDTO } from "./types";
+import type {
+  Repos,
+  RouteDTO,
+  HostOrgDTO,
+  LogForAI,
+  ApprovalRaw,
+  GuidelineRow,
+  RouteStepDTO,
+  DailyLogDTO,
+  SuperMuniDetail,
+  SuperUserRow,
+  ContractDTO,
+  ContractPatch,
+  SuperAnalytics,
+  BudgetLineDTO,
+} from "./types";
+import { BUDGET_CATEGORIES, DEFAULT_ALLOCATION, currentFiscalYear } from "@/lib/budget";
 
 // SQLite 実装(ローカル / Vercel デモ)。SQL はここに集約し、Route からは追放する。
 const MUNI = "muni_shinonsen";
+
+// 当月 / N ヶ月前の 'YYYY-MM' を返す(ローカル時刻基準)
+function ymOffset(offset: number): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + offset);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// municipalities の contract_* 専用カラム → ContractDTO に合成
+function buildContract(row: {
+  id: string;
+  name: string;
+  annual_budget: number;
+  contract_plan: string | null;
+  contract_status: string | null;
+  contract_start: string | null;
+  contract_end: string | null;
+}): ContractDTO {
+  return {
+    municipalityId: row.id,
+    name: row.name,
+    plan: (row.contract_plan as ContractDTO["plan"]) ?? "year1",
+    contractStatus: (row.contract_status as ContractDTO["contractStatus"]) ?? "trial",
+    annualBudget: row.annual_budget,
+    contractStart: row.contract_start ?? undefined,
+    contractEnd: row.contract_end ?? undefined,
+  };
+}
+
+// 年度 "YYYY"(4 月始まり)→ [開始日, 翌年度開始日)。経費の created_at(YYYY-MM-DD…)を辞書順比較で絞る。
+function fyRange(fy: string): [string, string] {
+  const y = Number(fy);
+  return [`${y}-04-01`, `${y + 1}-04-01`];
+}
+
+// 新規隊員に当年度の費目別予算枠(既定配分)を投入(既存があればスキップ)。
+function seedDefaultBudget(userId: string) {
+  const fy = currentFiscalYear();
+  for (const category of BUDGET_CATEGORIES) {
+    const exists = get("SELECT id FROM budget_allocations WHERE user_id=? AND fiscal_year=? AND category=?", [userId, fy, category]);
+    if (exists) continue;
+    run("INSERT INTO budget_allocations (id,municipality_id,user_id,fiscal_year,category,amount_limit) VALUES (?,?,?,?,?,?)", [
+      genId("bud"), MUNI, userId, fy, category, DEFAULT_ALLOCATION[category] ?? 0,
+    ]);
+  }
+}
 
 function loadRoutes(): RouteDTO[] {
   const routes = all<Record<string, unknown>>(
@@ -40,7 +103,6 @@ function loadRoutes(): RouteDTO[] {
     })),
   }));
 }
-
 
 function mapHost(r: Record<string, unknown>): HostOrgDTO {
   return {
@@ -116,6 +178,196 @@ export const sqliteRepos: Repos = {
       );
       return { token, expiresAt };
     },
+
+    async municipalityDetail(municipalityId): Promise<SuperMuniDetail | null> {
+      const m = get<{ id: string; name: string; prefecture: string; annual_budget: number }>(
+        "SELECT id, name, prefecture, annual_budget FROM municipalities WHERE id=?",
+        [municipalityId]
+      );
+      if (!m) return null;
+
+      const members = all<Record<string, unknown>>(
+        "SELECT id, name, role_label, term, started_at, status FROM users WHERE municipality_id=? AND role='member' ORDER BY started_at",
+        [municipalityId]
+      ).map((r) => ({
+        id: r.id as string,
+        name: r.name as string,
+        role: (r.role_label as string) ?? "",
+        term: (r.term as string) ?? "",
+        startedAt: (r.started_at as string) ?? "未設定",
+        status: (r.status as string) ?? "active",
+      }));
+
+      const staff = all<Record<string, unknown>>(
+        "SELECT id, name, title, department, role, email FROM users WHERE municipality_id=? AND role IN ('manager','admin') ORDER BY created_at",
+        [municipalityId]
+      ).map((r) => ({
+        id: r.id as string,
+        name: r.name as string,
+        title: (r.title as string) ?? "職員",
+        dept: (r.department as string) ?? "",
+        role: r.role as "manager" | "admin",
+        email: (r.email as string) ?? "",
+      }));
+
+      const totalLogs = get<{ c: number }>("SELECT COUNT(*) c FROM activity_logs WHERE municipality_id=?", [municipalityId])?.c ?? 0;
+      const logsThisMonth =
+        get<{ c: number }>("SELECT COUNT(*) c FROM activity_logs WHERE municipality_id=? AND log_date LIKE ?", [municipalityId, `${ymOffset(0)}%`])?.c ?? 0;
+      const lastActivityDate =
+        get<{ d: string }>("SELECT MAX(log_date) d FROM activity_logs WHERE municipality_id=?", [municipalityId])?.d ?? null;
+
+      const pendingRows = all<Record<string, unknown>>(
+        "SELECT * FROM approvals WHERE municipality_id=? AND status='pending' ORDER BY created_at",
+        [municipalityId]
+      );
+      const recent = pendingRows.slice(0, 5).map(mapApproval);
+
+      return {
+        municipality: { id: m.id, name: m.name, prefecture: m.prefecture, annualBudget: m.annual_budget },
+        members,
+        staff,
+        activity: { totalLogs, logsThisMonth, lastActivityDate },
+        pendingApprovals: { total: pendingRows.length, recent },
+      };
+    },
+
+    async listUsers(opts): Promise<SuperUserRow[]> {
+      const conds: string[] = [];
+      const args: unknown[] = [];
+      if (opts?.municipalityId) { conds.push("u.municipality_id=?"); args.push(opts.municipalityId); }
+      if (opts?.role) { conds.push("u.role=?"); args.push(opts.role); }
+      if (opts?.status) { conds.push("u.status=?"); args.push(opts.status); }
+      const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+      const rows = all<Record<string, unknown>>(
+        `SELECT u.id, u.name, u.email, u.role, u.status, u.organization_type, u.municipality_id,
+                m.name AS muni_name, u.created_at,
+                (SELECT COUNT(*) FROM activity_logs a WHERE a.user_id=u.id) AS log_count
+         FROM users u LEFT JOIN municipalities m ON m.id=u.municipality_id
+         ${where} ORDER BY u.created_at`,
+        args
+      );
+      return rows.map((r) => ({
+        id: r.id as string,
+        name: r.name as string,
+        email: (r.email as string) ?? "",
+        role: r.role as string,
+        status: (r.status as string) ?? "active",
+        organizationType: (r.organization_type as string) ?? "",
+        municipalityId: (r.municipality_id as string | null) ?? null,
+        municipalityName: (r.muni_name as string | null) ?? "",
+        activityLogs: (r.log_count as number) ?? 0,
+        createdAt: (r.created_at as string) ?? "",
+      }));
+    },
+
+    async updateUser(id, patch): Promise<SuperUserRow | undefined> {
+      run(
+        `UPDATE users SET
+           role=COALESCE(?,role),
+           status=COALESCE(?,status),
+           municipality_id=COALESCE(?,municipality_id)
+         WHERE id=?`,
+        [patch.role ?? null, patch.status ?? null, patch.municipalityId ?? null, id]
+      );
+      return (await sqliteRepos.super.listUsers()).find((u) => u.id === id);
+    },
+
+    async getContract(municipalityId): Promise<ContractDTO | null> {
+      const m = get<{
+        id: string; name: string; annual_budget: number;
+        contract_plan: string | null; contract_status: string | null;
+        contract_start: string | null; contract_end: string | null;
+      }>(
+        "SELECT id, name, annual_budget, contract_plan, contract_status, contract_start, contract_end FROM municipalities WHERE id=?",
+        [municipalityId]
+      );
+      if (!m) return null;
+      return buildContract(m);
+    },
+
+    async updateContract(municipalityId, patch): Promise<ContractDTO | null> {
+      const exists = get<{ id: string }>("SELECT id FROM municipalities WHERE id=?", [municipalityId]);
+      if (!exists) return null;
+      run(
+        `UPDATE municipalities SET
+           contract_plan=COALESCE(?,contract_plan),
+           contract_status=COALESCE(?,contract_status),
+           contract_start=COALESCE(?,contract_start),
+           contract_end=COALESCE(?,contract_end),
+           annual_budget=COALESCE(?,annual_budget)
+         WHERE id=?`,
+        [
+          patch.plan ?? null,
+          patch.contractStatus ?? null,
+          patch.contractStart ?? null,
+          patch.contractEnd ?? null,
+          patch.annualBudget ?? null,
+          municipalityId,
+        ]
+      );
+      const updated = get<{
+        id: string; name: string; annual_budget: number;
+        contract_plan: string | null; contract_status: string | null;
+        contract_start: string | null; contract_end: string | null;
+      }>(
+        "SELECT id, name, annual_budget, contract_plan, contract_status, contract_start, contract_end FROM municipalities WHERE id=?",
+        [municipalityId]
+      )!;
+      return buildContract(updated);
+    },
+
+    async analytics(): Promise<SuperAnalytics> {
+      const munis = all<{ id: string; name: string; prefecture: string }>(
+        "SELECT id, name, prefecture FROM municipalities ORDER BY prefecture, name"
+      );
+      const totalMembers = get<{ c: number }>("SELECT COUNT(*) c FROM users WHERE role='member' AND status='active'")?.c ?? 0;
+      const totalLogs = get<{ c: number }>("SELECT COUNT(*) c FROM activity_logs")?.c ?? 0;
+      const thisYm = ymOffset(0);
+      const prevYm = ymOffset(-1);
+      const logsThisMonth = get<{ c: number }>("SELECT COUNT(*) c FROM activity_logs WHERE log_date LIKE ?", [`${thisYm}%`])?.c ?? 0;
+      const logsPrevMonth = get<{ c: number }>("SELECT COUNT(*) c FROM activity_logs WHERE log_date LIKE ?", [`${prevYm}%`])?.c ?? 0;
+
+      const trend = Array.from({ length: 6 }, (_, i) => {
+        const ym = ymOffset(-(5 - i));
+        const logs = get<{ c: number }>("SELECT COUNT(*) c FROM activity_logs WHERE log_date LIKE ?", [`${ym}%`])?.c ?? 0;
+        return { ym, logs };
+      });
+
+      const byMunicipality = munis.map((m) => {
+        const activityLogs = get<{ c: number }>("SELECT COUNT(*) c FROM activity_logs WHERE municipality_id=?", [m.id])?.c ?? 0;
+        const members = get<{ c: number }>(
+          "SELECT COUNT(*) c FROM users WHERE municipality_id=? AND role='member' AND status='active'",
+          [m.id]
+        )?.c ?? 0;
+        const mThisMonth = get<{ c: number }>(
+          "SELECT COUNT(*) c FROM activity_logs WHERE municipality_id=? AND log_date LIKE ?",
+          [m.id, `${thisYm}%`]
+        )?.c ?? 0;
+        return {
+          id: m.id,
+          name: m.name,
+          prefecture: m.prefecture,
+          members,
+          activityLogs,
+          logsThisMonth: mThisMonth,
+          logsPerMemberPerWeek: Math.round((mThisMonth / Math.max(members, 1) / 4.345) * 10) / 10,
+        };
+      });
+
+      return {
+        generatedAt: new Date().toISOString(),
+        totals: {
+          members: totalMembers,
+          activityLogs: totalLogs,
+          municipalities: munis.length,
+          logsThisMonth,
+          logsPrevMonth,
+          logsPerMemberPerWeek: Math.round((logsThisMonth / Math.max(totalMembers, 1) / 4.345) * 10) / 10,
+        },
+        trend,
+        byMunicipality,
+      };
+    },
   },
 
   members: {
@@ -125,17 +377,19 @@ export const sqliteRepos: Repos = {
     async upsert(m) {
       const existing = m.id ? get("SELECT id FROM users WHERE id=?", [m.id]) : undefined;
       if (existing) {
-        run("UPDATE users SET name=?, role_label=?, started_at=?, term=? WHERE id=?", [
-          m.name, m.role, m.startedAt ?? "未設定", m.term ?? "1 年目", m.id,
+        run("UPDATE users SET name=?, role_label=?, started_at=?, term=?, host_organization_id=?, approval_route_id=? WHERE id=?", [
+          m.name, m.role, m.startedAt ?? "未設定", m.term ?? "1 年目", m.hostOrganizationId ?? null, m.approvalRouteId ?? null, m.id,
         ]);
         return mapMember(all("SELECT * FROM users WHERE id=?", [m.id])[0]);
       }
       const id = m.id ?? genId("m");
       run(
-        `INSERT INTO users (id,municipality_id,organization_type,role,name,email,role_label,term,started_at,status)
-         VALUES (?,?,?,?,?,?,?,?,?,?)`,
-        [id, MUNI, "member", "member", m.name, `${id}@member.example.jp`, m.role, m.term ?? "1 年目", m.startedAt ?? "未設定", "active"]
+        `INSERT INTO users (id,municipality_id,host_organization_id,organization_type,role,name,email,role_label,term,started_at,status,approval_route_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [id, MUNI, m.hostOrganizationId ?? null, "member", "member", m.name, `${id}@member.example.jp`, m.role, m.term ?? "1 年目", m.startedAt ?? "未設定", "active", m.approvalRouteId ?? null]
       );
+      // 新規隊員に当年度の費目別予算枠(既定配分)を自動生成
+      seedDefaultBudget(id);
       return mapMember(all("SELECT * FROM users WHERE id=?", [id])[0]);
     },
     async retire(id) {
@@ -221,6 +475,11 @@ export const sqliteRepos: Repos = {
     async list() {
       return loadRoutes();
     },
+    async getForUser(userId) {
+      const u = get<{ approval_route_id?: string }>("SELECT approval_route_id FROM users WHERE id=?", [userId]);
+      if (!u?.approval_route_id) return null;
+      return loadRoutes().find((r) => r.id === u.approval_route_id) ?? null;
+    },
     async create(r) {
       const id = genId("rt");
       run("INSERT INTO approval_routes (id,municipality_id,name,kind,is_default) VALUES (?,?,?,?,?)", [
@@ -235,9 +494,67 @@ export const sqliteRepos: Repos = {
       }
       return loadRoutes().find((x) => x.id === id);
     },
+    async upsert(r) {
+      if (r.id && get("SELECT id FROM approval_routes WHERE id=?", [r.id])) {
+        run("UPDATE approval_routes SET name=?, kind=?, is_default=? WHERE id=?", [
+          r.name, r.kind, r.isDefault ? 1 : 0, r.id,
+        ]);
+        run("DELETE FROM approval_route_steps WHERE route_id=?", [r.id]); // 全置換
+        for (const s of r.steps ?? []) {
+          run(
+            `INSERT INTO approval_route_steps (id,route_id,step_no,approver_type,approver_label,department,host_organization_id)
+             VALUES (?,?,?,?,?,?,?)`,
+            [genId("st"), r.id, s.stepNo, s.approverType, s.approverLabel, s.department ?? null, s.hostOrganizationId ?? null]
+          );
+        }
+        return loadRoutes().find((x) => x.id === r.id);
+      }
+      return sqliteRepos.routes.create(r);
+    },
     async remove(id) {
       run("DELETE FROM approval_route_steps WHERE route_id=?", [id]);
       run("DELETE FROM approval_routes WHERE id=?", [id]);
+    },
+  },
+
+  budgets: {
+    async summaryByUser(userId, fiscalYear) {
+      const allocs = all<{ category: string; amount_limit: number }>(
+        "SELECT category, amount_limit FROM budget_allocations WHERE user_id=? AND fiscal_year=?",
+        [userId, fiscalYear]
+      );
+      const limitMap: Record<string, number> = {};
+      for (const a of allocs) limitMap[a.category] = a.amount_limit;
+      // 使用額 = committed(差戻し以外)を費目別に集計、当年度のみ
+      const [start, end] = fyRange(fiscalYear);
+      const usedRows = all<{ category: string; used: number }>(
+        `SELECT category, COALESCE(SUM(amount_requested),0) used FROM expenses
+         WHERE user_id=? AND status != '差戻し' AND created_at >= ? AND created_at < ? GROUP BY category`,
+        [userId, start, end]
+      );
+      const usedMap: Record<string, number> = {};
+      for (const r of usedRows) usedMap[r.category] = r.used;
+      return BUDGET_CATEGORIES.map((category): BudgetLineDTO => {
+        const amountLimit = limitMap[category] ?? 0;
+        const used = usedMap[category] ?? 0;
+        return { category, amountLimit, used, remaining: amountLimit - used };
+      });
+    },
+    async upsert(userId, fiscalYear, allocations) {
+      for (const a of allocations) {
+        const existing = get<{ id: string }>(
+          "SELECT id FROM budget_allocations WHERE user_id=? AND fiscal_year=? AND category=?",
+          [userId, fiscalYear, a.category]
+        );
+        if (existing) {
+          run("UPDATE budget_allocations SET amount_limit=?, updated_at=datetime('now') WHERE id=?", [a.amountLimit, existing.id]);
+        } else {
+          run("INSERT INTO budget_allocations (id,municipality_id,user_id,fiscal_year,category,amount_limit) VALUES (?,?,?,?,?,?)", [
+            genId("bud"), MUNI, userId, fiscalYear, a.category, a.amountLimit,
+          ]);
+        }
+      }
+      return sqliteRepos.budgets.summaryByUser(userId, fiscalYear);
     },
   },
 
@@ -322,9 +639,9 @@ export const sqliteRepos: Repos = {
     async create(b) {
       const id = genId("exp");
       run(
-        `INSERT INTO expenses (id,user_id,municipality_id,expense_kind,category,daily_log_id,title,amount_requested,purpose,status,ai_note,citations,has_receipt,created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, b.userId, MUNI, "single", b.category ?? "活動費", b.dailyLogId ?? null, b.title, b.amount, b.purpose, b.status ?? "申請中", "AI 判定材料は申請後に表示されます。", JSON.stringify([]), 0, new Date().toISOString().slice(0, 10)]
+        `INSERT INTO expenses (id,user_id,municipality_id,expense_kind,category,daily_log_id,title,amount_requested,purpose,status,ai_note,citations,has_receipt,receipt_key,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [id, b.userId, MUNI, "single", b.category ?? "活動費", b.dailyLogId ?? null, b.title, b.amount, b.purpose, b.status ?? "申請中", "AI 判定材料は申請後に表示されます。", JSON.stringify([]), b.receiptKey ? 1 : 0, b.receiptKey ?? null, new Date().toISOString().slice(0, 10)]
       );
       return mapExpense(all("SELECT * FROM expenses WHERE id=?", [id])[0]);
     },
@@ -333,14 +650,14 @@ export const sqliteRepos: Repos = {
       run(
         `INSERT INTO expenses
            (id,user_id,municipality_id,expense_kind,source_activity_log_id,source_receipt_index,
-            title,amount_requested,purpose,status,ai_note,citations,has_receipt,created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            title,amount_requested,purpose,status,ai_note,citations,has_receipt,receipt_key,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
           id, b.userId, MUNI, "single",
           b.activityLogId, b.receiptIndex,
           b.title, b.amount, b.purpose, b.status ?? "申請中",
           "日報経由の経費(ADR-014)。AI 判定材料は申請後に表示されます。",
-          JSON.stringify([]), b.hasReceipt ? 1 : 0,
+          JSON.stringify([]), b.hasReceipt ? 1 : 0, b.receiptKey ?? null,
           new Date().toISOString().slice(0, 10),
         ]
       );
@@ -351,8 +668,8 @@ export const sqliteRepos: Repos = {
       if (!existing) return undefined;
       run(
         `UPDATE expenses SET status=COALESCE(?,status), amount_settled=COALESCE(?,amount_settled),
-           has_receipt=COALESCE(?,has_receipt), settle_note=COALESCE(?,settle_note), updated_at=datetime('now') WHERE id=?`,
-        [b.status ?? null, b.amountSettled ?? null, b.hasReceipt === undefined ? null : b.hasReceipt ? 1 : 0, b.settleNote ?? null, id]
+           has_receipt=COALESCE(?,has_receipt), receipt_key=COALESCE(?,receipt_key), settle_note=COALESCE(?,settle_note), updated_at=datetime('now') WHERE id=?`,
+        [b.status ?? null, b.amountSettled ?? null, b.hasReceipt === undefined ? null : b.hasReceipt ? 1 : 0, b.receiptKey ?? null, b.settleNote ?? null, id]
       );
       return mapExpense(all("SELECT * FROM expenses WHERE id=?", [id])[0]);
     },
@@ -361,6 +678,23 @@ export const sqliteRepos: Repos = {
   monthlyReports: {
     async listByUser(userId) {
       return all("SELECT * FROM monthly_reports WHERE user_id=? ORDER BY year_month DESC", [userId]).map(mapReport);
+    },
+    async submit(b) {
+      const existing = all<{ id: string }>("SELECT id FROM monthly_reports WHERE user_id=? AND year_month=?", [b.userId, b.ym])[0];
+      if (existing) {
+        run(
+          "UPDATE monthly_reports SET status='submitted', status_label='提出済', summary=?, plan_next=COALESCE(?,plan_next), updated_at=datetime('now') WHERE id=?",
+          [b.markdown, b.plan ?? null, existing.id]
+        );
+        return mapReport(all("SELECT * FROM monthly_reports WHERE id=?", [existing.id])[0]);
+      }
+      const id = genId("mr");
+      run(
+        `INSERT INTO monthly_reports (id,user_id,municipality_id,year_month,status,status_label,summary,plan_next)
+         VALUES (?,?,?,?,?,?,?,?)`,
+        [id, b.userId, MUNI, b.ym, "submitted", "提出済", b.markdown, b.plan ?? null]
+      );
+      return mapReport(all("SELECT * FROM monthly_reports WHERE id=?", [id])[0]);
     },
     async markApproved(id) {
       run("UPDATE monthly_reports SET status='approved', status_label='役場承認' WHERE id=?", [id]);

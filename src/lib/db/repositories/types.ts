@@ -44,6 +44,8 @@ export type RouteStepDTO = {
   hostOrganizationId?: string;
 };
 export type RouteDTO = { id: string; name: string; kind: string; isDefault: boolean; steps: RouteStepDTO[] };
+// 費目別予算枠(1隊員 × 年度 × 費目):枠 / 使用(committed) / 残額
+export type BudgetLineDTO = { category: string; amountLimit: number; used: number; remaining: number };
 
 // AI 月報生成プロンプト用の生ログ
 export type LogForAI = {
@@ -82,6 +84,70 @@ export type SuperOverview = {
   totals: { municipalities: number; members: number; managers: number; admins: number; supers: number };
 };
 
+// 自治体ドリルダウン詳細(super)
+export type SuperMuniDetail = {
+  municipality: { id: string; name: string; prefecture: string; annualBudget: number };
+  members: { id: string; name: string; role: string; term: string; startedAt: string; status: string }[];
+  staff: { id: string; name: string; title: string; dept: string; role: "manager" | "admin"; email: string }[];
+  activity: { totalLogs: number; logsThisMonth: number; lastActivityDate: string | null };
+  pendingApprovals: { total: number; recent: ApprovalDTO[] };
+};
+
+// アカウント/ロール管理(super)
+export type SuperUserRow = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  status: string;
+  organizationType: string;
+  municipalityId: string | null;
+  municipalityName: string;
+  activityLogs: number;
+  createdAt: string;
+};
+
+// 契約・課金管理(super)。専用カラム(contract_*)に保存。
+export type ContractDTO = {
+  municipalityId: string;
+  name: string;
+  plan: "year1" | "year2" | "year3";
+  contractStatus: "trial" | "active" | "suspended" | "ended";
+  annualBudget: number;
+  contractStart?: string;
+  contractEnd?: string;
+};
+export type ContractPatch = {
+  plan?: ContractDTO["plan"];
+  contractStatus?: ContractDTO["contractStatus"];
+  annualBudget?: number;
+  contractStart?: string;
+  contractEnd?: string;
+};
+
+// 横断 KPI / 分析(super)
+export type SuperAnalytics = {
+  generatedAt: string;
+  totals: {
+    members: number;
+    activityLogs: number;
+    municipalities: number;
+    logsThisMonth: number;
+    logsPrevMonth: number;
+    logsPerMemberPerWeek: number;
+  };
+  trend: { ym: string; logs: number }[]; // 直近6ヶ月
+  byMunicipality: {
+    id: string;
+    name: string;
+    prefecture: string;
+    members: number;
+    activityLogs: number;
+    logsThisMonth: number;
+    logsPerMemberPerWeek: number;
+  }[];
+};
+
 export interface Repos {
   users: {
     count(): Promise<number>;
@@ -94,10 +160,22 @@ export interface Repos {
     createMunicipality(m: { name: string; prefecture: string; annualBudget?: number }): Promise<{ id: string; name: string; prefecture: string }>;
     /** #65: 指定自治体の admin を pre-provision + 招待トークン発行(url は Route 側で付与) */
     createAdminInvite(a: { municipalityId: string; email: string; name: string; createdBy: string }): Promise<{ token: string; expiresAt: string }>;
+    /** #66: 自治体ドリルダウン詳細(隊員・職員・活動・保留承認) */
+    municipalityDetail(municipalityId: string): Promise<SuperMuniDetail | null>;
+    /** #66: 全自治体横断のユーザー一覧 */
+    listUsers(opts?: { municipalityId?: string; role?: string; status?: string }): Promise<SuperUserRow[]>;
+    /** #66: ユーザーの role/status/所属自治体を更新 */
+    updateUser(id: string, patch: { role?: string; status?: string; municipalityId?: string }): Promise<SuperUserRow | undefined>;
+    /** #66: 契約情報の取得 */
+    getContract(municipalityId: string): Promise<ContractDTO | null>;
+    /** #66: 契約情報の部分更新 */
+    updateContract(municipalityId: string, patch: ContractPatch): Promise<ContractDTO | null>;
+    /** #66: 全国横断 KPI */
+    analytics(): Promise<SuperAnalytics>;
   };
   members: {
     list(): Promise<MemberDTO[]>;
-    upsert(m: { id?: string; name: string; role: string; startedAt?: string; term?: string }): Promise<MemberDTO>;
+    upsert(m: { id?: string; name: string; role: string; startedAt?: string; term?: string; hostOrganizationId?: string | null; approvalRouteId?: string | null }): Promise<MemberDTO>;
     retire(id: string): Promise<void>;
   };
   staff: {
@@ -116,8 +194,14 @@ export interface Repos {
   };
   routes: {
     list(): Promise<RouteDTO[]>;
+    getForUser(userId: string): Promise<RouteDTO | null>;
     create(r: { name: string; kind: string; isDefault?: boolean; steps: RouteStepDTO[] }): Promise<RouteDTO | undefined>;
+    upsert(r: { id?: string; name: string; kind: string; isDefault?: boolean; steps: RouteStepDTO[] }): Promise<RouteDTO | undefined>;
     remove(id: string): Promise<void>;
+  };
+  budgets: {
+    summaryByUser(userId: string, fiscalYear: string): Promise<BudgetLineDTO[]>;
+    upsert(userId: string, fiscalYear: string, allocations: { category: string; amountLimit: number }[]): Promise<BudgetLineDTO[]>;
   };
   topics: {
     list(userId: string, kind?: string): Promise<string[]>;
@@ -153,7 +237,7 @@ export interface Repos {
   };
   expenses: {
     listByUser(userId: string): Promise<ExpenseDTO[]>;
-    create(e: { userId: string; title: string; amount: number; purpose: string; status?: string; category?: string; dailyLogId?: string }): Promise<ExpenseDTO>;
+    create(e: { userId: string; title: string; amount: number; purpose: string; status?: string; category?: string; dailyLogId?: string; receiptKey?: string }): Promise<ExpenseDTO>;
     /** 日報経由(ADR-014 動線①):activity_log と source_receipt_index で紐付け、二重申請防止 */
     createFromLog(e: {
       userId: string;
@@ -164,11 +248,14 @@ export interface Repos {
       purpose: string;
       hasReceipt: boolean;
       status?: string;
+      receiptKey?: string;
     }): Promise<ExpenseDTO>;
-    update(id: string, patch: { status?: string; amountSettled?: number; hasReceipt?: boolean; settleNote?: string }): Promise<ExpenseDTO | undefined>;
+    update(id: string, patch: { status?: string; amountSettled?: number; hasReceipt?: boolean; settleNote?: string; receiptKey?: string }): Promise<ExpenseDTO | undefined>;
   };
   monthlyReports: {
     listByUser(userId: string): Promise<ReportDTO[]>;
+    /** 隊員が月報を役場に提出(同月の下書きがあれば更新、なければ作成)。status=submitted */
+    submit(b: { userId: string; ym: string; markdown: string; plan?: string }): Promise<ReportDTO>;
     markApproved(id: string): Promise<void>;
     /** 活動報告を編集/削除した場合、同月の承認済み月報を「提出済」に差し戻す */
     revertToSubmitted(userId: string, ym: string): Promise<void>;
