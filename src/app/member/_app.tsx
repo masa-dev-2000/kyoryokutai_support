@@ -1681,7 +1681,7 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
           {/* 移動距離 */}
           <div className="flex items-center gap-1.5">
             <span className="text-[13px] text-slate-500">移動</span>
-            <input type="number" step="0.1" min="0" value={distance} onChange={(e) => setDistance(e.target.value)} placeholder="0" className="w-16 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[16px] focus:border-slate-900 focus:outline-none" />
+            <input type="number" step="1" min="0" inputMode="numeric" value={distance} onChange={(e) => setDistance(e.target.value)} placeholder="0" className="w-16 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[16px] focus:border-slate-900 focus:outline-none" />
             <span className="text-[13px] text-slate-500">km</span>
           </div>
 
