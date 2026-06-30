@@ -33,6 +33,12 @@ import { BUDGET_CATEGORIES, DEFAULT_ALLOCATION, currentFiscalYear } from "@/lib/
 // SQLite 実装(ローカル / Vercel デモ)。SQL はここに集約し、Route からは追放する。
 const MUNI = "muni_shinonsen";
 
+// 書込時の municipality_id は固定定数ではなく本人の所属自治体から解決する。
+// (本番では users が想定と別テナントに属することがあり、固定値だと daily_logs 等で FK 違反になる)
+function muniOf(userId: string): string {
+  return get<{ municipality_id: string }>("SELECT municipality_id FROM users WHERE id=?", [userId])?.municipality_id ?? MUNI;
+}
+
 // 当月 / N ヶ月前の 'YYYY-MM' を返す(ローカル時刻基準)
 function ymOffset(offset: number): string {
   const d = new Date();
@@ -120,6 +126,9 @@ export const sqliteRepos: Repos = {
     },
     async nameOf(id) {
       return get<{ name: string }>("SELECT name FROM users WHERE id=?", [id])?.name;
+    },
+    async municipalityOf(id) {
+      return muniOf(id);
     },
     async getProfile(id) {
       const r = get<{ name: string; municipality_id: string; bio?: string; started_at?: string }>(
@@ -625,13 +634,14 @@ export const sqliteRepos: Repos = {
       const date = b.date ?? new Date().toISOString().slice(0, 10);
       const time = b.time ?? new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
       // ADR-021: 活動作成時に当日の daily_log を自動 upsert し daily_log_id を結線する
+      const muni = muniOf(b.userId);
       let dailyLogId = b.dailyLogId ?? null;
       if (!dailyLogId) {
         const dlId = genId("dl");
         run(
           `INSERT INTO daily_logs (id,user_id,municipality_id,log_date) VALUES (?,?,?,?)
            ON CONFLICT(user_id,log_date) DO NOTHING`,
-          [dlId, b.userId, MUNI, date]
+          [dlId, b.userId, muni, date]
         );
         const dl = get<{ id: string }>("SELECT id FROM daily_logs WHERE user_id=? AND log_date=?", [b.userId, date]);
         dailyLogId = dl?.id ?? null;
@@ -639,7 +649,7 @@ export const sqliteRepos: Repos = {
       run(
         `INSERT INTO activity_logs (id,user_id,municipality_id,daily_log_id,activity_type,topic,hours,start_time,end_time,body,log_date,log_time)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, b.userId, MUNI, dailyLogId, b.type, b.topic, b.hours, b.startTime ?? null, b.endTime ?? null, b.body, date, time]
+        [id, b.userId, muni, dailyLogId, b.type, b.topic, b.hours, b.startTime ?? null, b.endTime ?? null, b.body, date, time]
       );
       return mapLog(all("SELECT * FROM activity_logs WHERE id=?", [id])[0]);
     },
@@ -681,7 +691,7 @@ export const sqliteRepos: Repos = {
       run(
         `INSERT INTO expenses (id,user_id,municipality_id,expense_kind,category,daily_log_id,title,amount_requested,purpose,status,ai_note,citations,has_receipt,receipt_key,created_at)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, b.userId, MUNI, "single", b.category ?? "活動費", b.dailyLogId ?? null, b.title, b.amount, b.purpose, b.status ?? "申請中", "AI 判定材料は申請後に表示されます。", JSON.stringify([]), b.receiptKey ? 1 : 0, b.receiptKey ?? null, new Date().toISOString().slice(0, 10)]
+        [id, b.userId, muniOf(b.userId), "single", b.category ?? "活動費", b.dailyLogId ?? null, b.title, b.amount, b.purpose, b.status ?? "申請中", "AI 判定材料は申請後に表示されます。", JSON.stringify([]), b.receiptKey ? 1 : 0, b.receiptKey ?? null, new Date().toISOString().slice(0, 10)]
       );
       return mapExpense(all("SELECT * FROM expenses WHERE id=?", [id])[0]);
     },
@@ -693,7 +703,7 @@ export const sqliteRepos: Repos = {
             title,amount_requested,purpose,status,ai_note,citations,has_receipt,receipt_key,created_at)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
-          id, b.userId, MUNI, "single",
+          id, b.userId, muniOf(b.userId), "single",
           b.activityLogId, b.receiptIndex,
           b.title, b.amount, b.purpose, b.status ?? "申請中",
           "日報経由の経費(ADR-014)。AI 判定材料は申請後に表示されます。",
@@ -732,12 +742,15 @@ export const sqliteRepos: Repos = {
       run(
         `INSERT INTO monthly_reports (id,user_id,municipality_id,year_month,status,status_label,summary,plan_next)
          VALUES (?,?,?,?,?,?,?,?)`,
-        [id, b.userId, MUNI, b.ym, "submitted", "提出済", b.markdown, b.plan ?? null]
+        [id, b.userId, muniOf(b.userId), b.ym, "submitted", "提出済", b.markdown, b.plan ?? null]
       );
       return mapReport(all("SELECT * FROM monthly_reports WHERE id=?", [id])[0]);
     },
     async markApproved(id) {
       run("UPDATE monthly_reports SET status='approved', status_label='役場承認' WHERE id=?", [id]);
+    },
+    async markRejected(id) {
+      run("UPDATE monthly_reports SET status='rejected', status_label='差戻し（要修正）' WHERE id=?", [id]);
     },
     async revertToSubmitted(userId, ym) {
       run(
@@ -839,7 +852,7 @@ export const sqliteRepos: Repos = {
       const id = genId("dl");
       run(
         `INSERT INTO daily_logs (id,user_id,municipality_id,log_date,note,distance_km,expense_amount,feeling_score) VALUES (?,?,?,?,?,?,?,?)`,
-        [id, userId, MUNI, date, fields?.note ?? null, fields?.distanceKm ?? null, fields?.expenseAmount ?? null, fields?.feelingScore ?? null]
+        [id, userId, muniOf(userId), date, fields?.note ?? null, fields?.distanceKm ?? null, fields?.expenseAmount ?? null, fields?.feelingScore ?? null]
       );
       return mapDailyLog(all("SELECT * FROM daily_logs WHERE id=?", [id])[0]);
     },
@@ -901,7 +914,7 @@ export const sqliteRepos: Repos = {
         `INSERT INTO monthly_cycles (id,user_id,municipality_id,year_month,monthly_goal,action_plan,intake,reflection,status)
          VALUES (?,?,?,?,?,?,?,?,?)`,
         [
-          id, userId, MUNI, ym,
+          id, userId, muniOf(userId), ym,
           fields.monthlyGoal ?? null,
           JSON.stringify(fields.actionPlan ?? []),
           fields.intake ? JSON.stringify(fields.intake) : null,
