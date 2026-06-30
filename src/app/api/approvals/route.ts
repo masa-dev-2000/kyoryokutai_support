@@ -5,7 +5,10 @@ import { requireAppUser } from "@/lib/api/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MUNI = process.env.NEXT_PUBLIC_DEMO_MUNI_ID ?? "10000000-0000-4000-8000-000000000001";
+// ローカル sqlite のフォールバックは seed/sqlite の自治体 id("muni_shinonsen")に合わせる。
+// 以前は UUID 既定で、env 未設定のローカル開発だと承認キューが seed と別自治体になり空表示だった(H5)。
+// 本番(Supabase)は NEXT_PUBLIC_DEMO_MUNI_ID を設定するためこの既定は使われない。
+const MUNI = process.env.NEXT_PUBLIC_DEMO_MUNI_ID ?? "muni_shinonsen";
 
 // 進行中(pending)の承認のみ返す。完了/差戻しはキューから外れる。
 // 承認キューは役場職員(manager/admin)のみ閲覧可。未認証アクセスを遮断。
