@@ -394,10 +394,18 @@ export function ManagerApp() {
   const [members, setMembers] = React.useState<Member[]>(ALL_MEMBERS);
   const [statusByMember, setStatusByMember] = React.useState<Record<string, Record<string, MemberStatus>> | null>(null);
   const [reportResult, setReportResult] = React.useState<ReportResult | null>(null);
+  // ログイン中ユーザー名(member 画面と同じ /api/auth/me 経由。未ログイン/デモ時はフォールバック)
+  const [userName, setUserName] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     setNoticeTargets((cur) => cur.filter((n) => managed.includes(n)));
   }, [managed]);
+
+  React.useEffect(() => {
+    apiGet<{ name?: string }>("/api/auth/me")
+      .then((me) => { if (me?.name) setUserName(me.name); })
+      .catch(() => {});
+  }, []);
 
   // 隊員一覧(実 id 付き)と月報ステータスを取得。失敗時はモック表示を維持。
   React.useEffect(() => {
@@ -500,7 +508,7 @@ export function ManagerApp() {
   return (
     <AppCtx.Provider value={ctx}>
       <main className="flex h-screen flex-col bg-white text-slate-900">
-        <Header />
+        <Header userName={userName ?? undefined} />
         <Tabs active={tab} onChange={setTab} />
 
         <div className="flex flex-1 flex-col overflow-y-auto px-6 pb-8">
@@ -520,11 +528,11 @@ export function ManagerApp() {
 
 /* -------------------- Header / Tabs / Footer -------------------- */
 
-function Header() {
+function Header({ userName }: { userName?: string }) {
   return (
     <header className="flex items-center justify-between border-b border-slate-100 px-5 py-2.5">
       <span />
-      <div className="text-center text-[11px] text-slate-500">谷本 室長 / 新温泉町</div>
+      <div className="text-center text-[11px] text-slate-500">{userName ?? "谷本 室長"} / 新温泉町</div>
       <ViewerRoleSwitch />
     </header>
   );
