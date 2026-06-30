@@ -624,6 +624,8 @@ function formatDateShort(d: string) {
 function ReportTab() {
   const { pushSheet, logs } = useApp();
   const [ym, setYm] = React.useState<string>(currentYm());
+  // #88: 月ラベルのタップで任意の月へジャンプ(前月/次月の連打を不要に)
+  const monthInputRef = React.useRef<HTMLInputElement>(null);
 
   // カレンダー日付タップ:記録があれば一覧、なければ当日含めて作成シート
   function onDayTap(date: string) {
@@ -648,9 +650,26 @@ function ReportTab() {
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
-        <div className="inline-flex min-w-32 items-center justify-center gap-1.5 text-[19px] font-bold text-slate-900">
-          <Calendar className="h-4 w-4 text-slate-400" />
-          {formatYm(ym)}
+        <div className="relative inline-flex">
+          <button
+            type="button"
+            onClick={() => monthInputRef.current?.showPicker?.()}
+            className="inline-flex min-w-32 items-center justify-center gap-1.5 rounded-lg px-2 py-0.5 text-[19px] font-bold text-slate-900 transition hover:bg-slate-50"
+            aria-label="対象の月を選択"
+          >
+            <Calendar className="h-4 w-4 text-slate-400" />
+            {formatYm(ym)}
+          </button>
+          <input
+            ref={monthInputRef}
+            type="month"
+            value={ym}
+            max={currentYm()}
+            onChange={(e) => e.target.value && setYm(e.target.value)}
+            tabIndex={-1}
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 opacity-0"
+          />
         </div>
         <button
           onClick={() => setYm(shiftYm(ym, 1))}
