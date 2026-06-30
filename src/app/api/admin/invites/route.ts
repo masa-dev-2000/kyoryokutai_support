@@ -1,5 +1,5 @@
 import { ok, bad, readJson } from "@/lib/api/http";
-import { requireSession } from "@/lib/api/auth";
+import { requireAdmin } from "@/lib/api/auth";
 import { getDb } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -13,7 +13,7 @@ type CreateBody = {
 
 /** POST /api/admin/invites — 招待トークン発行 */
 export async function POST(req: Request) {
-  const sess = await requireSession();
+  const sess = await requireAdmin();
   if (sess instanceof Response) return sess;
 
   const { email, role = "member", municipalityName = "" } = await readJson<CreateBody>(req);

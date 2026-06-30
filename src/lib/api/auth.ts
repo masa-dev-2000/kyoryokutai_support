@@ -30,3 +30,11 @@ export async function requireAppUser(): Promise<{ authId: string; userId: string
   if (!appUser) return bad("このアカウントは未登録です(管理者の招待が必要です)", 403);
   return { authId, userId: appUser.id, role: appUser.role };
 }
+
+/** 管理者(admin)専用ルートの先頭で呼ぶ。admin / super 以外は 403。 */
+export async function requireAdmin(): Promise<{ authId: string; userId: string; role: string } | Response> {
+  const sess = await requireAppUser();
+  if (sess instanceof Response) return sess;
+  if (sess.role !== "admin" && sess.role !== "super") return bad("管理者(admin)権限が必要です", 403);
+  return sess;
+}

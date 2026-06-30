@@ -65,6 +65,7 @@ type ExpenseDetail = {
   kind: "経費";
   purpose: string;
   amount: number;
+  category?: string;
   payee: string;
   paidDate: string;
   receipt: boolean;
@@ -94,6 +95,7 @@ type Approval = {
   id: string;
   kind: "経費" | "月次報告" | "活動相談";
   member: string;
+  applicantId?: string;
   title: string;
   ai: string;
   citations: { source: string; quote: string }[];
@@ -979,6 +981,9 @@ function ApprovalDetailSheet({ approval, onClose }: { approval: Approval; onClos
         {approval.detail.kind === "活動相談" && <ConsultDetailView d={approval.detail} />}
         {approval.detail.kind === "月次報告" && <ReportDetailView d={approval.detail} />}
         {approval.detail.kind === "経費" && <ExpenseDetailView d={approval.detail} />}
+        {approval.detail.kind === "経費" && approval.applicantId && approval.detail.category && (
+          <ExpenseBudgetImpact userId={approval.applicantId} category={approval.detail.category} amount={approval.detail.amount} />
+        )}
 
         {/* AI 判定材料 */}
         <Label>AI 判定材料</Label>
@@ -1136,6 +1141,32 @@ function ExpenseDetailView({ d }: { d: ExpenseDetail }) {
           <Receipt className="h-4 w-4 text-slate-400" />
           {d.receipt ? <span className="text-slate-800">添付あり(タップで原本表示)</span> : <span className="text-rose-700">添付なし(差戻し推奨)</span>}
         </div>
+      </div>
+    </>
+  );
+}
+
+// 費目別予算枠への影響(committed=申請中含む。残額がマイナスなら超過)。
+function ExpenseBudgetImpact({ userId, category, amount }: { userId: string; category: string; amount: number }) {
+  void amount;
+  const [line, setLine] = React.useState<{ category: string; amountLimit: number; used: number; remaining: number } | null>(null);
+  React.useEffect(() => {
+    apiGet<{ category: string; amountLimit: number; used: number; remaining: number }[]>(`/api/budgets?userId=${userId}`)
+      .then((rows) => setLine(rows.find((r) => r.category === category) ?? null))
+      .catch(() => {});
+  }, [userId, category]);
+  if (!line) return null;
+  const over = line.remaining < 0;
+  return (
+    <>
+      <Label>予算への影響(費目:{category})</Label>
+      <div className={`mt-1 rounded-xl border p-3 text-[12px] ${over ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-50/50 text-slate-700"}`}>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 tabular-nums">
+          <span>枠 ¥{line.amountLimit.toLocaleString()}</span>
+          <span>使用(申請含む) ¥{line.used.toLocaleString()}</span>
+          <span className="font-bold">残額 ¥{line.remaining.toLocaleString()}</span>
+        </div>
+        {over && <div className="mt-1 font-semibold">この費目は予算枠を超過しています。費目間の流用はできないため要確認です。</div>}
       </div>
     </>
   );

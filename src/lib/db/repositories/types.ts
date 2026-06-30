@@ -44,6 +44,8 @@ export type RouteStepDTO = {
   hostOrganizationId?: string;
 };
 export type RouteDTO = { id: string; name: string; kind: string; isDefault: boolean; steps: RouteStepDTO[] };
+// 費目別予算枠(1隊員 × 年度 × 費目):枠 / 使用(committed) / 残額
+export type BudgetLineDTO = { category: string; amountLimit: number; used: number; remaining: number };
 
 // AI 月報生成プロンプト用の生ログ
 export type LogForAI = {
@@ -93,7 +95,7 @@ export interface Repos {
   };
   members: {
     list(): Promise<MemberDTO[]>;
-    upsert(m: { id?: string; name: string; role: string; startedAt?: string; term?: string }): Promise<MemberDTO>;
+    upsert(m: { id?: string; name: string; role: string; startedAt?: string; term?: string; hostOrganizationId?: string | null; approvalRouteId?: string | null }): Promise<MemberDTO>;
     retire(id: string): Promise<void>;
   };
   staff: {
@@ -112,8 +114,14 @@ export interface Repos {
   };
   routes: {
     list(): Promise<RouteDTO[]>;
+    getForUser(userId: string): Promise<RouteDTO | null>;
     create(r: { name: string; kind: string; isDefault?: boolean; steps: RouteStepDTO[] }): Promise<RouteDTO | undefined>;
+    upsert(r: { id?: string; name: string; kind: string; isDefault?: boolean; steps: RouteStepDTO[] }): Promise<RouteDTO | undefined>;
     remove(id: string): Promise<void>;
+  };
+  budgets: {
+    summaryByUser(userId: string, fiscalYear: string): Promise<BudgetLineDTO[]>;
+    upsert(userId: string, fiscalYear: string, allocations: { category: string; amountLimit: number }[]): Promise<BudgetLineDTO[]>;
   };
   topics: {
     list(userId: string, kind?: string): Promise<string[]>;

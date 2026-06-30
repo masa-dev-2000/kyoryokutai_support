@@ -2031,6 +2031,14 @@ function ExpenseCreateSheet({ onClose }: { onClose: () => void }) {
   const amountNum = parseInt(amount.replace(/[^0-9]/g, ""), 10);
   const canSubmit = !!title.trim() && amountNum > 0 && purpose.trim().length >= 5 && !saving;
 
+  // 費目別予算枠(残額)。流用不可のため、申請前に残額と超過を可視化する。
+  const [budgetLines, setBudgetLines] = React.useState<{ category: string; amountLimit: number; used: number; remaining: number }[]>([]);
+  React.useEffect(() => {
+    apiGet<typeof budgetLines>("/api/budgets").then(setBudgetLines).catch(() => {});
+  }, []);
+  const line = budgetLines.find((b) => b.category === category);
+  const overBudget = !!line && amountNum > 0 && amountNum > line.remaining;
+
   async function submit() {
     if (!canSubmit) return;
     setSaving(true);
@@ -2099,8 +2107,21 @@ function ExpenseCreateSheet({ onClose }: { onClose: () => void }) {
         </div>
         <p className="mt-1 text-[13px] text-slate-400">活動に紐づかない経費(備品・通信費など)もここから申請できます。</p>
 
+        {line && (
+          <p className="mt-2 text-[13px] text-slate-500">
+            「{category}」の残額 <span className={`font-bold tabular-nums ${overBudget ? "text-rose-600" : "text-slate-800"}`}>¥{line.remaining.toLocaleString()}</span>
+            <span className="text-slate-400"> / 枠 ¥{line.amountLimit.toLocaleString()}</span>
+          </p>
+        )}
+
         <Label>金額(円)</Label>
         <input type="text" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="例:12800" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-[17px] focus:border-slate-900 focus:outline-none" />
+
+        {overBudget && line && (
+          <div className="mt-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[13px] leading-relaxed text-rose-700">
+            「{category}」の残額 ¥{line.remaining.toLocaleString()} を ¥{(amountNum - line.remaining).toLocaleString()} 超えています。費目間の流用はできないため、担当課への相談をおすすめします(申請はできます)。
+          </div>
+        )}
 
         <Label right={
           <ConsultButton

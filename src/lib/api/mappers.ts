@@ -124,6 +124,7 @@ export function mapApproval(r: Row) {
     id: r.id as string,
     kind: r.kind as "経費" | "月次報告" | "活動相談",
     member: r.member_name as string,
+    applicantId: (r.applicant_id as string | null) ?? undefined,
     title: r.title as string,
     ai: (r.ai as string) ?? "",
     citations: j<{ source: string; quote: string }[]>(r.citations, []),
@@ -155,6 +156,8 @@ export function mapMember(r: Row) {
     role: (r.role_label as string) ?? "",
     startedAt: (r.started_at as string) ?? "未設定",
     term: (r.term as string) ?? "1 年目",
+    hostOrganizationId: (r.host_organization_id as string | null) ?? undefined,
+    approvalRouteId: (r.approval_route_id as string | null) ?? undefined,
   };
 }
 
