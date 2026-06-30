@@ -6,6 +6,8 @@ export interface StorageProvider {
   readonly name: string;
   /** バイト列を保存。content-type 任意。 */
   put(key: string, body: Uint8Array | Buffer, contentType?: string): Promise<void>;
+  /** バイト列を取得(/api/files 経由の配信用)。存在しなければ null。 */
+  getBytes(key: string): Promise<Uint8Array | null>;
   /** 読み取り用の署名付き URL(既定 1 時間)。 */
   getSignedDownloadUrl(key: string, expiresSec?: number): Promise<string>;
   /** アップロード用の署名付き URL(クライアント直アップロード用)。 */

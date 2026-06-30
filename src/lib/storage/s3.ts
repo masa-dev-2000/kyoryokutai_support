@@ -42,6 +42,16 @@ export class S3StorageProvider implements StorageProvider {
     );
   }
 
+  async getBytes(key: string): Promise<Uint8Array | null> {
+    try {
+      const res = await client().send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+      if (!res.Body) return null;
+      return await res.Body.transformToByteArray();
+    } catch {
+      return null;
+    }
+  }
+
   async getSignedDownloadUrl(key: string, expiresSec = 3600): Promise<string> {
     return getSignedUrl(client(), new GetObjectCommand({ Bucket: BUCKET, Key: key }), {
       expiresIn: expiresSec,

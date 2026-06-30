@@ -24,6 +24,7 @@ import type {
   SuperMuniDetail,
   SuperUserRow,
   ContractDTO,
+  ContractPatch,
   SuperAnalytics,
 } from "./types";
 
@@ -82,7 +83,6 @@ function loadRoutes(): RouteDTO[] {
     })),
   }));
 }
-
 
 function mapHost(r: Record<string, unknown>): HostOrgDTO {
   return {
@@ -554,9 +554,9 @@ export const sqliteRepos: Repos = {
     async create(b) {
       const id = genId("exp");
       run(
-        `INSERT INTO expenses (id,user_id,municipality_id,expense_kind,category,daily_log_id,title,amount_requested,purpose,status,ai_note,citations,has_receipt,created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, b.userId, MUNI, "single", b.category ?? "活動費", b.dailyLogId ?? null, b.title, b.amount, b.purpose, b.status ?? "申請中", "AI 判定材料は申請後に表示されます。", JSON.stringify([]), 0, new Date().toISOString().slice(0, 10)]
+        `INSERT INTO expenses (id,user_id,municipality_id,expense_kind,category,daily_log_id,title,amount_requested,purpose,status,ai_note,citations,has_receipt,receipt_key,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [id, b.userId, MUNI, "single", b.category ?? "活動費", b.dailyLogId ?? null, b.title, b.amount, b.purpose, b.status ?? "申請中", "AI 判定材料は申請後に表示されます。", JSON.stringify([]), b.receiptKey ? 1 : 0, b.receiptKey ?? null, new Date().toISOString().slice(0, 10)]
       );
       return mapExpense(all("SELECT * FROM expenses WHERE id=?", [id])[0]);
     },
@@ -565,14 +565,14 @@ export const sqliteRepos: Repos = {
       run(
         `INSERT INTO expenses
            (id,user_id,municipality_id,expense_kind,source_activity_log_id,source_receipt_index,
-            title,amount_requested,purpose,status,ai_note,citations,has_receipt,created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            title,amount_requested,purpose,status,ai_note,citations,has_receipt,receipt_key,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
           id, b.userId, MUNI, "single",
           b.activityLogId, b.receiptIndex,
           b.title, b.amount, b.purpose, b.status ?? "申請中",
           "日報経由の経費(ADR-014)。AI 判定材料は申請後に表示されます。",
-          JSON.stringify([]), b.hasReceipt ? 1 : 0,
+          JSON.stringify([]), b.hasReceipt ? 1 : 0, b.receiptKey ?? null,
           new Date().toISOString().slice(0, 10),
         ]
       );
@@ -583,8 +583,8 @@ export const sqliteRepos: Repos = {
       if (!existing) return undefined;
       run(
         `UPDATE expenses SET status=COALESCE(?,status), amount_settled=COALESCE(?,amount_settled),
-           has_receipt=COALESCE(?,has_receipt), settle_note=COALESCE(?,settle_note), updated_at=datetime('now') WHERE id=?`,
-        [b.status ?? null, b.amountSettled ?? null, b.hasReceipt === undefined ? null : b.hasReceipt ? 1 : 0, b.settleNote ?? null, id]
+           has_receipt=COALESCE(?,has_receipt), receipt_key=COALESCE(?,receipt_key), settle_note=COALESCE(?,settle_note), updated_at=datetime('now') WHERE id=?`,
+        [b.status ?? null, b.amountSettled ?? null, b.hasReceipt === undefined ? null : b.hasReceipt ? 1 : 0, b.receiptKey ?? null, b.settleNote ?? null, id]
       );
       return mapExpense(all("SELECT * FROM expenses WHERE id=?", [id])[0]);
     },
@@ -593,6 +593,23 @@ export const sqliteRepos: Repos = {
   monthlyReports: {
     async listByUser(userId) {
       return all("SELECT * FROM monthly_reports WHERE user_id=? ORDER BY year_month DESC", [userId]).map(mapReport);
+    },
+    async submit(b) {
+      const existing = all<{ id: string }>("SELECT id FROM monthly_reports WHERE user_id=? AND year_month=?", [b.userId, b.ym])[0];
+      if (existing) {
+        run(
+          "UPDATE monthly_reports SET status='submitted', status_label='提出済', summary=?, plan_next=COALESCE(?,plan_next), updated_at=datetime('now') WHERE id=?",
+          [b.markdown, b.plan ?? null, existing.id]
+        );
+        return mapReport(all("SELECT * FROM monthly_reports WHERE id=?", [existing.id])[0]);
+      }
+      const id = genId("mr");
+      run(
+        `INSERT INTO monthly_reports (id,user_id,municipality_id,year_month,status,status_label,summary,plan_next)
+         VALUES (?,?,?,?,?,?,?,?)`,
+        [id, b.userId, MUNI, b.ym, "submitted", "提出済", b.markdown, b.plan ?? null]
+      );
+      return mapReport(all("SELECT * FROM monthly_reports WHERE id=?", [id])[0]);
     },
     async markApproved(id) {
       run("UPDATE monthly_reports SET status='approved', status_label='役場承認' WHERE id=?", [id]);

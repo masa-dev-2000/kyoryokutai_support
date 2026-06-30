@@ -823,7 +823,8 @@ export const supabaseRepos: Repos = {
           status: b.status ?? "申請中",
           ai_note: "AI 判定材料は申請後に表示されます。",
           citations: [],
-          has_receipt: false,
+          has_receipt: !!b.receiptKey,
+          receipt_key: b.receiptKey ?? null,
         })
         .select()
         .single();
@@ -844,7 +845,8 @@ export const supabaseRepos: Repos = {
           status: b.status ?? "申請中",
           ai_note: "日報経由の経費(ADR-014)。AI 判定材料は申請後に表示されます。",
           citations: [],
-          has_receipt: b.hasReceipt,
+          has_receipt: b.hasReceipt || !!b.receiptKey,
+          receipt_key: b.receiptKey ?? null,
         })
         .select()
         .single();
@@ -855,6 +857,7 @@ export const supabaseRepos: Repos = {
       if (b.status !== undefined) patch.status = b.status;
       if (b.amountSettled !== undefined) patch.amount_settled = b.amountSettled;
       if (b.hasReceipt !== undefined) patch.has_receipt = b.hasReceipt;
+      if (b.receiptKey !== undefined) patch.receipt_key = b.receiptKey;
       if (b.settleNote !== undefined) patch.settle_note = b.settleNote;
       const { data } = await supabase()
         .from("expenses")
@@ -874,6 +877,26 @@ export const supabaseRepos: Repos = {
         .eq("user_id", userId)
         .order("year_month", { ascending: false });
       return (data ?? []).map(mapReport);
+    },
+    async submit(b) {
+      const { data: existing } = await supabase()
+        .from("monthly_reports")
+        .select("id")
+        .eq("user_id", b.userId)
+        .eq("year_month", b.ym)
+        .maybeSingle();
+      if (existing) {
+        const patch: Record<string, unknown> = { status: "submitted", status_label: "提出済", summary: b.markdown };
+        if (b.plan !== undefined) patch.plan_next = b.plan;
+        const { data } = await supabase().from("monthly_reports").update(patch).eq("id", existing.id).select().single();
+        return mapReport(data!);
+      }
+      const { data } = await supabase()
+        .from("monthly_reports")
+        .insert({ user_id: b.userId, municipality_id: MUNI, year_month: b.ym, status: "submitted", status_label: "提出済", summary: b.markdown, plan_next: b.plan ?? null })
+        .select()
+        .single();
+      return mapReport(data!);
     },
     async markApproved(id) {
       await supabase()

@@ -23,6 +23,7 @@ type InlineExpense = {
   amount: number;
   purpose: string;
   hasReceipt?: boolean;
+  receiptKey?: string;
 };
 
 type CreateBody = {
@@ -91,7 +92,8 @@ export async function POST(req: Request) {
       title: e.title?.trim() || e.purpose.slice(0, 15),
       amount: e.amount,
       purpose: e.purpose.trim(),
-      hasReceipt: !!e.hasReceipt,
+      hasReceipt: !!e.hasReceipt || !!e.receiptKey,
+      receiptKey: e.receiptKey,
       status: "申請中",
     });
     const { routeName, steps } = expandRoute("経費", "担当課");

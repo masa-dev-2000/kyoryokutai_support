@@ -229,7 +229,7 @@ export interface Repos {
   };
   expenses: {
     listByUser(userId: string): Promise<ExpenseDTO[]>;
-    create(e: { userId: string; title: string; amount: number; purpose: string; status?: string; category?: string; dailyLogId?: string }): Promise<ExpenseDTO>;
+    create(e: { userId: string; title: string; amount: number; purpose: string; status?: string; category?: string; dailyLogId?: string; receiptKey?: string }): Promise<ExpenseDTO>;
     /** 日報経由(ADR-014 動線①):activity_log と source_receipt_index で紐付け、二重申請防止 */
     createFromLog(e: {
       userId: string;
@@ -240,11 +240,14 @@ export interface Repos {
       purpose: string;
       hasReceipt: boolean;
       status?: string;
+      receiptKey?: string;
     }): Promise<ExpenseDTO>;
-    update(id: string, patch: { status?: string; amountSettled?: number; hasReceipt?: boolean; settleNote?: string }): Promise<ExpenseDTO | undefined>;
+    update(id: string, patch: { status?: string; amountSettled?: number; hasReceipt?: boolean; settleNote?: string; receiptKey?: string }): Promise<ExpenseDTO | undefined>;
   };
   monthlyReports: {
     listByUser(userId: string): Promise<ReportDTO[]>;
+    /** 隊員が月報を役場に提出(同月の下書きがあれば更新、なければ作成)。status=submitted */
+    submit(b: { userId: string; ym: string; markdown: string; plan?: string }): Promise<ReportDTO>;
     markApproved(id: string): Promise<void>;
     /** 活動報告を編集/削除した場合、同月の承認済み月報を「提出済」に差し戻す */
     revertToSubmitted(userId: string, ym: string): Promise<void>;

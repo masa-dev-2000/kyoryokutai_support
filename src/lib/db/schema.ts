@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS municipalities (
   contract_status TEXT,
   contract_start TEXT,
   contract_end TEXT,
+  settings TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -123,6 +124,7 @@ CREATE TABLE IF NOT EXISTS expenses (
   payee TEXT,
   paid_date TEXT,
   has_receipt INTEGER NOT NULL DEFAULT 0,
+  receipt_key TEXT,                             -- Storage 上の領収書キー(/api/files で配信)
   settle_note TEXT,
   ai_note TEXT,
   citations TEXT,                               -- JSON [{source,quote}]
