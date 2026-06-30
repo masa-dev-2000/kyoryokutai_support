@@ -1,7 +1,7 @@
 import { ok, bad, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
 import { applyApprove, applyReject, type ApprovalStep } from "@/lib/workflow";
-import { requireSession } from "@/lib/api/auth";
+import { requireAppUser } from "@/lib/api/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,8 +9,10 @@ export const dynamic = "force-dynamic";
 type Body = { action: "approve" | "reject"; comment?: string };
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const sess = await requireSession();
+  const sess = await requireAppUser();
   if (sess instanceof Response) return sess;
+  // 承認/差戻しは役場職員(manager/admin)のみ。隊員の自己承認・無権限承認を遮断。
+  if (sess.role !== "manager" && sess.role !== "admin") return bad("承認権限がありません", 403);
   const { id } = await params;
   const b = await readJson<Body>(req);
   const repos = getRepos();
