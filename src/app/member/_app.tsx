@@ -690,10 +690,12 @@ function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) 
   for (const l of monthLogs) (byDate[l.date] ??= []).push(l);
 
   // 活動時間:種類別(積算棒) — ACTIVITY_TYPES 順を優先し、それ以外は末尾に追加
+  // #87: 記録があれば活動時間 0h の種類も一覧に出す(byType に載る=その月に1件以上記録あり)。
+  // 0h はバー区間こそ出ないが、凡例に「0h」で表示され「記録したのに消える」を防ぐ。
   const byType: Record<string, number> = {};
   for (const l of monthLogs) byType[l.type] = (byType[l.type] ?? 0) + l.hours;
   const typeOrder = [
-    ...ACTIVITY_TYPES.filter((t) => byType[t] > 0),
+    ...ACTIVITY_TYPES.filter((t) => byType[t] !== undefined),
     ...Object.keys(byType).filter((t) => !ACTIVITY_TYPES.includes(t)),
   ];
   const hoursProgress = Math.min(totalHours / MIN_MONTHLY_HOURS, 1);
