@@ -17,19 +17,18 @@ import {
   ClipboardCheck,
   TrendingUp,
   TrendingDown,
-  FileText,
 } from "lucide-react";
 import type {
   SuperMuniDetail,
   SuperUserRow,
-  ContractDTO,
   SuperAnalytics,
 } from "@/lib/db/repositories/types";
 
 /* ============================================================
    super 運営者ダッシュボード(#64 / #65 / #66)
    全自治体横断のサマリ + 自治体作成・admin 招待オンボーディング(#65)
-   + 自治体ドリルダウン・アカウント管理・契約管理・分析(#66)。
+   + 自治体ドリルダウン・アカウント管理・分析(#66)。
+   ※ 契約・課金管理 UI は Phase 2 へ延期(#72/#73, ADR-30)。API/Repos は温存。
    super ロールのみアクセス可。
    ============================================================ */
 
@@ -49,14 +48,6 @@ type Overview = {
 
 type Tab = "overview" | "accounts" | "analytics";
 
-const PLAN_LABEL: Record<ContractDTO["plan"], string> = { year1: "Year1", year2: "Year2", year3: "Year3" };
-const STATUS_LABEL: Record<ContractDTO["contractStatus"], string> = {
-  trial: "トライアル",
-  active: "契約中",
-  suspended: "停止",
-  ended: "終了",
-};
-
 export function SuperApp() {
   const [data, setData] = React.useState<Overview | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -70,9 +61,6 @@ export function SuperApp() {
   const [detailId, setDetailId] = React.useState<string | null>(null);
   const [detail, setDetail] = React.useState<SuperMuniDetail | null>(null);
   const [detailErr, setDetailErr] = React.useState<string | null>(null);
-
-  // #66 契約モーダル
-  const [contractId, setContractId] = React.useState<string | null>(null);
 
   const loadOverview = React.useCallback(() => {
     apiGet<Overview>("/api/super/overview")
@@ -151,7 +139,6 @@ export function SuperApp() {
             onAddMuni={() => setMuniModal(true)}
             onInvite={(m) => setInviteFor(m)}
             onOpenDetail={openDetail}
-            onOpenContract={setContractId}
           />
         )}
         {data && tab === "accounts" && <AccountsTab municipalities={data.municipalities} />}
@@ -178,18 +165,6 @@ export function SuperApp() {
           onClose={() => setDetailId(null)}
         />
       )}
-
-      {/* #66 契約モーダル */}
-      {contractId && (
-        <ContractModal
-          municipalityId={contractId}
-          onClose={() => setContractId(null)}
-          onSaved={() => {
-            loadOverview();
-            setContractId(null);
-          }}
-        />
-      )}
     </main>
   );
 }
@@ -201,13 +176,11 @@ function OverviewTab({
   onAddMuni,
   onInvite,
   onOpenDetail,
-  onOpenContract,
 }: {
   data: Overview;
   onAddMuni: () => void;
   onInvite: (m: { id: string; name: string }) => void;
   onOpenDetail: (id: string) => void;
-  onOpenContract: (id: string) => void;
 }) {
   return (
     <>
@@ -219,7 +192,7 @@ function OverviewTab({
       </div>
 
       <div className="mt-8 mb-3 flex items-center justify-between">
-        <h2 className="text-[13px] font-bold text-slate-700">契約自治体</h2>
+        <h2 className="text-[13px] font-bold text-slate-700">自治体</h2>
         <button
           onClick={onAddMuni}
           className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-1.5 text-[12px] font-bold text-white hover:bg-slate-800"
@@ -267,22 +240,13 @@ function OverviewTab({
                     >
                       <UserPlus className="h-3 w-3" /> 管理者を招待
                     </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOpenContract(m.id);
-                      }}
-                      className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-100"
-                    >
-                      <FileText className="h-3 w-3" /> 契約
-                    </button>
                   </div>
                 </td>
               </tr>
             ))}
             {data.municipalities.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-400">契約自治体がありません</td>
+                <td colSpan={6} className="px-4 py-8 text-center text-slate-400">自治体がありません</td>
               </tr>
             )}
           </tbody>
@@ -644,144 +608,6 @@ function AnalyticsTab() {
         </table>
       </div>
     </>
-  );
-}
-
-/* ---------------- 契約モーダル(#66) ---------------- */
-
-function ContractModal({
-  municipalityId,
-  onClose,
-  onSaved,
-}: {
-  municipalityId: string;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [c, setC] = React.useState<ContractDTO | null>(null);
-  const [err, setErr] = React.useState<string | null>(null);
-  const [saving, setSaving] = React.useState(false);
-
-  React.useEffect(() => {
-    apiGet<ContractDTO>(`/api/super/municipalities/${municipalityId}/contract`)
-      .then(setC)
-      .catch(() => setErr("契約情報の取得に失敗しました"));
-  }, [municipalityId]);
-
-  async function save() {
-    if (!c) return;
-    setSaving(true);
-    setErr(null);
-    try {
-      await apiPatch<ContractDTO>(`/api/super/municipalities/${municipalityId}/contract`, {
-        plan: c.plan,
-        contractStatus: c.contractStatus,
-        annualBudget: c.annualBudget,
-        contractStart: c.contractStart || undefined,
-        contractEnd: c.contractEnd || undefined,
-      });
-      onSaved();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "保存に失敗しました");
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/30" onClick={onClose} />
-      <div className="relative z-50 w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
-        {!c && !err && (
-          <div className="flex h-32 items-center justify-center gap-2 text-slate-500">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            読み込み中…
-          </div>
-        )}
-        {err && <div className="mb-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[12px] text-red-700">{err}</div>}
-        {c && (
-          <>
-            <div className="mb-4 flex items-start justify-between">
-              <div className="text-[15px] font-bold">{c.name} の契約</div>
-              <button onClick={onClose} className="text-slate-400 hover:text-slate-900">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <label className="mb-3 block text-[12px] font-medium text-slate-600">
-              プラン
-              <select
-                value={c.plan}
-                onChange={(e) => setC({ ...c, plan: e.target.value as ContractDTO["plan"] })}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px]"
-              >
-                {(Object.keys(PLAN_LABEL) as ContractDTO["plan"][]).map((p) => (
-                  <option key={p} value={p}>{PLAN_LABEL[p]}</option>
-                ))}
-              </select>
-            </label>
-
-            <label className="mb-3 block text-[12px] font-medium text-slate-600">
-              契約状態
-              <select
-                value={c.contractStatus}
-                onChange={(e) => setC({ ...c, contractStatus: e.target.value as ContractDTO["contractStatus"] })}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px]"
-              >
-                {(Object.keys(STATUS_LABEL) as ContractDTO["contractStatus"][]).map((s) => (
-                  <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-                ))}
-              </select>
-            </label>
-
-            <label className="mb-3 block text-[12px] font-medium text-slate-600">
-              年間活動費枠(円)
-              <input
-                type="number"
-                value={c.annualBudget}
-                min={0}
-                onChange={(e) => setC({ ...c, annualBudget: Number(e.target.value) })}
-                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px]"
-              />
-            </label>
-
-            <div className="mb-4 flex gap-3">
-              <label className="flex-1 text-[12px] font-medium text-slate-600">
-                契約開始
-                <input
-                  type="date"
-                  value={c.contractStart ?? ""}
-                  onChange={(e) => setC({ ...c, contractStart: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px]"
-                />
-              </label>
-              <label className="flex-1 text-[12px] font-medium text-slate-600">
-                契約終了
-                <input
-                  type="date"
-                  value={c.contractEnd ?? ""}
-                  onChange={(e) => setC({ ...c, contractEnd: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px]"
-                />
-              </label>
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <button onClick={onClose} className="rounded-lg px-3 py-2 text-[13px] text-slate-500 hover:text-slate-900">
-                キャンセル
-              </button>
-              <button
-                onClick={save}
-                disabled={saving}
-                className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-4 py-2 text-[13px] font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-              >
-                {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                保存
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
   );
 }
 
