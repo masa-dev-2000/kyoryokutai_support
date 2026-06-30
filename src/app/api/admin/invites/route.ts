@@ -21,7 +21,9 @@ export async function POST(req: Request) {
   if (sess instanceof Response) return sess;
 
   const { email, name, role = "member", municipalityName = "" } = await readJson<CreateBody>(req);
-  const cleanEmail = email?.trim();
+  // Supabase Auth は email を小文字化して保持し、/api/auth/me は完全一致で紐づける。
+  // pre-provision する users.email も小文字に正規化しないと大文字を含む招待で 403 が再発する(#74)。
+  const cleanEmail = email?.trim().toLowerCase();
   const cleanName = name?.trim();
 
   // pre-provision には email と氏名が必須(email が無いと /api/auth/me で紐づけられず 403 になる)。
@@ -39,7 +41,11 @@ export async function POST(req: Request) {
       municipalityName,
       createdBy: sess.userId,
     }));
-  } catch {
+  } catch (e) {
+    // 同じ email が別ロールで登録済み → サイレントに権限を取り違えないよう明示エラー。
+    if (e instanceof Error && e.message === "ROLE_CONFLICT") {
+      return bad("このメールアドレスは既に別の権限で登録されています", 409);
+    }
     return bad("DB error", 500);
   }
 

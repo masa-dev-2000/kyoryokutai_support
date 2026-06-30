@@ -771,18 +771,32 @@ export const supabaseRepos: Repos = {
     },
     async createProvisioned({ email, name, role, municipalityName, createdBy }) {
       // email に対応する users 行が無ければ先に作る(/api/auth/me が email で紐づけられるように)。
-      const { data: existing } = await supabase()
+      const { data: existing, error: selErr } = await supabase()
         .from("users")
-        .select("id")
+        .select("id, role")
         .eq("email", email)
         .maybeSingle();
-      if (!existing) {
+      if (selErr) throw selErr;
+      if (existing) {
+        // 別ロールでの再招待はサイレントに権限を取り違える。明示的に弾く。
+        if ((existing.role as string) !== role) throw new Error("ROLE_CONFLICT");
+        // 同ロールの再招待は冪等。無効化されていれば再有効化する。
+        const { error: upErr } = await supabase()
+          .from("users")
+          .update({ status: "active" })
+          .eq("id", existing.id);
+        if (upErr) throw upErr;
+        if (role === "member") await seedDefaultBudgetSb(existing.id as string);
+      } else {
         const orgType = role === "member" ? "member" : "municipality";
-        const { data: created } = await supabase()
+        // insert の失敗(RLS/一意制約等)を握り潰すと users 行が無いままトークンだけ発行され
+        // 招待先が後で 403 になる。エラーは投げてルートで 500 にする。
+        const { data: created, error: insErr } = await supabase()
           .from("users")
           .insert({ municipality_id: MUNI, organization_type: orgType, role, name, email, status: "active" })
           .select("id")
           .single();
+        if (insErr) throw insErr;
         if (role === "member" && created?.id) await seedDefaultBudgetSb(created.id);
       }
       return supabaseRepos.invites.create({ email, role, municipalityName, createdBy });

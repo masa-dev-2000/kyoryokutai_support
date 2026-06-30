@@ -576,8 +576,14 @@ export const sqliteRepos: Repos = {
     },
     async createProvisioned({ email, name, role, municipalityName, createdBy }) {
       // email に対応する users 行が無ければ先に作る(/api/auth/me が email で紐づけられるように)。
-      const existing = get<{ id: string }>("SELECT id FROM users WHERE email=?", [email]);
-      if (!existing) {
+      const existing = get<{ id: string; role: string }>("SELECT id, role FROM users WHERE email=?", [email]);
+      if (existing) {
+        // 別ロールでの再招待はサイレントに権限を取り違える。明示的に弾く。
+        if (existing.role !== role) throw new Error("ROLE_CONFLICT");
+        // 同ロールの再招待は冪等。退職などで無効化されていれば再有効化する。
+        run("UPDATE users SET status='active' WHERE id=?", [existing.id]);
+        if (role === "member") seedDefaultBudget(existing.id);
+      } else {
         const id = genId(role === "member" ? "m" : "s");
         const orgType = role === "member" ? "member" : "municipality";
         run(

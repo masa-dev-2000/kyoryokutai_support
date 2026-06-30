@@ -60,7 +60,7 @@ describe("invites.createProvisioned (#74 招待先の pre-provision)", () => {
     }
   });
 
-  it("同じ email で2回招待しても users 行は重複しない(冪等)", async () => {
+  it("同じ email・同ロールで2回招待しても users 行は重複しない(冪等)", async () => {
     const args = {
       email: "dup74@example.jp",
       name: "招待 重複三郎",
@@ -74,5 +74,18 @@ describe("invites.createProvisioned (#74 招待先の pre-provision)", () => {
     const members = await sqliteRepos.members.list();
     const matches = members.filter((m) => m.name === "招待 重複三郎");
     expect(matches.length).toBe(1);
+  });
+
+  it("同じ email を別ロールで再招待すると ROLE_CONFLICT で弾く(権限取り違え防止)", async () => {
+    const base = {
+      email: "conflict74@example.jp",
+      name: "招待 競合四郎",
+      municipalityName: "新温泉町",
+      createdBy: ADMIN_ID,
+    };
+    await sqliteRepos.invites.createProvisioned({ ...base, role: "member" });
+    await expect(
+      sqliteRepos.invites.createProvisioned({ ...base, role: "admin" }),
+    ).rejects.toThrow("ROLE_CONFLICT");
   });
 });
