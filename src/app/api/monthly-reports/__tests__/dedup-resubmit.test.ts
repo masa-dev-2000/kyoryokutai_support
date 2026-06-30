@@ -5,7 +5,8 @@ import { sqliteRepos } from "@/lib/db/repositories/sqlite";
 // submit() は同月を上書きするため、2 回目の提出で新たな pending 承認を作ってはいけない。
 
 // route の MUNI フォールバック(env 未設定時)と同じ値で承認キューを照合する。
-const MUNI = process.env.NEXT_PUBLIC_DEMO_MUNI_ID ?? "10000000-0000-4000-8000-000000000001";
+// #95 でルート既定が "muni_shinonsen" に整合済み。ここもそれに合わせる(ズレるとキュー照合が空振りする)。
+const MUNI = process.env.NEXT_PUBLIC_DEMO_MUNI_ID ?? "muni_shinonsen";
 
 async function submit(ym: string, markdown: string) {
   vi.resetModules();
