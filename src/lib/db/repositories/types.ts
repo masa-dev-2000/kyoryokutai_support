@@ -162,6 +162,8 @@ export interface Repos {
   users: {
     count(): Promise<number>;
     nameOf(id: string): Promise<string | undefined>;
+    /** 書込時に使うテナント = 本人の所属自治体。固定定数では本番のテナント不一致で FK 違反になるため、必ず本人由来で解決する。 */
+    municipalityOf(id: string): Promise<string>;
     getProfile(id: string): Promise<{ name: string; municipality: string; bio?: string; assigned_at?: string } | null>;
   };
   super: {

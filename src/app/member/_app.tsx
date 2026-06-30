@@ -1512,6 +1512,7 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
   const [feeling, setFeeling] = React.useState<number | null>(null);
   const [inlineExpenses, setInlineExpenses] = React.useState<InlineExpense[]>([]);
   const [saving, setSaving] = React.useState(false);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
 
   function removeActivity(idx: number) {
     setActivities((cur) => cur.filter((_, i) => i !== idx));
@@ -1559,6 +1560,7 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
   async function save() {
     if (!canSave) return;
     setSaving(true);
+    setSaveError(null);
     try {
       if (isEdit) {
         await updateLog(editing!.id, {
@@ -1587,7 +1589,9 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
         });
         showDay(targetDate);
       }
-    } catch {
+    } catch (e) {
+      // 失敗を握り潰さず可視化(#82/#86: 押しても無反応で原因が分からない問題の対策)
+      setSaveError((e as Error)?.message || "保存に失敗しました。時間をおいて再度お試しください。");
       setSaving(false);
     }
   }
@@ -1609,6 +1613,11 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
         </div>
         <div className="border-t border-slate-200 bg-white px-5 py-3">
           <div className="mx-auto max-w-2xl">
+            {saveError && (
+              <p role="alert" className="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-[13px] text-rose-700">
+                保存に失敗しました: {saveError}
+              </p>
+            )}
             <button onClick={save} disabled={!canSave} className="w-full rounded-xl bg-slate-900 py-3 text-[17px] font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400">
               {saving ? "更新中…" : "更新する"}
             </button>
@@ -1763,6 +1772,11 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
 
       <div className="border-t border-slate-200 bg-white px-5 py-3">
         <div className="mx-auto max-w-2xl">
+          {saveError && (
+            <p role="alert" className="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-[13px] text-rose-700">
+              保存に失敗しました: {saveError}
+            </p>
+          )}
           <button onClick={save} disabled={!canSave} className="w-full rounded-xl bg-slate-900 py-3 text-[17px] font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400">
             {saving ? "記録中…" : activities.length > 0 ? `${activities.length} 件の活動を記録する` : "活動を追加してください"}
           </button>
