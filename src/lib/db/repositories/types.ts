@@ -218,6 +218,12 @@ export interface Repos {
   invites: {
     /** トークンと 7 日有効期限を採番して発行する */
     create(i: { email: string | null; role: string; municipalityName: string; createdBy: string }): Promise<{ token: string; expiresAt: string }>;
+    /**
+     * 招待先の users 行を事前作成(email で冪等)してからトークンを発行する。
+     * /api/auth/me は email で auth_id を紐づけるだけ(#64)なので、先に行が無いと
+     * 招待されても 403 になる(#74)。super.createAdminInvite と同じ pre-provision 方式。
+     */
+    createProvisioned(i: { email: string; name: string; role: string; municipalityName: string; createdBy: string }): Promise<{ token: string; expiresAt: string }>;
     findByToken(token: string): Promise<InviteRow | null>;
     /** used_at が未設定のときだけ使用済みにする */
     markUsed(token: string): Promise<void>;

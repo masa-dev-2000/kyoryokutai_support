@@ -574,6 +574,20 @@ export const sqliteRepos: Repos = {
       );
       return { token, expiresAt };
     },
+    async createProvisioned({ email, name, role, municipalityName, createdBy }) {
+      // email に対応する users 行が無ければ先に作る(/api/auth/me が email で紐づけられるように)。
+      const existing = get<{ id: string }>("SELECT id FROM users WHERE email=?", [email]);
+      if (!existing) {
+        const id = genId(role === "member" ? "m" : "s");
+        const orgType = role === "member" ? "member" : "municipality";
+        run(
+          "INSERT INTO users (id,municipality_id,organization_type,role,name,email,status) VALUES (?,?,?,?,?,?,?)",
+          [id, MUNI, orgType, role, name, email, "active"]
+        );
+        if (role === "member") seedDefaultBudget(id);
+      }
+      return sqliteRepos.invites.create({ email, role, municipalityName, createdBy });
+    },
     async findByToken(token) {
       const r = get<{
         token: string;

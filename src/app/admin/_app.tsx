@@ -1353,6 +1353,7 @@ type InviteResult = { token: string; url: string; expiresAt: string };
 
 function InviteTab() {
   const [email, setEmail] = React.useState("");
+  const [name, setName] = React.useState("");
   const [role, setRole] = React.useState<string>("member");
   const [municipalityName, setMunicipalityName] = React.useState("新温泉町");
   const [result, setResult] = React.useState<InviteResult | null>(null);
@@ -1360,14 +1361,18 @@ function InviteTab() {
   const [sending, setSending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  const canSubmit = !!email.trim() && !!name.trim();
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    if (!canSubmit) return;
     setSending(true);
     setError(null);
     setResult(null);
     try {
       const res = await apiPost<InviteResult>("/api/admin/invites", {
-        email: email.trim() || undefined,
+        email: email.trim(),
+        name: name.trim(),
         role,
         municipalityName: municipalityName.trim(),
       });
@@ -1397,16 +1402,28 @@ function InviteTab() {
       <h2 className="mb-1 text-[17px] font-bold text-slate-900">招待リンクを発行</h2>
       <p className="mb-5 text-[13px] text-slate-500">
         発行したリンクを招待したい相手に共有してください。リンクは 7 日間有効で、1 回のみ使用できます。
+        登録後すぐにログインできるよう、招待時にアカウントを準備します。
       </p>
 
       <form onSubmit={handleCreate} className="space-y-4">
         <div>
-          <label className="block text-[12px] font-medium text-slate-700 mb-1">メールアドレス(任意)</label>
+          <label className="block text-[12px] font-medium text-slate-700 mb-1">氏名</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="例:谷本 拓海"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-[14px] focus:border-slate-900 focus:outline-none"
+          />
+        </div>
+
+        <div>
+          <label className="block text-[12px] font-medium text-slate-700 mb-1">メールアドレス</label>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="指定すると登録時に固定されます"
+            placeholder="招待先のメールアドレス(登録時に固定されます)"
             className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-[14px] focus:border-slate-900 focus:outline-none"
           />
         </div>
@@ -1440,8 +1457,8 @@ function InviteTab() {
 
         <button
           type="submit"
-          disabled={sending}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-5 py-2.5 text-[14px] font-semibold text-white transition hover:bg-slate-700 disabled:opacity-60"
+          disabled={sending || !canSubmit}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-5 py-2.5 text-[14px] font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Plus className="h-3.5 w-3.5" />
           {sending ? "生成中…" : "招待リンクを生成"}

@@ -769,6 +769,24 @@ export const supabaseRepos: Repos = {
       });
       return { token, expiresAt };
     },
+    async createProvisioned({ email, name, role, municipalityName, createdBy }) {
+      // email に対応する users 行が無ければ先に作る(/api/auth/me が email で紐づけられるように)。
+      const { data: existing } = await supabase()
+        .from("users")
+        .select("id")
+        .eq("email", email)
+        .maybeSingle();
+      if (!existing) {
+        const orgType = role === "member" ? "member" : "municipality";
+        const { data: created } = await supabase()
+          .from("users")
+          .insert({ municipality_id: MUNI, organization_type: orgType, role, name, email, status: "active" })
+          .select("id")
+          .single();
+        if (role === "member" && created?.id) await seedDefaultBudgetSb(created.id);
+      }
+      return supabaseRepos.invites.create({ email, role, municipalityName, createdBy });
+    },
     async findByToken(token) {
       const { data } = await supabase()
         .from("invite_tokens")
