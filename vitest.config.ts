@@ -1,4 +1,4 @@
-import { defineConfig, configDefaults } from "vitest/config";
+import { defineConfig } from "vitest/config";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 // ユニットテスト基盤。
@@ -10,8 +10,6 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
-    // e2e(Playwright)は別ランナー。vitest からは除外する。
-    exclude: [...configDefaults.exclude, "e2e/**"],
     setupFiles: ["./vitest.setup.ts"],
     env: {
       AUTH_PROVIDER: "none",
