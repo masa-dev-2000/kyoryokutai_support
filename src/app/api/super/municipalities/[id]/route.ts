@@ -38,10 +38,12 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const detail = await getRepos().super.municipalityDetail(id);
   if (!detail) return bad("自治体が見つかりません", 404);
-  const userCount = detail.members.length + detail.staff.length;
-  if (userCount > 0) {
-    return bad(`所属ユーザーが ${userCount} 名います。先にユーザーを移動/削除してください`, 409);
+  // 在籍チェックは role を問わず全ユーザーを数える(super 等が municipality_id を持つ場合の取り残し防止)
+  const belonging = await getRepos().super.listUsers({ municipalityId: id });
+  if (belonging.length > 0) {
+    return bad(`所属ユーザーが ${belonging.length} 名います。先にユーザーを移動/削除してください`, 409);
   }
   await getRepos().super.deleteMunicipality(id);
-  return ok(null, 204);
+  // 204(null body)は NextResponse.json / クライアントの res.json() 双方で例外になるため 200+body を返す
+  return ok({ ok: true });
 }

@@ -673,12 +673,14 @@ function MuniEditModal({
 
   async function submit() {
     if (!name.trim() || !prefecture.trim()) { setErr("自治体名・都道府県は必須です"); return; }
+    const budgetNum = Number(budget);
+    if (!Number.isFinite(budgetNum) || budgetNum < 0) { setErr("年間活動費枠は0以上の数値で入力してください"); return; }
     setBusy(true); setErr("");
     try {
       await apiPatch(`/api/super/municipalities/${muni.id}`, {
         name: name.trim(),
         prefecture: prefecture.trim(),
-        annualBudget: Number(budget) || 0,
+        annualBudget: budgetNum,
       });
       onSaved();
     } catch (e) { setErr((e as Error).message); setBusy(false); }

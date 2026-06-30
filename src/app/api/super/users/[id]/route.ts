@@ -44,5 +44,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   }
 
   await getRepos().super.deleteUser(id);
-  return ok(null, 204);
+  // 204(null body)は NextResponse.json / クライアントの res.json() 双方で例外になるため 200+body を返す
+  return ok({ ok: true });
 }

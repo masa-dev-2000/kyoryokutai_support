@@ -235,17 +235,21 @@ export const supabaseRepos: Repos = {
       if (patch.name !== undefined) fields.name = patch.name;
       if (patch.prefecture !== undefined) fields.prefecture = patch.prefecture;
       if (patch.annualBudget !== undefined) fields.annual_budget = patch.annualBudget;
-      const { data } = await supabase()
+      const { data, error } = await supabase()
         .from("municipalities")
         .update(fields)
         .eq("id", id)
         .select("id,name,prefecture")
         .maybeSingle();
+      // エラーは握りつぶさず投げる(誤った 404 を防ぎ、sqlite の挙動に揃える)
+      if (error) throw error;
       return data ? { id: data.id, name: data.name, prefecture: data.prefecture } : null;
     },
 
     async deleteMunicipality(id): Promise<void> {
-      await supabase().from("municipalities").delete().eq("id", id);
+      // FK/RLS で失敗した場合に「成功扱い」にしない
+      const { error } = await supabase().from("municipalities").delete().eq("id", id);
+      if (error) throw error;
     },
 
     async createAdminInvite(a) {
