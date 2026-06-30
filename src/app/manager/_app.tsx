@@ -85,8 +85,12 @@ type ConsultDetail = {
 type ReportDetail = {
   kind: "月次報告";
   ym: string; // YYYY-MM
-  summary: string;
-  sections: { title: string; body: string }[];
+  // 旧/シード形式(summary + sections)
+  summary?: string;
+  sections?: { title: string; body: string }[];
+  // 隊員提出フロー(api/monthly-reports POST)の形式
+  body?: string;
+  plan?: string;
 };
 type ExpenseDetail = {
   kind: "経費";
@@ -1212,15 +1216,33 @@ function ReportDetailView({ d }: { d: ReportDetail }) {
         月次報告({d.ym} 分)
       </div>
 
-      <Label>サマリ</Label>
-      <Body>{d.summary}</Body>
+      {d.summary && (
+        <>
+          <Label>サマリ</Label>
+          <Body>{d.summary}</Body>
+        </>
+      )}
 
-      {d.sections.map((s) => (
+      {(d.sections ?? []).map((s) => (
         <React.Fragment key={s.title}>
           <Label>{s.title}</Label>
           <Body multiline>{s.body}</Body>
         </React.Fragment>
       ))}
+
+      {d.body && (
+        <>
+          <Label>本文</Label>
+          <Body multiline>{d.body}</Body>
+        </>
+      )}
+
+      {d.plan && (
+        <>
+          <Label>来月の計画</Label>
+          <Body multiline>{d.plan}</Body>
+        </>
+      )}
     </>
   );
 }

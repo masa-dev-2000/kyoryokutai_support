@@ -272,6 +272,10 @@ export const sqliteRepos: Repos = {
       return (await sqliteRepos.super.listUsers()).find((u) => u.id === id);
     },
 
+    async deleteUser(id): Promise<void> {
+      run("DELETE FROM users WHERE id=?", [id]);
+    },
+
     async getContract(municipalityId): Promise<ContractDTO | null> {
       const m = get<{
         id: string; name: string; annual_budget: number;
@@ -555,6 +559,42 @@ export const sqliteRepos: Repos = {
         }
       }
       return sqliteRepos.budgets.summaryByUser(userId, fiscalYear);
+    },
+  },
+
+  invites: {
+    async create({ email, role, municipalityName, createdBy }) {
+      const token = Array.from(crypto.getRandomValues(new Uint8Array(24)))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      run(
+        "INSERT INTO invite_tokens (token,email,role,municipality_name,created_by,expires_at) VALUES (?,?,?,?,?,?)",
+        [token, email, role, municipalityName, createdBy, expiresAt]
+      );
+      return { token, expiresAt };
+    },
+    async findByToken(token) {
+      const r = get<{
+        token: string;
+        email: string | null;
+        role: string;
+        municipality_name: string;
+        expires_at: string;
+        used_at: string | null;
+      }>("SELECT * FROM invite_tokens WHERE token=?", [token]);
+      if (!r) return null;
+      return {
+        token: r.token,
+        email: r.email,
+        role: r.role,
+        municipalityName: r.municipality_name,
+        expiresAt: r.expires_at,
+        usedAt: r.used_at,
+      };
+    },
+    async markUsed(token) {
+      run("UPDATE invite_tokens SET used_at=datetime('now') WHERE token=? AND used_at IS NULL", [token]);
     },
   },
 

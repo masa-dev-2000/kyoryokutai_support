@@ -370,6 +370,10 @@ export const supabaseRepos: Repos = {
       return (await supabaseRepos.super.listUsers()).find((u) => u.id === id);
     },
 
+    async deleteUser(id): Promise<void> {
+      await supabase().from("users").delete().eq("id", id);
+    },
+
     async getContract(municipalityId): Promise<ContractDTO | null> {
       const { data } = await supabase()
         .from("municipalities")
@@ -746,6 +750,47 @@ export const supabaseRepos: Repos = {
           { onConflict: "user_id,fiscal_year,category" }
         );
       return supabaseRepos.budgets.summaryByUser(userId, fiscalYear);
+    },
+  },
+
+  invites: {
+    async create({ email, role, municipalityName, createdBy }) {
+      const token = Array.from(crypto.getRandomValues(new Uint8Array(24)))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      await supabase().from("invite_tokens").insert({
+        token,
+        email,
+        role,
+        municipality_name: municipalityName,
+        created_by: createdBy,
+        expires_at: expiresAt,
+      });
+      return { token, expiresAt };
+    },
+    async findByToken(token) {
+      const { data } = await supabase()
+        .from("invite_tokens")
+        .select("token, email, role, municipality_name, expires_at, used_at")
+        .eq("token", token)
+        .maybeSingle();
+      if (!data) return null;
+      return {
+        token: data.token as string,
+        email: (data.email as string | null) ?? null,
+        role: data.role as string,
+        municipalityName: data.municipality_name as string,
+        expiresAt: data.expires_at as string,
+        usedAt: (data.used_at as string | null) ?? null,
+      };
+    },
+    async markUsed(token) {
+      await supabase()
+        .from("invite_tokens")
+        .update({ used_at: new Date().toISOString() })
+        .eq("token", token)
+        .is("used_at", null);
     },
   },
 

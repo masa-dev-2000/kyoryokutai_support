@@ -17,7 +17,7 @@ import {
   ChevronUp,
   ChevronDown,
 } from "lucide-react";
-import { BUDGET_CATEGORIES, ANNUAL_BUDGET_TOTAL } from "@/lib/budget";
+import { BUDGET_CATEGORIES, ANNUAL_BUDGET_TOTAL, defaultAllocationList } from "@/lib/budget";
 
 type BudgetLine = { category: string; amountLimit: number; used: number; remaining: number };
 
@@ -98,7 +98,7 @@ type Ctx = {
   assignments: Record<string, string[]>;
   hosts: HostOrg[];
   routes: ApprovalRoute[];
-  upsertMember: (m: Member) => void | Promise<void>;
+  upsertMember: (m: Member) => Promise<Member>;
   removeMember: (id: string) => void | Promise<void>;
   upsertStaff: (s: Staff) => void | Promise<void>;
   removeStaff: (id: string) => void | Promise<void>;
@@ -164,6 +164,7 @@ export function AdminApp() {
         copy[idx] = saved;
         return copy;
       });
+      return saved;
     },
     removeMember: async (id) => {
       await apiDelete(`/api/members/${id}`);
@@ -822,7 +823,12 @@ function RouteEditSheet({ route, onClose }: { route: ApprovalRoute | null; onClo
     setSteps((ss) => ss.filter((_, idx) => idx !== i));
   }
 
-  const canSave = !!name.trim() && steps.length > 0 && steps.every((s) => s.approverLabel.trim());
+  // host_org ステップは受入団体の選択(hostOrganizationId)を必須にする。
+  // 未選択のまま保存すると、承認フローに実体のない受入団体ステップが残ってしまうため。
+  const canSave =
+    !!name.trim() &&
+    steps.length > 0 &&
+    steps.every((s) => (s.approverType === "host_org" ? !!s.hostOrganizationId : !!s.approverLabel.trim()));
 
   async function save() {
     const normalized = steps.map((s, i) => ({
@@ -1002,8 +1008,10 @@ function MemberEditSheet({
   const [approvalRouteId, setApprovalRouteId] = React.useState(member?.approvalRouteId ?? "");
   const expenseRoutes = routes.filter((r) => r.kind === "経費");
 
-  // 費目別予算枠(既存隊員のみ編集可。新規は作成時に既定配分が自動生成される)
-  const [budget, setBudget] = React.useState<BudgetLine[] | null>(null);
+  // 費目別予算枠。既存隊員は現状を取得し、新規隊員は既定配分を初期表示して作成と同時に保存する。
+  const [budget, setBudget] = React.useState<BudgetLine[] | null>(
+    member ? null : defaultAllocationList().map((a) => ({ ...a, used: 0, remaining: a.amountLimit }))
+  );
   React.useEffect(() => {
     if (!member) return;
     apiGet<BudgetLine[]>(`/api/budgets?userId=${member.id}`)
@@ -1018,7 +1026,7 @@ function MemberEditSheet({
   const canSave = !!(name.trim() && role.trim());
 
   async function save() {
-    await upsertMember({
+    const saved = await upsertMember({
       id: member?.id ?? `m${Date.now()}`,
       name: name.trim(),
       role: role.trim(),
@@ -1027,9 +1035,11 @@ function MemberEditSheet({
       hostOrganizationId: hostOrganizationId || undefined,
       approvalRouteId: approvalRouteId || undefined,
     });
-    if (member && budget) {
+    // 新規・既存いずれも、編集した費目別予算枠を保存する(新規は作成後の id に対して反映)。
+    const targetId = member?.id ?? saved?.id;
+    if (targetId && budget) {
       await apiPut("/api/budgets", {
-        userId: member.id,
+        userId: targetId,
         allocations: budget.map((b) => ({ category: b.category, amountLimit: b.amountLimit })),
       });
     }
@@ -1106,7 +1116,7 @@ function MemberEditSheet({
           ))}
         </select>
 
-        {!isNew && budget && (
+        {budget && (
           <>
             <Label>費目別予算枠(年額 / 合計 ¥{budgetTotal.toLocaleString()})</Label>
             <p className="mt-1 text-[11px] text-slate-500">
