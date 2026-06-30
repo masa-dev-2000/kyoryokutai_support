@@ -47,6 +47,16 @@ export type RouteDTO = { id: string; name: string; kind: string; isDefault: bool
 // 費目別予算枠(1隊員 × 年度 × 費目):枠 / 使用(committed) / 残額
 export type BudgetLineDTO = { category: string; amountLimit: number; used: number; remaining: number };
 
+// 招待トークン(#63)。used/expired の HTTP 判定は route 側で行うため生に近い形で返す。
+export type InviteRow = {
+  token: string;
+  email: string | null;
+  role: string;
+  municipalityName: string;
+  expiresAt: string;
+  usedAt: string | null;
+};
+
 // AI 月報生成プロンプト用の生ログ
 export type LogForAI = {
   activity_type: string;
@@ -166,6 +176,8 @@ export interface Repos {
     listUsers(opts?: { municipalityId?: string; role?: string; status?: string }): Promise<SuperUserRow[]>;
     /** #66: ユーザーの role/status/所属自治体を更新 */
     updateUser(id: string, patch: { role?: string; status?: string; municipalityId?: string }): Promise<SuperUserRow | undefined>;
+    /** ユーザーを削除 */
+    deleteUser(id: string): Promise<void>;
     /** #66: 契約情報の取得 */
     getContract(municipalityId: string): Promise<ContractDTO | null>;
     /** #66: 契約情報の部分更新 */
@@ -202,6 +214,13 @@ export interface Repos {
   budgets: {
     summaryByUser(userId: string, fiscalYear: string): Promise<BudgetLineDTO[]>;
     upsert(userId: string, fiscalYear: string, allocations: { category: string; amountLimit: number }[]): Promise<BudgetLineDTO[]>;
+  };
+  invites: {
+    /** トークンと 7 日有効期限を採番して発行する */
+    create(i: { email: string | null; role: string; municipalityName: string; createdBy: string }): Promise<{ token: string; expiresAt: string }>;
+    findByToken(token: string): Promise<InviteRow | null>;
+    /** used_at が未設定のときだけ使用済みにする */
+    markUsed(token: string): Promise<void>;
   };
   topics: {
     list(userId: string, kind?: string): Promise<string[]>;

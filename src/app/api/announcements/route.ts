@@ -1,22 +1,24 @@
-import { ok, readJson } from "@/lib/api/http";
+import { ok, bad, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
-import { requireSession } from "@/lib/api/auth";
+import { requireAppUser } from "@/lib/api/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MUNI = process.env.NEXT_PUBLIC_DEMO_MUNI_ID ?? "10000000-0000-4000-8000-000000000001";
 
+// お知らせ閲覧はログイン必須(隊員も自町のお知らせを読む)。未認証アクセスを遮断。
 export async function GET(req: Request) {
+  const sess = await requireAppUser();
+  if (sess instanceof Response) return sess;
   const sp = new URL(req.url).searchParams;
   const muni = sp.get("muni") ?? MUNI;
   const kinds = sp.get("kinds")?.split(",").map((k) => k.trim()).filter(Boolean);
   return ok(await getRepos().announcements.list(muni, kinds));
 }
 
+// senderId/senderName は受け付けない(なりすまし防止・サーバ側でセッションから確定)
 type CreateBody = {
-  senderId?: string;
-  senderName?: string;
   kind?: "info" | "rule" | "qa";
   isPinned?: boolean;
   title?: string;
@@ -25,8 +27,24 @@ type CreateBody = {
 };
 
 export async function POST(req: Request) {
-  const sess = await requireSession();
+  const sess = await requireAppUser();
   if (sess instanceof Response) return sess;
+  // 一斉配信は役場職員(manager/admin)のみ。隊員が役場名義で送るのを遮断。
+  if (sess.role !== "manager" && sess.role !== "admin") return bad("お知らせの配信権限がありません", 403);
   const b = await readJson<CreateBody>(req);
-  return ok(await getRepos().announcements.create(b), 201);
+  if (!b.body?.trim()) return bad("本文が必要です");
+  const repos = getRepos();
+  const senderName = (await repos.users.nameOf(sess.userId)) ?? "役場";
+  return ok(
+    await repos.announcements.create({
+      senderId: sess.userId,
+      senderName,
+      kind: b.kind,
+      isPinned: b.isPinned,
+      title: b.title,
+      body: b.body,
+      targets: b.targets,
+    }),
+    201
+  );
 }
