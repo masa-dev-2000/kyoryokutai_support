@@ -8,10 +8,17 @@ export const dynamic = "force-dynamic";
 
 const MUNI = process.env.NEXT_PUBLIC_DEMO_MUNI_ID ?? "10000000-0000-4000-8000-000000000001";
 
-export async function GET() {
+export async function GET(req: Request) {
   const sess = await requireAppUser();
   if (sess instanceof Response) return sess;
-  return ok(await getRepos().monthlyReports.listByUser(sess.userId));
+  // 既定は本人。役場職員(manager/admin)は ?userId で担当隊員の月報を閲覧可。
+  let targetUserId = sess.userId;
+  const qUserId = new URL(req.url).searchParams.get("userId");
+  if (qUserId && qUserId !== sess.userId) {
+    if (sess.role !== "manager" && sess.role !== "admin") return bad("権限がありません", 403);
+    targetUserId = qUserId;
+  }
+  return ok(await getRepos().monthlyReports.listByUser(targetUserId));
 }
 
 type SubmitBody = { ym: string; markdown: string; plan?: string };
