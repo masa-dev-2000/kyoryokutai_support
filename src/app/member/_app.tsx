@@ -953,26 +953,30 @@ function ExpenseTab() {
         {items.length === 0 ? (
           <EmptyState message={sub === "request" ? "申請はまだありません。右下から起こしてください。" : "精算対象はありません。"} />
         ) : (
-          <ul className="space-y-px">
+          /* #84: 一覧性向上のためカード表示に。金額・状態を見やすく配置 */
+          <ul className="space-y-2">
             {items.map((e) => (
-              <li key={e.id} className="border-b border-slate-100 last:border-b-0">
+              <li key={e.id}>
                 <button
                   onClick={() => sub === "settle" && (e.status === "承認" || e.status === "未精算") ? pushSheet({ kind: "expense-settle", item: e }) : pushSheet({ kind: "expense-detail", item: e })}
-                  className="flex w-full items-center gap-3 py-2.5 text-left transition hover:bg-slate-50/60"
+                  className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-slate-900 hover:shadow-sm"
                 >
-                  <Receipt className="h-4 w-4 shrink-0 text-slate-400" />
-                  <div className="min-w-0 flex-1 px-1">
-                    <div className="flex items-center gap-1.5 text-[17px] font-semibold text-slate-900">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-1.5">
                       {e.category && (
                         <span className="shrink-0 rounded-sm border border-slate-200 bg-slate-50 px-1 text-[13px] font-semibold text-slate-600">{e.category}</span>
                       )}
-                      <span className="truncate">{e.title}</span>
-                      <span className="ml-0.5 shrink-0 text-[14px] font-normal text-slate-500">¥{e.amount.toLocaleString()}</span>
+                      <span className="truncate text-[17px] font-semibold text-slate-900">{e.title}</span>
                     </div>
-                    <div className="mt-0.5 truncate text-[14px] text-slate-500">{e.purpose}</div>
+                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[13px] font-semibold ${statusClass(e.status)}`}>{e.status}</span>
                   </div>
-                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[13px] font-semibold ${statusClass(e.status)}`}>{e.status}</span>
-                  <ArrowRight className="h-3 w-3 shrink-0 text-slate-300" />
+                  <div className="mt-1.5 flex items-end justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-1.5 text-[14px] text-slate-500">
+                      <Receipt className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <span className="truncate">{e.purpose}</span>
+                    </div>
+                    <span className="shrink-0 text-[18px] font-bold tabular-nums text-slate-900">¥{e.amount.toLocaleString()}</span>
+                  </div>
                 </button>
               </li>
             ))}
