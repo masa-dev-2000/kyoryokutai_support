@@ -17,7 +17,8 @@
     "db:reset": "rm -rf .data",
     "db:migrate": "tsx scripts/apply-migrations.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
@@ -56,6 +57,7 @@
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/node": "^22.10.5",
     "@types/nodemailer": "^8.0.1",
     "@types/react": "^19.0.2",

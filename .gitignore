@@ -44,3 +44,7 @@ Thumbs.db
 # local sqlite db
 .data/
 .claude/worktrees/
+
+# Playwright
+/playwright-report/
+/test-results/
