@@ -1068,6 +1068,12 @@ export const supabaseRepos: Repos = {
         .update({ status: "approved", status_label: "役場承認" })
         .eq("id", id);
     },
+    async markRejected(id) {
+      await supabase()
+        .from("monthly_reports")
+        .update({ status: "rejected", status_label: "差戻し（要修正）" })
+        .eq("id", id);
+    },
     async revertToSubmitted(userId, ym) {
       await supabase()
         .from("monthly_reports")

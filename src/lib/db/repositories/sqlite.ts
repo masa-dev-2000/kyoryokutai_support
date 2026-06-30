@@ -749,6 +749,9 @@ export const sqliteRepos: Repos = {
     async markApproved(id) {
       run("UPDATE monthly_reports SET status='approved', status_label='役場承認' WHERE id=?", [id]);
     },
+    async markRejected(id) {
+      run("UPDATE monthly_reports SET status='rejected', status_label='差戻し（要修正）' WHERE id=?", [id]);
+    },
     async revertToSubmitted(userId, ym) {
       run(
         "UPDATE monthly_reports SET status='submitted', status_label='提出済(再確認待ち)' WHERE user_id=? AND year_month=? AND status='approved'",

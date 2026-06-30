@@ -42,6 +42,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (row.kind === "経費") await repos.expenses.update(row.target_id, { status: "承認" });
   }
 
+  // 差戻しの反映:対象を差戻し状態に戻し、隊員が修正・再提出できるようにする。
+  // これが無いと、承認キューから外れても月報/経費は提出済・承認のまま残る(承認連動の穴)。
+  if (next.status === "rejected" && row.target_id) {
+    if (row.kind === "月次報告") await repos.monthlyReports.markRejected(row.target_id);
+    if (row.kind === "経費") await repos.expenses.update(row.target_id, { status: "差戻し" });
+  }
+
   const updated = await repos.approvals.getById(id);
   return ok({ approval: updated, result: next.status });
 }
