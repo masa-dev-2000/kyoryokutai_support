@@ -822,7 +822,12 @@ function RouteEditSheet({ route, onClose }: { route: ApprovalRoute | null; onClo
     setSteps((ss) => ss.filter((_, idx) => idx !== i));
   }
 
-  const canSave = !!name.trim() && steps.length > 0 && steps.every((s) => s.approverLabel.trim());
+  // host_org ステップは受入団体の選択(hostOrganizationId)を必須にする。
+  // 未選択のまま保存すると、承認フローに実体のない受入団体ステップが残ってしまうため。
+  const canSave =
+    !!name.trim() &&
+    steps.length > 0 &&
+    steps.every((s) => (s.approverType === "host_org" ? !!s.hostOrganizationId : !!s.approverLabel.trim()));
 
   async function save() {
     const normalized = steps.map((s, i) => ({
