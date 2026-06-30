@@ -8,7 +8,6 @@ import {
   Activity,
   ShieldCheck,
   Loader2,
-  LogOut,
   Plus,
   UserPlus,
   Copy,
@@ -18,6 +17,7 @@ import {
   TrendingUp,
   TrendingDown,
 } from "lucide-react";
+import { LogoutButton } from "@/components/logout-button";
 import type {
   SuperMuniDetail,
   SuperUserRow,
@@ -81,11 +81,6 @@ export function SuperApp() {
       .catch(() => setDetailErr("詳細の取得に失敗しました"));
   }
 
-  async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    location.href = "/login";
-  }
-
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
@@ -94,10 +89,7 @@ export function SuperApp() {
           <span className="text-[15px] font-bold">運営者ダッシュボード</span>
           <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-600">super</span>
         </div>
-        <button onClick={handleLogout} className="inline-flex items-center gap-1 text-[12px] text-slate-500 hover:text-slate-900">
-          <LogOut className="h-3.5 w-3.5" />
-          ログアウト
-        </button>
+        <LogoutButton />
       </header>
 
       {/* タブ */}

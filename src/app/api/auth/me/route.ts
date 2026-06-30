@@ -15,7 +15,7 @@ export async function GET() {
   if (process.env.AUTH_PROVIDER === "none") {
     const userId = process.env.DEV_USER_ID ?? process.env.DEMO_USER_ID ?? "m1";
     const name = (await getRepos().users.nameOf(userId)) ?? "開発ユーザー";
-    return ok({ authenticated: true, userId, name, role: process.env.DEV_USER_ROLE ?? "member" });
+    return ok({ authenticated: true, userId, name, role: process.env.DEV_USER_ROLE ?? "member", authMode: "none" });
   }
 
   const cookieStore = await cookies();
@@ -59,7 +59,7 @@ export async function GET() {
 
     if (byEmail) {
       await admin.from("users").update({ auth_id: user.id }).eq("id", byEmail.id);
-      return ok({ authenticated: true, userId: byEmail.id, name: byEmail.name, role: byEmail.role });
+      return ok({ authenticated: true, userId: byEmail.id, name: byEmail.name, role: byEmail.role, authMode: "supabase" });
     }
 
     // #64: 招待トークン経由で登録されたメアド以外は拒否(自動 member 作成しない)
@@ -69,5 +69,5 @@ export async function GET() {
     );
   }
 
-  return ok({ authenticated: true, userId: appUser.id, name: appUser.name, role: appUser.role });
+  return ok({ authenticated: true, userId: appUser.id, name: appUser.name, role: appUser.role, authMode: "supabase" });
 }

@@ -28,6 +28,7 @@ import {
   Trash2,
   Pencil,
 } from "lucide-react";
+import { LogoutButton } from "@/components/logout-button";
 
 /* ============================================================
    v5 隊員アプリ ─ 検索エンジン型・4 機能(活動報告 / 月報 / 経費 / 事例)
@@ -563,10 +564,6 @@ export function MemberApp() {
 /* -------------------- Header / Tabs / Footer -------------------- */
 
 function Header({ onSettings, userName }: { onSettings: () => void; userName?: string | null }) {
-  async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    location.href = "/login";
-  }
   return (
     <header className="flex items-center justify-between border-b border-slate-100 px-5 py-2.5">
       <span />
@@ -577,11 +574,7 @@ function Header({ onSettings, userName }: { onSettings: () => void; userName?: s
         <button onClick={onSettings} className="p-1 text-slate-500 hover:text-slate-900" aria-label="設定">
           <SettingsIcon className="h-4 w-4" />
         </button>
-        <button onClick={handleLogout} className="p-1 text-slate-400 hover:text-slate-700" aria-label="ログアウト" title="ログアウト">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
-        </button>
+        <LogoutButton />
       </div>
     </header>
   );
