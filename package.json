@@ -15,7 +15,9 @@
     "typecheck": "tsc --noEmit",
     "typecheck:op": "node scripts/op-run.mjs .env.1password.local npm run typecheck",
     "db:reset": "rm -rf .data",
-    "db:migrate": "tsx scripts/apply-migrations.ts"
+    "db:migrate": "tsx scripts/apply-migrations.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
@@ -64,6 +66,8 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.9"
   }
 }
