@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { BUDGET_CATEGORIES, DEFAULT_ALLOCATION, currentFiscalYear } from "@/lib/budget";
 
 // 既存モック(member/manager/admin _app.tsx)と同じ初期データを投入。
 // 投入後の画面はモック時代と見た目が変わらない。
@@ -41,6 +42,17 @@ export function seed(db: DatabaseSync) {
     );
     for (const [id, name, role, started, term] of members) {
       insUser.run(id, MUNI, null, "member", "member", name, `${id}@member.example.jp`, role, null, null, term, started, "active");
+    }
+
+    // -- 費目別予算枠(当年度・既定配分 合計 200 万)--
+    const fy = currentFiscalYear();
+    const insBudget = db.prepare(
+      "INSERT INTO budget_allocations (id,municipality_id,user_id,fiscal_year,category,amount_limit) VALUES (?,?,?,?,?,?)"
+    );
+    for (const [mid] of members) {
+      BUDGET_CATEGORIES.forEach((category, ci) => {
+        insBudget.run(`bud_${mid}_${ci}`, MUNI, mid, fy, category, DEFAULT_ALLOCATION[category] ?? 0);
+      });
     }
 
     // -- 役場職員 --

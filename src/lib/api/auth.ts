@@ -38,3 +38,11 @@ export async function requireSuper(): Promise<{ authId: string; userId: string; 
   if (sess.role !== "super") return bad("運営者(super)権限が必要です", 403);
   return sess;
 }
+
+/** 管理者(admin)専用ルートの先頭で呼ぶ。admin / super 以外は 403。 */
+export async function requireAdmin(): Promise<{ authId: string; userId: string; role: string } | Response> {
+  const sess = await requireAppUser();
+  if (sess instanceof Response) return sess;
+  if (sess.role !== "admin" && sess.role !== "super") return bad("管理者(admin)権限が必要です", 403);
+  return sess;
+}

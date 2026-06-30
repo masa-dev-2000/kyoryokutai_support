@@ -29,7 +29,9 @@ import type {
   SuperUserRow,
   ContractDTO,
   SuperAnalytics,
+  BudgetLineDTO,
 } from "./types";
+import { BUDGET_CATEGORIES, DEFAULT_ALLOCATION, currentFiscalYear } from "@/lib/budget";
 
 const MUNI = "10000000-0000-4000-8000-000000000001";
 
@@ -114,6 +116,29 @@ function buildContract(row: {
     contractStart: row.contract_start ?? undefined,
     contractEnd: row.contract_end ?? undefined,
   };
+}
+
+// 年度 "YYYY"(4 月始まり)→ [開始日, 翌年度開始日)
+function fyRange(fy: string): [string, string] {
+  const y = Number(fy);
+  return [`${y}-04-01`, `${y + 1}-04-01`];
+}
+
+// 新規隊員に当年度の費目別予算枠(既定配分)を投入(重複は無視)。
+async function seedDefaultBudgetSb(userId: string) {
+  const fy = currentFiscalYear();
+  await supabase()
+    .from("budget_allocations")
+    .upsert(
+      BUDGET_CATEGORIES.map((category) => ({
+        municipality_id: MUNI,
+        user_id: userId,
+        fiscal_year: fy,
+        category,
+        amount_limit: DEFAULT_ALLOCATION[category] ?? 0,
+      })),
+      { onConflict: "user_id,fiscal_year,category", ignoreDuplicates: true }
+    );
 }
 
 function supabase() {
@@ -458,7 +483,10 @@ export const supabaseRepos: Repos = {
       if (m.id) {
         const { data } = await supabase()
           .from("users")
-          .update({ name: m.name, role_label: m.role, started_at: m.startedAt ?? null, term: m.term ?? "1 年目" })
+          .update({
+            name: m.name, role_label: m.role, started_at: m.startedAt ?? null, term: m.term ?? "1 年目",
+            host_organization_id: m.hostOrganizationId ?? null, approval_route_id: m.approvalRouteId ?? null,
+          })
           .eq("id", m.id)
           .select()
           .single();
@@ -469,6 +497,8 @@ export const supabaseRepos: Repos = {
         .insert({
           municipality_id: MUNI,
           organization_type: "member",
+          host_organization_id: m.hostOrganizationId ?? null,
+          approval_route_id: m.approvalRouteId ?? null,
           role: "member",
           name: m.name,
           role_label: m.role,
@@ -478,6 +508,8 @@ export const supabaseRepos: Repos = {
         })
         .select()
         .single();
+      // 新規隊員に当年度の費目別予算枠(既定配分)を自動生成
+      if (data?.id) await seedDefaultBudgetSb(data.id);
       return mapMember(data!);
     },
     async retire(id) {
@@ -612,6 +644,16 @@ export const supabaseRepos: Repos = {
           })),
       }));
     },
+    async getForUser(userId) {
+      const { data: u } = await supabase()
+        .from("users")
+        .select("approval_route_id")
+        .eq("id", userId)
+        .single();
+      if (!u?.approval_route_id) return null;
+      const list = await supabaseRepos.routes.list();
+      return list.find((r) => r.id === u.approval_route_id) ?? null;
+    },
     async create(r) {
       const { data: route } = await supabase()
         .from("approval_routes")
@@ -634,9 +676,76 @@ export const supabaseRepos: Repos = {
       const list = await supabaseRepos.routes.list();
       return list.find((x) => x.id === route.id);
     },
+    async upsert(r) {
+      if (!r.id) return supabaseRepos.routes.create(r);
+      await supabase()
+        .from("approval_routes")
+        .update({ name: r.name, kind: r.kind, is_default: r.isDefault ?? false })
+        .eq("id", r.id);
+      await supabase().from("approval_route_steps").delete().eq("route_id", r.id); // 全置換
+      if (r.steps?.length) {
+        await supabase().from("approval_route_steps").insert(
+          r.steps.map((s) => ({
+            route_id: r.id,
+            step_no: s.stepNo,
+            approver_type: s.approverType,
+            approver_label: s.approverLabel,
+            department: s.department ?? null,
+            host_organization_id: s.hostOrganizationId ?? null,
+          }))
+        );
+      }
+      const list = await supabaseRepos.routes.list();
+      return list.find((x) => x.id === r.id);
+    },
     async remove(id) {
       await supabase().from("approval_route_steps").delete().eq("route_id", id);
       await supabase().from("approval_routes").delete().eq("id", id);
+    },
+  },
+
+  budgets: {
+    async summaryByUser(userId, fiscalYear) {
+      const { data: allocs } = await supabase()
+        .from("budget_allocations")
+        .select("category, amount_limit")
+        .eq("user_id", userId)
+        .eq("fiscal_year", fiscalYear);
+      const limitMap: Record<string, number> = {};
+      for (const a of allocs ?? []) limitMap[a.category as string] = a.amount_limit as number;
+      const [start, end] = fyRange(fiscalYear);
+      const { data: exps } = await supabase()
+        .from("expenses")
+        .select("category, amount_requested, status, created_at")
+        .eq("user_id", userId)
+        .neq("status", "差戻し")
+        .gte("created_at", start)
+        .lt("created_at", end);
+      const usedMap: Record<string, number> = {};
+      for (const e of exps ?? []) {
+        const cat = (e.category as string) ?? "活動費";
+        usedMap[cat] = (usedMap[cat] ?? 0) + ((e.amount_requested as number) ?? 0);
+      }
+      return BUDGET_CATEGORIES.map((category): BudgetLineDTO => {
+        const amountLimit = limitMap[category] ?? 0;
+        const used = usedMap[category] ?? 0;
+        return { category, amountLimit, used, remaining: amountLimit - used };
+      });
+    },
+    async upsert(userId, fiscalYear, allocations) {
+      await supabase()
+        .from("budget_allocations")
+        .upsert(
+          allocations.map((a) => ({
+            municipality_id: MUNI,
+            user_id: userId,
+            fiscal_year: fiscalYear,
+            category: a.category,
+            amount_limit: a.amountLimit,
+          })),
+          { onConflict: "user_id,fiscal_year,category" }
+        );
+      return supabaseRepos.budgets.summaryByUser(userId, fiscalYear);
     },
   },
 
