@@ -162,6 +162,8 @@ export interface Repos {
   users: {
     count(): Promise<number>;
     nameOf(id: string): Promise<string | undefined>;
+    /** 書込時に使うテナント = 本人の所属自治体。固定定数では本番のテナント不一致で FK 違反になるため、必ず本人由来で解決する。 */
+    municipalityOf(id: string): Promise<string>;
     getProfile(id: string): Promise<{ name: string; municipality: string; bio?: string; assigned_at?: string } | null>;
   };
   super: {
@@ -276,6 +278,8 @@ export interface Repos {
     /** 隊員が月報を役場に提出(同月の下書きがあれば更新、なければ作成)。status=submitted */
     submit(b: { userId: string; ym: string; markdown: string; plan?: string }): Promise<ReportDTO>;
     markApproved(id: string): Promise<void>;
+    /** 役場が月報を差戻し → status=rejected(隊員が修正・再提出できる状態に戻す) */
+    markRejected(id: string): Promise<void>;
     /** 活動報告を編集/削除した場合、同月の承認済み月報を「提出済」に差し戻す */
     revertToSubmitted(userId: string, ym: string): Promise<void>;
   };

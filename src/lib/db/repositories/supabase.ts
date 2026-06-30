@@ -149,6 +149,13 @@ function supabase() {
   );
 }
 
+// 書込時の municipality_id は固定定数ではなく本人の所属自治体から解決する。
+// (本番の users は MUNI 定数と別テナント=テスト町 に属しており、固定値だと daily_logs 等で FK 違反になる)
+async function muniOf(userId: string): Promise<string> {
+  const { data } = await supabase().from("users").select("municipality_id").eq("id", userId).maybeSingle();
+  return (data?.municipality_id as string) ?? MUNI;
+}
+
 // Supabase の occurred_at(timestamptz)→ log_date / log_time に変換してマッパーに渡す
 function toLogRow(r: Record<string, unknown>): Record<string, unknown> {
   const oa = r.occurred_at as string | null;
@@ -175,6 +182,9 @@ export const supabaseRepos: Repos = {
     async nameOf(id) {
       const { data } = await supabase().from("users").select("name").eq("id", id).single();
       return data?.name;
+    },
+    async municipalityOf(id) {
+      return muniOf(id);
     },
     async getProfile(id) {
       const { data } = await supabase()
@@ -836,7 +846,7 @@ export const supabaseRepos: Repos = {
         .from("activity_logs")
         .insert({
           user_id: b.userId,
-          municipality_id: MUNI,
+          municipality_id: await muniOf(b.userId),
           daily_log_id: dailyLogId,
           activity_type: b.type,
           topic: b.topic,
@@ -931,7 +941,7 @@ export const supabaseRepos: Repos = {
         .from("daily_logs")
         .insert({
           user_id: userId,
-          municipality_id: MUNI,
+          municipality_id: await muniOf(userId),
           log_date: date,
           note: fields?.note ?? null,
           distance_km: fields?.distanceKm ?? null,
@@ -967,7 +977,7 @@ export const supabaseRepos: Repos = {
         .from("expenses")
         .insert({
           user_id: b.userId,
-          municipality_id: MUNI,
+          municipality_id: await muniOf(b.userId),
           expense_kind: "single",
           category: b.category ?? "活動費",
           daily_log_id: b.dailyLogId ?? null,
@@ -989,7 +999,7 @@ export const supabaseRepos: Repos = {
         .from("expenses")
         .insert({
           user_id: b.userId,
-          municipality_id: MUNI,
+          municipality_id: await muniOf(b.userId),
           expense_kind: "single",
           source_activity_log_id: b.activityLogId,
           source_receipt_index: b.receiptIndex,
@@ -1047,7 +1057,7 @@ export const supabaseRepos: Repos = {
       }
       const { data } = await supabase()
         .from("monthly_reports")
-        .insert({ user_id: b.userId, municipality_id: MUNI, year_month: b.ym, status: "submitted", status_label: "提出済", summary: b.markdown, plan_next: b.plan ?? null })
+        .insert({ user_id: b.userId, municipality_id: await muniOf(b.userId), year_month: b.ym, status: "submitted", status_label: "提出済", summary: b.markdown, plan_next: b.plan ?? null })
         .select()
         .single();
       return mapReport(data!);
@@ -1056,6 +1066,12 @@ export const supabaseRepos: Repos = {
       await supabase()
         .from("monthly_reports")
         .update({ status: "approved", status_label: "役場承認" })
+        .eq("id", id);
+    },
+    async markRejected(id) {
+      await supabase()
+        .from("monthly_reports")
+        .update({ status: "rejected", status_label: "差戻し（要修正）" })
         .eq("id", id);
     },
     async revertToSubmitted(userId, ym) {
@@ -1207,7 +1223,7 @@ export const supabaseRepos: Repos = {
     async log(c) {
       await supabase().from("consultations").insert({
         user_id: c.userId,
-        municipality_id: MUNI,
+        municipality_id: await muniOf(c.userId),
         context_kind: c.contextKind,
         input_text: c.input,
         output_text: c.output,
@@ -1268,7 +1284,7 @@ export const supabaseRepos: Repos = {
       }
       const { data } = await supabase()
         .from("monthly_cycles")
-        .insert({ user_id: userId, municipality_id: MUNI, year_month: ym, ...patch })
+        .insert({ user_id: userId, municipality_id: await muniOf(userId), year_month: ym, ...patch })
         .select()
         .single();
       return mapMonthlyCycle(toCycleRow(data!));
