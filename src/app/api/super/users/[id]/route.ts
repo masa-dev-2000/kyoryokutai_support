@@ -31,3 +31,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (!updated) return bad("ユーザーが見つかりません", 404);
   return ok(updated);
 }
+
+/** DELETE /api/super/users/[id] — ユーザーを削除(super 専用) */
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const sess = await requireSuper();
+  if (sess instanceof Response) return sess;
+  const { id } = await params;
+
+  // 事故防止: super 自身の削除をブロック
+  if (sess.userId && sess.userId === id) {
+    return bad("自分自身は削除できません", 400);
+  }
+
+  await getRepos().super.deleteUser(id);
+  return ok(null, 204);
+}
