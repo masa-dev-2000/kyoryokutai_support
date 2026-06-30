@@ -116,9 +116,19 @@ async function uploadReceipt(file: File): Promise<{ key: string; url: string } |
 }
 
 // Web Speech API による音声入力(クライアント完結・インフラ不要)。非対応ブラウザでは非表示。
+// 実機での失敗(マイク不許可・無音・通信)を黙殺せず、ボタン上に短いラベルで可視化する。
+const SR_ERROR_LABEL: Record<string, string> = {
+  "not-allowed": "マイク許可が必要",
+  "service-not-allowed": "マイク許可が必要",
+  "no-speech": "聞き取れません",
+  "audio-capture": "マイク未検出",
+  network: "通信エラー",
+};
+
 function VoiceInput({ onText, className }: { onText: (t: string) => void; className?: string }) {
   const [supported, setSupported] = React.useState(false);
   const [listening, setListening] = React.useState(false);
+  const [errLabel, setErrLabel] = React.useState<string | null>(null);
   const recRef = React.useRef<{ stop: () => void } | null>(null);
 
   React.useEffect(() => {
@@ -134,10 +144,11 @@ function VoiceInput({ onText, className }: { onText: (t: string) => void; classN
       recRef.current?.stop();
       return;
     }
+    setErrLabel(null);
     const rec = new SR() as {
       lang: string; interimResults: boolean; continuous: boolean;
       onresult: (e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void;
-      onend: () => void; onerror: () => void; start: () => void; stop: () => void;
+      onend: () => void; onerror: (e: { error?: string }) => void; start: () => void; stop: () => void;
     };
     rec.lang = "ja-JP";
     rec.interimResults = false;
@@ -147,26 +158,36 @@ function VoiceInput({ onText, className }: { onText: (t: string) => void; classN
       if (text) onText(text);
     };
     rec.onend = () => setListening(false);
-    rec.onerror = () => setListening(false);
+    rec.onerror = (e) => {
+      setListening(false);
+      setErrLabel(SR_ERROR_LABEL[e?.error ?? ""] ?? "音声エラー");
+    };
     recRef.current = rec;
     setListening(true);
-    rec.start();
+    try {
+      rec.start();
+    } catch {
+      // start() は連打などで InvalidStateError を投げることがある。状態だけ戻す。
+      setListening(false);
+    }
   }
 
   if (!supported) return null;
+  const isError = !!errLabel && !listening;
   return (
     <button
       type="button"
       onClick={toggle}
+      title={errLabel ?? undefined}
       className={
         className ??
         `inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[14px] font-semibold transition ${
-          listening ? "border-rose-500 bg-rose-50 text-rose-700" : "border-slate-300 bg-white text-slate-700 hover:border-slate-900 hover:bg-slate-50"
+          listening || isError ? "border-rose-500 bg-rose-50 text-rose-700" : "border-slate-300 bg-white text-slate-700 hover:border-slate-900 hover:bg-slate-50"
         }`
       }
     >
       <Mic className="h-3 w-3" />
-      {listening ? "聞き取り中…" : "音声"}
+      {listening ? "聞き取り中…" : errLabel ?? "音声"}
     </button>
   );
 }
@@ -1391,13 +1412,17 @@ function ActivityFieldset({ value, onChange }: { value: InlineActivity; onChange
   // AI 質問補完(P0-2): メモから「次の一問」を取得して表示
   const [followupQ, setFollowupQ] = React.useState<string | null>(null);
   const [loadingQ, setLoadingQ] = React.useState(false);
+  const [qErr, setQErr] = React.useState(false);
   async function askFollowup() {
     setLoadingQ(true);
+    setQErr(false);
     try {
       const r = await apiPost<{ question: string }>("/api/ai/followup", { current: value.body });
       if (r.question) setFollowupQ(r.question);
+      else setQErr(true);
     } catch {
-      /* noop */
+      // 実機で AI 接続に失敗した場合(プロバイダ未設定/停止 等)を黙殺せず可視化する。
+      setQErr(true);
     } finally {
       setLoadingQ(false);
     }
@@ -1433,6 +1458,11 @@ function ActivityFieldset({ value, onChange }: { value: InlineActivity; onChange
         <div className="mt-1 flex items-start gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[13px] text-amber-900">
           <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>{followupQ}</span>
+        </div>
+      )}
+      {qErr && (
+        <div className="mt-1 rounded-lg bg-rose-50 px-2.5 py-1.5 text-[13px] text-rose-700">
+          AI に接続できませんでした。時間をおいて再度お試しください。
         </div>
       )}
     </>
