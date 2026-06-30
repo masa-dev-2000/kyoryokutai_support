@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { apiGet, apiPost, apiPatch } from "@/lib/api/client";
+import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api/client";
 import {
   Building2,
   Users,
@@ -17,6 +17,7 @@ import {
   ClipboardCheck,
   TrendingUp,
   TrendingDown,
+  Trash2,
 } from "lucide-react";
 import type {
   SuperMuniDetail,
@@ -432,6 +433,17 @@ function AccountsTab({ municipalities }: { municipalities: MuniRow[] }) {
     }
   }
 
+  async function remove(u: SuperUserRow) {
+    if (!window.confirm(`「${u.name}」(${u.email})を削除します。元に戻せません。よろしいですか?`)) return;
+    try {
+      await apiDelete(`/api/super/users/${u.id}`);
+      setUsers((prev) => (prev ? prev.filter((x) => x.id !== u.id) : prev));
+    } catch (e) {
+      // 自分自身の削除はサーバ側で 400 ブロック。メッセージを表示。
+      setErr(e instanceof Error ? e.message : "削除に失敗しました");
+    }
+  }
+
   return (
     <>
       <div className="mb-4 flex flex-wrap gap-2">
@@ -460,6 +472,7 @@ function AccountsTab({ municipalities }: { municipalities: MuniRow[] }) {
               <th className="px-3 py-2.5 text-left">role</th>
               <th className="px-3 py-2.5 text-left">status</th>
               <th className="px-3 py-2.5 text-right">活動記録</th>
+              <th className="px-3 py-2.5 text-right">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -498,13 +511,22 @@ function AccountsTab({ municipalities }: { municipalities: MuniRow[] }) {
                   </select>
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">{u.activityLogs}</td>
+                <td className="px-3 py-2 text-right">
+                  <button
+                    onClick={() => remove(u)}
+                    title="このユーザーを削除"
+                    className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-3 w-3" /> 削除
+                  </button>
+                </td>
               </tr>
             ))}
             {users && users.length === 0 && (
-              <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">該当ユーザーがいません</td></tr>
+              <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">該当ユーザーがいません</td></tr>
             )}
             {!users && !err && (
-              <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">読み込み中…</td></tr>
+              <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">読み込み中…</td></tr>
             )}
           </tbody>
         </table>
