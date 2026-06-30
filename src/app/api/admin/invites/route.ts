@@ -1,6 +1,6 @@
 import { ok, bad, readJson } from "@/lib/api/http";
 import { requireAdmin } from "@/lib/api/auth";
-import { getDb } from "@/lib/db";
+import { getRepos } from "@/lib/db/repositories";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,19 +18,15 @@ export async function POST(req: Request) {
 
   const { email, role = "member", municipalityName = "" } = await readJson<CreateBody>(req);
 
-  // ランダムトークン生成
-  const token = Array.from(crypto.getRandomValues(new Uint8Array(24)))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-
-  // 7日間有効
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-
+  let token: string;
+  let expiresAt: string;
   try {
-    getDb().prepare(
-      `INSERT INTO invite_tokens (token, email, role, municipality_name, expires_at)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run(token, email ?? null, role, municipalityName, expiresAt);
+    ({ token, expiresAt } = await getRepos().invites.create({
+      email: email?.trim() || null,
+      role,
+      municipalityName,
+      createdBy: sess.userId,
+    }));
   } catch {
     return bad("DB error", 500);
   }
