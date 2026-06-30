@@ -6,9 +6,6 @@ import { requireAppUser } from "@/lib/api/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// 単一テナント(対象自治体)の ID。デモ USER とは無関係のテナント定数。
-const MUNI = process.env.NEXT_PUBLIC_DEMO_MUNI_ID ?? "10000000-0000-4000-8000-000000000001";
-
 export async function GET() {
   const sess = await requireAppUser();
   if (sess instanceof Response) return sess;
@@ -47,12 +44,14 @@ export async function POST(req: Request) {
 
   // 役場側の承認キューに投入(隊員申請 → 役場が見える、ADR-012)
   const memberName = (await repos.users.nameOf(userId)) ?? "隊員";
+  // 承認キューのテナントは本人の所属自治体(固定定数では本番 FK 違反になる)
+  const muni = await repos.users.municipalityOf(userId);
   // ADR-012: 隊員に割り当てられたルートを優先(委託型=団体ステップ含む)。未割当は既定。
   const assigned = await repos.routes.getForUser(userId);
   const { routeName, steps } =
     assigned && assigned.steps.length ? expandAssignedRoute(assigned) : expandRoute("経費", "担当課");
   await repos.approvals.enqueue({
-    muni: MUNI,
+    muni,
     kind: "経費",
     applicantId: userId,
     memberName,
