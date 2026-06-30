@@ -1,6 +1,6 @@
 import { ok, bad, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
-import { expandRoute } from "@/lib/workflow";
+import { expandRoute, expandAssignedRoute } from "@/lib/workflow";
 import { requireAppUser } from "@/lib/api/auth";
 
 export const runtime = "nodejs";
@@ -47,7 +47,10 @@ export async function POST(req: Request) {
 
   // 役場側の承認キューに投入(隊員申請 → 役場が見える、ADR-012)
   const memberName = (await repos.users.nameOf(userId)) ?? "隊員";
-  const { routeName, steps } = expandRoute("経費", "担当課");
+  // ADR-012: 隊員に割り当てられたルートを優先(委託型=団体ステップ含む)。未割当は既定。
+  const assigned = await repos.routes.getForUser(userId);
+  const { routeName, steps } =
+    assigned && assigned.steps.length ? expandAssignedRoute(assigned) : expandRoute("経費", "担当課");
   await repos.approvals.enqueue({
     muni: MUNI,
     kind: "経費",
@@ -55,7 +58,7 @@ export async function POST(req: Request) {
     memberName,
     title: `${b.title} ¥${b.amount.toLocaleString()}`,
     ai: "隊員からの新規経費申請。AI 判定材料は未生成。",
-    detail: { kind: "経費", purpose: b.purpose, amount: b.amount, payee: "", paidDate: "", receipt: false },
+    detail: { kind: "経費", purpose: b.purpose, amount: b.amount, category: created.category, payee: "", paidDate: "", receipt: false },
     routeName,
     steps,
     targetTable: "expenses",

@@ -26,7 +26,9 @@ import type {
   ContractDTO,
   ContractPatch,
   SuperAnalytics,
+  BudgetLineDTO,
 } from "./types";
+import { BUDGET_CATEGORIES, DEFAULT_ALLOCATION, currentFiscalYear } from "@/lib/budget";
 
 // SQLite 実装(ローカル / Vercel デモ)。SQL はここに集約し、Route からは追放する。
 const MUNI = "muni_shinonsen";
@@ -58,6 +60,24 @@ function buildContract(row: {
     contractStart: row.contract_start ?? undefined,
     contractEnd: row.contract_end ?? undefined,
   };
+}
+
+// 年度 "YYYY"(4 月始まり)→ [開始日, 翌年度開始日)。経費の created_at(YYYY-MM-DD…)を辞書順比較で絞る。
+function fyRange(fy: string): [string, string] {
+  const y = Number(fy);
+  return [`${y}-04-01`, `${y + 1}-04-01`];
+}
+
+// 新規隊員に当年度の費目別予算枠(既定配分)を投入(既存があればスキップ)。
+function seedDefaultBudget(userId: string) {
+  const fy = currentFiscalYear();
+  for (const category of BUDGET_CATEGORIES) {
+    const exists = get("SELECT id FROM budget_allocations WHERE user_id=? AND fiscal_year=? AND category=?", [userId, fy, category]);
+    if (exists) continue;
+    run("INSERT INTO budget_allocations (id,municipality_id,user_id,fiscal_year,category,amount_limit) VALUES (?,?,?,?,?,?)", [
+      genId("bud"), MUNI, userId, fy, category, DEFAULT_ALLOCATION[category] ?? 0,
+    ]);
+  }
 }
 
 function loadRoutes(): RouteDTO[] {
@@ -357,17 +377,19 @@ export const sqliteRepos: Repos = {
     async upsert(m) {
       const existing = m.id ? get("SELECT id FROM users WHERE id=?", [m.id]) : undefined;
       if (existing) {
-        run("UPDATE users SET name=?, role_label=?, started_at=?, term=? WHERE id=?", [
-          m.name, m.role, m.startedAt ?? "未設定", m.term ?? "1 年目", m.id,
+        run("UPDATE users SET name=?, role_label=?, started_at=?, term=?, host_organization_id=?, approval_route_id=? WHERE id=?", [
+          m.name, m.role, m.startedAt ?? "未設定", m.term ?? "1 年目", m.hostOrganizationId ?? null, m.approvalRouteId ?? null, m.id,
         ]);
         return mapMember(all("SELECT * FROM users WHERE id=?", [m.id])[0]);
       }
       const id = m.id ?? genId("m");
       run(
-        `INSERT INTO users (id,municipality_id,organization_type,role,name,email,role_label,term,started_at,status)
-         VALUES (?,?,?,?,?,?,?,?,?,?)`,
-        [id, MUNI, "member", "member", m.name, `${id}@member.example.jp`, m.role, m.term ?? "1 年目", m.startedAt ?? "未設定", "active"]
+        `INSERT INTO users (id,municipality_id,host_organization_id,organization_type,role,name,email,role_label,term,started_at,status,approval_route_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [id, MUNI, m.hostOrganizationId ?? null, "member", "member", m.name, `${id}@member.example.jp`, m.role, m.term ?? "1 年目", m.startedAt ?? "未設定", "active", m.approvalRouteId ?? null]
       );
+      // 新規隊員に当年度の費目別予算枠(既定配分)を自動生成
+      seedDefaultBudget(id);
       return mapMember(all("SELECT * FROM users WHERE id=?", [id])[0]);
     },
     async retire(id) {
@@ -453,6 +475,11 @@ export const sqliteRepos: Repos = {
     async list() {
       return loadRoutes();
     },
+    async getForUser(userId) {
+      const u = get<{ approval_route_id?: string }>("SELECT approval_route_id FROM users WHERE id=?", [userId]);
+      if (!u?.approval_route_id) return null;
+      return loadRoutes().find((r) => r.id === u.approval_route_id) ?? null;
+    },
     async create(r) {
       const id = genId("rt");
       run("INSERT INTO approval_routes (id,municipality_id,name,kind,is_default) VALUES (?,?,?,?,?)", [
@@ -467,9 +494,67 @@ export const sqliteRepos: Repos = {
       }
       return loadRoutes().find((x) => x.id === id);
     },
+    async upsert(r) {
+      if (r.id && get("SELECT id FROM approval_routes WHERE id=?", [r.id])) {
+        run("UPDATE approval_routes SET name=?, kind=?, is_default=? WHERE id=?", [
+          r.name, r.kind, r.isDefault ? 1 : 0, r.id,
+        ]);
+        run("DELETE FROM approval_route_steps WHERE route_id=?", [r.id]); // 全置換
+        for (const s of r.steps ?? []) {
+          run(
+            `INSERT INTO approval_route_steps (id,route_id,step_no,approver_type,approver_label,department,host_organization_id)
+             VALUES (?,?,?,?,?,?,?)`,
+            [genId("st"), r.id, s.stepNo, s.approverType, s.approverLabel, s.department ?? null, s.hostOrganizationId ?? null]
+          );
+        }
+        return loadRoutes().find((x) => x.id === r.id);
+      }
+      return sqliteRepos.routes.create(r);
+    },
     async remove(id) {
       run("DELETE FROM approval_route_steps WHERE route_id=?", [id]);
       run("DELETE FROM approval_routes WHERE id=?", [id]);
+    },
+  },
+
+  budgets: {
+    async summaryByUser(userId, fiscalYear) {
+      const allocs = all<{ category: string; amount_limit: number }>(
+        "SELECT category, amount_limit FROM budget_allocations WHERE user_id=? AND fiscal_year=?",
+        [userId, fiscalYear]
+      );
+      const limitMap: Record<string, number> = {};
+      for (const a of allocs) limitMap[a.category] = a.amount_limit;
+      // 使用額 = committed(差戻し以外)を費目別に集計、当年度のみ
+      const [start, end] = fyRange(fiscalYear);
+      const usedRows = all<{ category: string; used: number }>(
+        `SELECT category, COALESCE(SUM(amount_requested),0) used FROM expenses
+         WHERE user_id=? AND status != '差戻し' AND created_at >= ? AND created_at < ? GROUP BY category`,
+        [userId, start, end]
+      );
+      const usedMap: Record<string, number> = {};
+      for (const r of usedRows) usedMap[r.category] = r.used;
+      return BUDGET_CATEGORIES.map((category): BudgetLineDTO => {
+        const amountLimit = limitMap[category] ?? 0;
+        const used = usedMap[category] ?? 0;
+        return { category, amountLimit, used, remaining: amountLimit - used };
+      });
+    },
+    async upsert(userId, fiscalYear, allocations) {
+      for (const a of allocations) {
+        const existing = get<{ id: string }>(
+          "SELECT id FROM budget_allocations WHERE user_id=? AND fiscal_year=? AND category=?",
+          [userId, fiscalYear, a.category]
+        );
+        if (existing) {
+          run("UPDATE budget_allocations SET amount_limit=?, updated_at=datetime('now') WHERE id=?", [a.amountLimit, existing.id]);
+        } else {
+          run("INSERT INTO budget_allocations (id,municipality_id,user_id,fiscal_year,category,amount_limit) VALUES (?,?,?,?,?,?)", [
+            genId("bud"), MUNI, userId, fiscalYear, a.category, a.amountLimit,
+          ]);
+        }
+      }
+      return sqliteRepos.budgets.summaryByUser(userId, fiscalYear);
     },
   },
 
