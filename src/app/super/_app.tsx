@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 import type {
   SuperMuniDetail,
-  SuperUserRow,
   SuperAnalytics,
 } from "@/lib/db/repositories/types";
 
@@ -48,7 +47,11 @@ type Overview = {
   totals: { municipalities: number; members: number; managers: number; admins: number; supers: number };
 };
 
-type Tab = "overview" | "accounts" | "analytics";
+type Tab = "overview" | "analytics";
+
+// #119: 自治体詳細でのアカウント編集に使う選択肢
+const STATUS_OPTS = ["active", "retired", "suspended"];
+const STAFF_ROLE_OPTS = ["manager", "admin"];
 
 export function SuperApp() {
   const [data, setData] = React.useState<Overview | null>(null);
@@ -107,7 +110,6 @@ export function SuperApp() {
         <div className="mx-auto flex max-w-5xl gap-1">
           {([
             ["overview", "概要"],
-            ["accounts", "アカウント"],
             ["analytics", "分析"],
           ] as [Tab, string][]).map(([key, label]) => (
             <button
@@ -143,7 +145,6 @@ export function SuperApp() {
             onOpenDetail={openDetail}
           />
         )}
-        {data && tab === "accounts" && <AccountsTab municipalities={data.municipalities} />}
         {data && tab === "analytics" && <AnalyticsTab />}
       </div>
 
@@ -151,7 +152,12 @@ export function SuperApp() {
       {muniModal && (
         <MuniModal
           onClose={() => setMuniModal(false)}
-          onCreated={() => { setMuniModal(false); loadOverview(); }}
+          onCreated={(created) => {
+            // #113: 作成後そのまま「管理者を招待」へ続けて誘導
+            setMuniModal(false);
+            loadOverview();
+            setInviteFor(created);
+          }}
         />
       )}
       {/* #65 管理者招待モーダル */}
@@ -291,6 +297,29 @@ function DetailSheet({
     }
   }
 
+  // #119: 自治体ごとのアカウント管理(role/status 変更・削除)を詳細内で行う
+  async function patchUser(id: string, body: { role?: string; status?: string }) {
+    setOpErr(null);
+    try {
+      await apiPatch(`/api/super/users/${id}`, body);
+      onReload();
+    } catch (e) {
+      setOpErr(e instanceof Error ? e.message : "更新に失敗しました");
+    }
+  }
+
+  async function removeUser(id: string, name: string) {
+    if (!window.confirm(`「${name}」を削除します。元に戻せません。よろしいですか?`)) return;
+    setOpErr(null);
+    try {
+      await apiDelete(`/api/super/users/${id}`);
+      onReload();
+    } catch (e) {
+      // 自分自身の削除はサーバ側で 400 ブロック。
+      setOpErr(e instanceof Error ? e.message : "削除に失敗しました");
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <div className="absolute inset-0 bg-slate-900/30" onClick={onClose} />
@@ -362,6 +391,7 @@ function DetailSheet({
                     <th className="px-3 py-2 text-left">任期</th>
                     <th className="px-3 py-2 text-left">着任日</th>
                     <th className="px-3 py-2 text-left">状態</th>
+                    <th className="px-3 py-2 text-right">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -372,12 +402,27 @@ function DetailSheet({
                       <td className="px-3 py-2 text-slate-500">{m.term}</td>
                       <td className="px-3 py-2 text-slate-500">{m.startedAt}</td>
                       <td className="px-3 py-2">
-                        <StatusBadge status={m.status} />
+                        <select
+                          value={m.status}
+                          onChange={(e) => patchUser(m.id, { status: e.target.value })}
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[12px]"
+                        >
+                          {STATUS_OPTS.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          onClick={() => removeUser(m.id, m.name)}
+                          title="この隊員を削除"
+                          className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-3 w-3" /> 削除
+                        </button>
                       </td>
                     </tr>
                   ))}
                   {detail.members.length === 0 && (
-                    <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-400">隊員がいません</td></tr>
+                    <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-400">隊員がいません</td></tr>
                   )}
                 </tbody>
               </table>
@@ -393,6 +438,7 @@ function DetailSheet({
                     <th className="px-3 py-2 text-left">役職</th>
                     <th className="px-3 py-2 text-left">所属課</th>
                     <th className="px-3 py-2 text-left">role</th>
+                    <th className="px-3 py-2 text-right">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -401,11 +447,28 @@ function DetailSheet({
                       <td className="px-3 py-2 font-medium">{s.name}</td>
                       <td className="px-3 py-2 text-slate-500">{s.title}</td>
                       <td className="px-3 py-2 text-slate-500">{s.dept}</td>
-                      <td className="px-3 py-2 text-slate-500">{s.role}</td>
+                      <td className="px-3 py-2">
+                        <select
+                          value={s.role}
+                          onChange={(e) => patchUser(s.id, { role: e.target.value })}
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[12px]"
+                        >
+                          {STAFF_ROLE_OPTS.map((r) => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          onClick={() => removeUser(s.id, s.name)}
+                          title="この職員を削除"
+                          className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-3 w-3" /> 削除
+                        </button>
+                      </td>
                     </tr>
                   ))}
                   {detail.staff.length === 0 && (
-                    <tr><td colSpan={4} className="px-3 py-6 text-center text-slate-400">職員がいません</td></tr>
+                    <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-400">職員がいません</td></tr>
                   )}
                 </tbody>
               </table>
@@ -442,145 +505,6 @@ function DetailSheet({
         )}
       </div>
     </div>
-  );
-}
-
-/* ---------------- アカウント管理タブ(#66) ---------------- */
-
-const ROLE_OPTS = ["member", "manager", "admin", "super"];
-const STATUS_OPTS = ["active", "retired", "suspended"];
-
-function AccountsTab({ municipalities }: { municipalities: MuniRow[] }) {
-  const [users, setUsers] = React.useState<SuperUserRow[] | null>(null);
-  const [fMuni, setFMuni] = React.useState("");
-  const [fRole, setFRole] = React.useState("");
-  const [fStatus, setFStatus] = React.useState("");
-  const [err, setErr] = React.useState<string | null>(null);
-
-  const load = React.useCallback(() => {
-    const qs = new URLSearchParams();
-    if (fMuni) qs.set("municipalityId", fMuni);
-    if (fRole) qs.set("role", fRole);
-    if (fStatus) qs.set("status", fStatus);
-    const q = qs.toString();
-    apiGet<SuperUserRow[]>(`/api/super/users${q ? `?${q}` : ""}`)
-      .then(setUsers)
-      .catch(() => setErr("ユーザーの取得に失敗しました"));
-  }, [fMuni, fRole, fStatus]);
-
-  React.useEffect(() => {
-    load();
-  }, [load]);
-
-  async function patch(id: string, body: { role?: string; status?: string; municipalityId?: string }) {
-    try {
-      const updated = await apiPatch<SuperUserRow>(`/api/super/users/${id}`, body);
-      setUsers((prev) => (prev ? prev.map((u) => (u.id === id ? updated : u)) : prev));
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "更新に失敗しました");
-      load(); // 失敗時(自己変更ブロック等)はサーバ状態に戻す
-    }
-  }
-
-  async function remove(u: SuperUserRow) {
-    if (!window.confirm(`「${u.name}」(${u.email})を削除します。元に戻せません。よろしいですか?`)) return;
-    try {
-      await apiDelete(`/api/super/users/${u.id}`);
-      setUsers((prev) => (prev ? prev.filter((x) => x.id !== u.id) : prev));
-    } catch (e) {
-      // 自分自身の削除はサーバ側で 400 ブロック。メッセージを表示。
-      setErr(e instanceof Error ? e.message : "削除に失敗しました");
-    }
-  }
-
-  return (
-    <>
-      <div className="mb-4 flex flex-wrap gap-2">
-        <Select value={fMuni} onChange={setFMuni} label="全自治体">
-          {municipalities.map((m) => (
-            <option key={m.id} value={m.id}>{m.name}</option>
-          ))}
-        </Select>
-        <Select value={fRole} onChange={setFRole} label="全ロール">
-          {ROLE_OPTS.map((r) => <option key={r} value={r}>{r}</option>)}
-        </Select>
-        <Select value={fStatus} onChange={setFStatus} label="全状態">
-          {STATUS_OPTS.map((s) => <option key={s} value={s}>{s}</option>)}
-        </Select>
-      </div>
-
-      {err && <div className="mb-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[12px] text-red-700">{err}</div>}
-
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-[13px]">
-          <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
-            <tr>
-              <th className="px-3 py-2.5 text-left">氏名</th>
-              <th className="px-3 py-2.5 text-left">メール</th>
-              <th className="px-3 py-2.5 text-left">自治体</th>
-              <th className="px-3 py-2.5 text-left">role</th>
-              <th className="px-3 py-2.5 text-left">status</th>
-              <th className="px-3 py-2.5 text-right">活動記録</th>
-              <th className="px-3 py-2.5 text-right">操作</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {(users ?? []).map((u) => (
-              <tr key={u.id} className="hover:bg-slate-50">
-                <td className="px-3 py-2 font-medium">{u.name}</td>
-                <td className="px-3 py-2 text-slate-500">{u.email}</td>
-                <td className="px-3 py-2">
-                  <select
-                    value={u.municipalityId ?? ""}
-                    onChange={(e) => patch(u.id, { municipalityId: e.target.value })}
-                    className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[12px] disabled:opacity-50"
-                  >
-                    <option value="">(未所属)</option>
-                    {municipalities.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                </td>
-                <td className="px-3 py-2">
-                  <select
-                    value={u.role}
-                    onChange={(e) => patch(u.id, { role: e.target.value })}
-                    className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[12px] disabled:opacity-50"
-                  >
-                    {ROLE_OPTS.map((r) => <option key={r} value={r}>{r}</option>)}
-                  </select>
-                </td>
-                <td className="px-3 py-2">
-                  <select
-                    value={u.status}
-                    onChange={(e) => patch(u.id, { status: e.target.value })}
-                    className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[12px] disabled:opacity-50"
-                  >
-                    {STATUS_OPTS.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">{u.activityLogs}</td>
-                <td className="px-3 py-2 text-right">
-                  <button
-                    onClick={() => remove(u)}
-                    title="このユーザーを削除"
-                    className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50"
-                  >
-                    <Trash2 className="h-3 w-3" /> 削除
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {users && users.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">該当ユーザーがいません</td></tr>
-            )}
-            {!users && !err && (
-              <tr><td colSpan={7} className="px-3 py-8 text-center text-slate-400">読み込み中…</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </>
   );
 }
 
@@ -698,7 +622,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-function MuniModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+function MuniModal({ onClose, onCreated }: { onClose: () => void; onCreated: (created: { id: string; name: string }) => void }) {
   const [name, setName] = React.useState("");
   const [prefecture, setPrefecture] = React.useState("");
   const [budget, setBudget] = React.useState("2000000");
@@ -709,8 +633,11 @@ function MuniModal({ onClose, onCreated }: { onClose: () => void; onCreated: () 
     if (!name.trim() || !prefecture.trim()) { setErr("自治体名・都道府県は必須です"); return; }
     setBusy(true); setErr("");
     try {
-      await apiPost("/api/super/municipalities", { name: name.trim(), prefecture: prefecture.trim(), annualBudget: Number(budget) || undefined });
-      onCreated();
+      const created = await apiPost<{ id: string; name: string; prefecture: string }>(
+        "/api/super/municipalities",
+        { name: name.trim(), prefecture: prefecture.trim(), annualBudget: Number(budget) || undefined }
+      );
+      onCreated({ id: created.id, name: created.name });
     } catch (e) { setErr((e as Error).message); setBusy(false); }
   }
 
@@ -853,41 +780,5 @@ function StatCard({
       </div>
       <div className="mt-1 text-2xl font-bold tabular-nums">{decimals ? value.toFixed(1) : value}</div>
     </div>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    active: "bg-emerald-50 text-emerald-700",
-    retired: "bg-slate-100 text-slate-500",
-    suspended: "bg-red-50 text-red-700",
-  };
-  return (
-    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${map[status] ?? "bg-slate-100 text-slate-500"}`}>
-      {status}
-    </span>
-  );
-}
-
-function Select({
-  value,
-  onChange,
-  label,
-  children,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12px] text-slate-700"
-    >
-      <option value="">{label}</option>
-      {children}
-    </select>
   );
 }
