@@ -17,6 +17,13 @@ function open(): DB {
   mkdirSync(dirname(abs), { recursive: true });
   const db = new DatabaseSync(abs);
   db.exec(SCHEMA_SQL);
+  // 既存 DB への後方互換マイグレーション(列が既にあれば例外を握り潰す)
+  for (const sql of [
+    "ALTER TABLE expenses ADD COLUMN receipt_key TEXT",
+    "ALTER TABLE municipalities ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'",
+  ]) {
+    try { db.exec(sql); } catch { /* 既に存在 */ }
+  }
   // users が空なら初期データ投入
   const row = db.prepare("SELECT COUNT(*) AS c FROM users").get() as { c: number };
   if (row.c === 0) seed(db);

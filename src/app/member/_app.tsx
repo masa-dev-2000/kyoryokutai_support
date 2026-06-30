@@ -99,6 +99,78 @@ const FEELINGS: { score: number; emoji: string; label: string }[] = [
 ];
 const feelingOf = (s?: number) => FEELINGS.find((f) => f.score === s);
 
+/* -------------------- 領収書アップロード / 音声入力(P0-2・P0-3) -------------------- */
+
+// 領収書を Storage に保存し { key, url } を返す。失敗時 null。
+async function uploadReceipt(file: File): Promise<{ key: string; url: string } | null> {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("prefix", "receipts");
+  try {
+    const res = await fetch("/api/files/", { method: "POST", body: fd, headers: { accept: "application/json" } });
+    if (!res.ok) return null;
+    return (await res.json()) as { key: string; url: string };
+  } catch {
+    return null;
+  }
+}
+
+// Web Speech API による音声入力(クライアント完結・インフラ不要)。非対応ブラウザでは非表示。
+function VoiceInput({ onText, className }: { onText: (t: string) => void; className?: string }) {
+  const [supported, setSupported] = React.useState(false);
+  const [listening, setListening] = React.useState(false);
+  const recRef = React.useRef<{ stop: () => void } | null>(null);
+
+  React.useEffect(() => {
+    const w = window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown };
+    setSupported(!!(w.SpeechRecognition || w.webkitSpeechRecognition));
+  }, []);
+
+  function toggle() {
+    const w = window as unknown as { SpeechRecognition?: new () => unknown; webkitSpeechRecognition?: new () => unknown };
+    const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
+    if (!SR) return;
+    if (listening) {
+      recRef.current?.stop();
+      return;
+    }
+    const rec = new SR() as {
+      lang: string; interimResults: boolean; continuous: boolean;
+      onresult: (e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void;
+      onend: () => void; onerror: () => void; start: () => void; stop: () => void;
+    };
+    rec.lang = "ja-JP";
+    rec.interimResults = false;
+    rec.continuous = false;
+    rec.onresult = (e) => {
+      const text = Array.from(e.results).map((r) => r[0].transcript).join("").trim();
+      if (text) onText(text);
+    };
+    rec.onend = () => setListening(false);
+    rec.onerror = () => setListening(false);
+    recRef.current = rec;
+    setListening(true);
+    rec.start();
+  }
+
+  if (!supported) return null;
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      className={
+        className ??
+        `inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[14px] font-semibold transition ${
+          listening ? "border-rose-500 bg-rose-50 text-rose-700" : "border-slate-300 bg-white text-slate-700 hover:border-slate-900 hover:bg-slate-50"
+        }`
+      }
+    >
+      <Mic className="h-3 w-3" />
+      {listening ? "聞き取り中…" : "音声"}
+    </button>
+  );
+}
+
 
 type Report = {
   id: string;
@@ -106,6 +178,8 @@ type Report = {
   ym: string;
   status: "draft" | "submitted" | "approved";
   statusLabel: string;
+  bodyMd?: string;
+  planNext?: string;
 };
 
 
@@ -123,6 +197,7 @@ type ExpenseRequest = {
   citation: { source: string; quote: string };
   createdAt: string;
   hasReceipt: boolean;
+  receiptKey?: string | null;
 };
 
 
@@ -213,8 +288,10 @@ export type InlineExpense = {
   amount: number;
   purpose: string;
   hasReceipt?: boolean;
-  /** クライアント表示用のレシート画像 dataURL(本番では Storage に上げる、現状はプレビュー専用)*/
+  /** クライアント表示用のレシート画像 dataURL(プレビュー) */
   receiptDataUrl?: string;
+  /** Storage 保存後のキー(/api/files で配信)。提出時にサーバへ渡す */
+  receiptKey?: string;
 };
 
 type Ctx = {
@@ -237,8 +314,10 @@ type Ctx = {
   addType: (t: string) => void;
   expenses: ExpenseRequest[];
   addExpense: (e: Omit<ExpenseRequest, "id" | "createdAt" | "aiNote" | "citation" | "hasReceipt">) => void | Promise<void>;
-  markSettled: (id: string) => void;
+  markSettled: (id: string, receiptKey?: string) => void | Promise<void>;
   reports: Report[];
+  /** 月報を役場に提出(永続化 + 承認キュー投入)。提出後の Report を返す */
+  submitReport: (ym: string, markdown: string, plan?: string) => Promise<Report>;
   caseItems: CaseItem[];
   trend: TrendItem[];
   notices: Notice[];
@@ -343,6 +422,7 @@ export function MemberApp() {
         amount: e.amount,
         purpose: e.purpose,
         hasReceipt: !!e.hasReceipt,
+        receiptKey: e.receiptKey,
       }));
       const result = await apiPost<{ dailyLog: DailyLogEntry; activities: ActivityLog[]; expensesCreated: number }>(
         "/api/daily-logs",
@@ -406,11 +486,19 @@ export function MemberApp() {
       const created = await apiPost<ExpenseRequest>("/api/expenses", { userId: memberId, ...e });
       setExpenses((es) => [created, ...es]);
     },
-    markSettled: async (id) => {
-      const updated = await apiPatch<ExpenseRequest>(`/api/expenses/${id}`, { status: "精算済", hasReceipt: true });
+    markSettled: async (id, receiptKey) => {
+      const updated = await apiPatch<ExpenseRequest>(`/api/expenses/${id}`, { status: "精算済", hasReceipt: true, receiptKey });
       setExpenses((es) => es.map((e) => (e.id === id ? updated : e)));
     },
     reports,
+    submitReport: async (ym, markdown, planText) => {
+      const report = await apiPost<Report>("/api/monthly-reports", { userId: memberId, ym, markdown, plan: planText });
+      setReports((rs) => {
+        const others = rs.filter((r) => r.ym !== ym);
+        return [report, ...others].sort((a, b) => b.ym.localeCompare(a.ym));
+      });
+      return report;
+    },
     caseItems,
     trend,
     notices,
@@ -1300,6 +1388,20 @@ function emptyActivity(startTime = "09:00"): InlineActivity {
 /** 1 活動分の入力フォーム(種類・内容・時間・メモ)。日報の新規入力モーダルと単一活動編集の両方で使う。 */
 function ActivityFieldset({ value, onChange }: { value: InlineActivity; onChange: (patch: Partial<InlineActivity>) => void }) {
   const { types, topics, addType, addTopic } = useApp();
+  // AI 質問補完(P0-2): メモから「次の一問」を取得して表示
+  const [followupQ, setFollowupQ] = React.useState<string | null>(null);
+  const [loadingQ, setLoadingQ] = React.useState(false);
+  async function askFollowup() {
+    setLoadingQ(true);
+    try {
+      const r = await apiPost<{ question: string }>("/api/ai/followup", { current: value.body });
+      if (r.question) setFollowupQ(r.question);
+    } catch {
+      /* noop */
+    } finally {
+      setLoadingQ(false);
+    }
+  }
   return (
     <>
       <Label>活動の種類</Label>
@@ -1308,8 +1410,31 @@ function ActivityFieldset({ value, onChange }: { value: InlineActivity; onChange
       <ChipPicker options={topics} selected={value.topic} onSelect={(c) => onChange({ topic: c || null })} onAdd={(v) => { addTopic(v); onChange({ topic: v }); }} placeholder="例:空き家バンク、移住相談…" />
       <Label>活動時間</Label>
       <TimeRangeInput start={value.startTime} end={value.endTime} onStart={(v) => onChange({ startTime: v })} onEnd={(v) => onChange({ endTime: v })} />
-      <Label>メモ</Label>
+      <Label
+        right={
+          <div className="flex items-center gap-1.5">
+            <VoiceInput onText={(t) => onChange({ body: value.body ? `${value.body} ${t}` : t })} />
+            <button
+              type="button"
+              onClick={askFollowup}
+              disabled={loadingQ}
+              className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[14px] font-semibold text-slate-700 transition hover:border-slate-900 hover:bg-slate-50 disabled:text-slate-300"
+            >
+              <Sparkles className="h-3 w-3" />
+              {loadingQ ? "考え中…" : "AI に質問"}
+            </button>
+          </div>
+        }
+      >
+        メモ
+      </Label>
       <textarea rows={4} value={value.body} onChange={(e) => onChange({ body: e.target.value })} placeholder="例:A 邸を内覧、移住希望者と一緒に。築 80 年だが構造良好。" className="mt-1 w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-[17px] focus:border-slate-900 focus:outline-none" />
+      {followupQ && (
+        <div className="mt-1 flex items-start gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[13px] text-amber-900">
+          <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{followupQ}</span>
+        </div>
+      )}
     </>
   );
 }
@@ -1383,11 +1508,15 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
   }
   async function onReceiptFile(idx: number, file: File | null) {
     if (!file) return;
+    // 即時プレビュー
     const reader = new FileReader();
     reader.onload = () => {
       updateExpense(idx, { hasReceipt: true, receiptDataUrl: typeof reader.result === "string" ? reader.result : undefined });
     };
     reader.readAsDataURL(file);
+    // Storage へ保存(本番保存・P0-3)
+    const up = await uploadReceipt(file);
+    if (up) updateExpense(idx, { hasReceipt: true, receiptKey: up.key });
   }
 
   const validExpenses = inlineExpenses.filter((e) => e.amount > 0 && e.purpose.trim().length > 0);
@@ -1753,11 +1882,41 @@ const MIN_MONTHLY_HOURS = 120;
 const MONTHLY_BUDGET = 200000;
 
 function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () => void }) {
-  const { plan, setPlan } = useApp();
-  const ym = report.ym;
+  const { plan, setPlan, submitReport } = useApp();
+  const ym = report.ym; // "YYYY-MM"
 
   // カレンダー日付クリックで開くローカルポップアップ
   const [dayPopup, setDayPopup] = React.useState<string | null>(null);
+
+  // 月報本文(P0-1): AI 生成 → 編集 → 提出で永続化
+  const [bodyText, setBodyText] = React.useState(report.bodyMd ?? "");
+  const [genState, setGenState] = React.useState<"idle" | "loading" | "error">("idle");
+  const [status, setStatus] = React.useState(report.status);
+  const [submitting, setSubmitting] = React.useState(false);
+
+  async function generateBody() {
+    setGenState("loading");
+    try {
+      const r = await apiPost<{ markdown: string }>("/api/ai/monthly-report", { ym: ym });
+      setBodyText(r.markdown.trim());
+      setGenState("idle");
+    } catch {
+      setGenState("error");
+    }
+  }
+
+  async function submit() {
+    if (!bodyText.trim() || submitting) return;
+    setSubmitting(true);
+    try {
+      const updated = await submitReport(ym, bodyText.trim(), plan);
+      setStatus(updated.status);
+    } catch {
+      /* noop */
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   // 計画 AI 生成(今月の活動から来月計画たたき台を生成)
   const [polishingPlan, setPolishingPlan] = React.useState(false);
@@ -1796,16 +1955,43 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
       <SheetHeader title={report.yearMonth} onClose={onClose} />
       <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
         <div className="flex flex-wrap items-center gap-2">
-          <span className={`rounded-full border px-2 py-0.5 text-[13px] font-semibold ${report.status === "draft" ? "border-slate-300 bg-slate-50 text-slate-700" : report.status === "submitted" ? "border-slate-300 bg-white text-slate-700" : "border-slate-300 bg-slate-900 text-white"}`}>
-            {report.status === "draft" ? "下書き" : report.status === "submitted" ? "提出済" : "承認済"}
+          <span className={`rounded-full border px-2 py-0.5 text-[13px] font-semibold ${status === "draft" ? "border-slate-300 bg-slate-50 text-slate-700" : status === "submitted" ? "border-slate-300 bg-white text-slate-700" : "border-slate-300 bg-slate-900 text-white"}`}>
+            {status === "draft" ? "下書き" : status === "submitted" ? "提出済" : "承認済"}
           </span>
-          <span className="text-[14px] text-slate-500">{report.statusLabel}</span>
+          <span className="text-[14px] text-slate-500">{status === report.status ? report.statusLabel : status === "submitted" ? "提出済" : report.statusLabel}</span>
         </div>
 
         <h1 className="mt-3 text-2xl font-bold tracking-tight">{report.yearMonth}</h1>
 
         {/* サマリー + カレンダー + グラフ(月報タブと共通) */}
         <MonthOverview ym={ym} onDayTap={(d) => setDayPopup(d)} />
+
+        {/* 月報本文(P0-1: 活動ログから AI 生成 → 編集 → 提出で永続化) */}
+        <Label
+          right={
+            <button
+              type="button"
+              onClick={generateBody}
+              disabled={genState === "loading"}
+              className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[14px] font-semibold text-slate-700 transition hover:border-slate-900 hover:bg-slate-50 disabled:text-slate-300"
+            >
+              <Sparkles className="h-3 w-3" />
+              {genState === "loading" ? "生成中…" : bodyText ? "AI で作り直す" : "AI で本文を生成"}
+            </button>
+          }
+        >
+          月報本文
+        </Label>
+        {genState === "error" && (
+          <p className="mt-1 text-[13px] text-rose-600">生成に失敗しました。対象月の活動記録があるか確認してください。</p>
+        )}
+        <textarea
+          rows={10}
+          value={bodyText}
+          onChange={(e) => setBodyText(e.target.value)}
+          placeholder={"「AI で本文を生成」で今月の活動記録から下書きを作成します。生成後そのまま編集できます。"}
+          className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-slate-50/40 px-3 py-2.5 text-[16px] leading-relaxed text-slate-800 outline-none focus:border-slate-400"
+        />
 
         {/* 来月の計画 */}
         <Label
@@ -1834,13 +2020,28 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
 
       <div className="border-t border-slate-200 px-5 py-3">
         <div className="mx-auto flex max-w-2xl items-center justify-end gap-2">
-          {report.status === "draft" ? (
-            <button className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-4 py-1.5 text-[16px] font-bold text-white hover:bg-slate-800">
+          {status === "draft" ? (
+            <button
+              type="button"
+              onClick={submit}
+              disabled={!bodyText.trim() || submitting}
+              className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-4 py-1.5 text-[16px] font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+            >
               <Check className="h-3.5 w-3.5" />
-              役場に提出
+              {submitting ? "提出中…" : "役場に提出"}
             </button>
           ) : (
-            <button className="rounded-full border border-slate-300 px-4 py-1.5 text-[16px] font-semibold text-slate-700 hover:border-slate-500">PDF 出力</button>
+            <>
+              <span className="mr-auto text-[14px] font-semibold text-slate-600">提出済みです</span>
+              <button
+                type="button"
+                onClick={submit}
+                disabled={!bodyText.trim() || submitting}
+                className="rounded-full border border-slate-300 px-4 py-1.5 text-[16px] font-semibold text-slate-700 transition hover:border-slate-500 disabled:text-slate-300"
+              >
+                {submitting ? "更新中…" : "再提出"}
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -2144,9 +2345,27 @@ function ExpenseSettleSheet({ item, onClose }: { item: ExpenseRequest; onClose: 
   const [actual, setActual] = React.useState(String(item.amount));
   const [note, setNote] = React.useState("");
   const [hasReceipt, setHasReceipt] = React.useState(item.hasReceipt);
+  const [receiptKey, setReceiptKey] = React.useState<string | undefined>(item.receiptKey ?? undefined);
+  const [preview, setPreview] = React.useState<string | null>(null);
+  const [uploading, setUploading] = React.useState(false);
+
+  async function onReceipt(file: File | null) {
+    if (!file) return;
+    setUploading(true);
+    const reader = new FileReader();
+    reader.onload = () => setPreview(typeof reader.result === "string" ? reader.result : null);
+    reader.readAsDataURL(file);
+    const up = await uploadReceipt(file);
+    if (up) {
+      setReceiptKey(up.key);
+      setHasReceipt(true);
+    }
+    setUploading(false);
+  }
 
   async function submit() {
-    await markSettled(item.id);
+    if (!hasReceipt) return;
+    await markSettled(item.id, receiptKey);
     onClose();
   }
 
@@ -2172,10 +2391,15 @@ function ExpenseSettleSheet({ item, onClose }: { item: ExpenseRequest; onClose: 
         <input type="text" inputMode="numeric" value={actual} onChange={(e) => setActual(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-[17px] focus:border-slate-900 focus:outline-none" />
 
         <Label>領収書</Label>
-        <button onClick={() => setHasReceipt(true)} className={`mt-1 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 transition ${hasReceipt ? "border-slate-900 bg-slate-50 text-slate-900" : "border-slate-300 bg-white text-slate-500 hover:border-slate-500"}`}>
+        <label className={`mt-1 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 transition ${hasReceipt ? "border-slate-900 bg-slate-50 text-slate-900" : "border-slate-300 bg-white text-slate-500 hover:border-slate-500"}`}>
           <Camera className="h-5 w-5" />
-          {hasReceipt ? "領収書 添付済(タップで再撮影)" : "領収書を撮影 / 選択"}
-        </button>
+          {uploading ? "アップロード中…" : hasReceipt ? "領収書 添付済(タップで再撮影)" : "領収書を撮影 / 選択"}
+          <input type="file" accept="image/*" capture="environment" onChange={(e) => onReceipt(e.target.files?.[0] ?? null)} className="hidden" />
+        </label>
+        {(preview || (receiptKey && !preview)) && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src={preview ?? `/api/files/${encodeURIComponent(receiptKey!)}`} alt="領収書" className="mt-2 max-h-40 rounded-lg border border-slate-200" />
+        )}
 
         <Label>精算メモ(任意)</Label>
         <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="例:消費税込で +800 円の差異あり。レシート参照。" className="mt-1 w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-[17px] focus:border-slate-900 focus:outline-none" />

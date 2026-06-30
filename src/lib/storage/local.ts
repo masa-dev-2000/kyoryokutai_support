@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, rmSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import type { StorageProvider } from "./types";
 
@@ -18,6 +18,12 @@ export class LocalStorageProvider implements StorageProvider {
     const path = resolve(root(), key);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, body);
+  }
+
+  async getBytes(key: string): Promise<Uint8Array | null> {
+    const path = resolve(root(), key);
+    if (!existsSync(path)) return null;
+    return readFileSync(path);
   }
 
   async getSignedDownloadUrl(key: string): Promise<string> {
