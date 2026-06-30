@@ -622,16 +622,14 @@ function formatDateShort(d: string) {
 
 // ADR-020: 月報タブをカレンダー起点に。日付タップで活動の閲覧/作成へ。
 function ReportTab() {
-  const { pushSheet, logs } = useApp();
+  const { pushSheet } = useApp();
   const [ym, setYm] = React.useState<string>(currentYm());
   // #88: 月ラベルのタップで任意の月へジャンプ(前月/次月の連打を不要に)
   const monthInputRef = React.useRef<HTMLInputElement>(null);
 
-  // カレンダー日付タップ:記録があれば一覧、なければ当日含めて作成シート
+  // #122: 入口を統一。記録の有無に関わらず「その日の活動一覧」を開き、一覧内の「+追加」から作成する。
   function onDayTap(date: string) {
-    const hasLogs = logs.some((l) => l.date === date);
-    if (hasLogs) pushSheet({ kind: "report-day", date });
-    else pushSheet({ kind: "activity-create", date });
+    pushSheet({ kind: "report-day", date });
   }
 
   return (
@@ -684,12 +682,12 @@ function ReportTab() {
       {/* サマリー + カレンダー + グラフ */}
       <MonthOverview ym={ym} onDayTap={onDayTap} />
 
-      {/* FAB: 当日の活動を追加(セカンダリ動線) */}
+      {/* FAB: 当日の活動一覧へ(#122: 入口をカレンダーと統一。一覧の「+追加」から作成) */}
       <button
-        onClick={() => pushSheet({ kind: "activity-create" })}
+        onClick={() => pushSheet({ kind: "report-day", date: todayKey() })}
         className="fixed bottom-10 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg ring-4 ring-white transition hover:bg-slate-800 active:scale-95"
         style={{ right: "max(1.5rem, calc(50vw - 21rem + 1.5rem))" }}
-        aria-label="今日の活動を追加"
+        aria-label="今日の活動"
       >
         <Plus className="h-6 w-6" />
       </button>
