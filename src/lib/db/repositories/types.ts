@@ -166,6 +166,8 @@ export interface Repos {
     listUsers(opts?: { municipalityId?: string; role?: string; status?: string }): Promise<SuperUserRow[]>;
     /** #66: ユーザーの role/status/所属自治体を更新 */
     updateUser(id: string, patch: { role?: string; status?: string; municipalityId?: string }): Promise<SuperUserRow | undefined>;
+    /** ユーザーを削除 */
+    deleteUser(id: string): Promise<void>;
     /** #66: 契約情報の取得 */
     getContract(municipalityId: string): Promise<ContractDTO | null>;
     /** #66: 契約情報の部分更新 */

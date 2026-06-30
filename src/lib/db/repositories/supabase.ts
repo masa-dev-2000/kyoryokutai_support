@@ -370,6 +370,10 @@ export const supabaseRepos: Repos = {
       return (await supabaseRepos.super.listUsers()).find((u) => u.id === id);
     },
 
+    async deleteUser(id): Promise<void> {
+      await supabase().from("users").delete().eq("id", id);
+    },
+
     async getContract(municipalityId): Promise<ContractDTO | null> {
       const { data } = await supabase()
         .from("municipalities")

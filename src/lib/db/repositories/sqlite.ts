@@ -272,6 +272,10 @@ export const sqliteRepos: Repos = {
       return (await sqliteRepos.super.listUsers()).find((u) => u.id === id);
     },
 
+    async deleteUser(id): Promise<void> {
+      run("DELETE FROM users WHERE id=?", [id]);
+    },
+
     async getContract(municipalityId): Promise<ContractDTO | null> {
       const m = get<{
         id: string; name: string; annual_budget: number;
