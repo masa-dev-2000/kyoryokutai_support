@@ -1297,27 +1297,36 @@ function ChipPicker({
   );
 }
 
-/* -------- 今日の手応えピッカー(#56)-------- */
-// 絵文字を 1 タップで選ぶだけ。もう一度押すと解除(任意項目)。
-function FeelingPicker({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
+/* -------- 今日の手応えスライダー(#56 / #83 で省スペース化)-------- */
+// 4 ボタン(高さ ~52px)をやめ、1 行のスライダーで入力。
+// 0 = 未選択(任意項目)、1〜4 = つかれた〜充実。現在値は右側に絵文字+ラベルで表示。
+function FeelingSlider({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
+  const cur = feelingOf(value ?? undefined);
   return (
-    <div className="mt-1 grid grid-cols-4 gap-1.5">
-      {FEELINGS.map((f) => {
-        const active = value === f.score;
-        return (
-          <button
-            key={f.score}
-            type="button"
-            aria-pressed={active}
-            aria-label={f.label}
-            onClick={() => onChange(active ? null : f.score)}
-            className={`flex min-h-[52px] flex-col items-center justify-center gap-0.5 rounded-xl border py-1.5 transition ${active ? "border-slate-900 bg-slate-50" : "border-slate-200 hover:border-slate-400"}`}
-          >
-            <span className="text-[20px] leading-none">{f.emoji}</span>
-            <span className={`text-[11px] leading-none ${active ? "font-bold text-slate-900" : "text-slate-500"}`}>{f.label}</span>
-          </button>
-        );
-      })}
+    <div className="flex flex-1 items-center gap-2">
+      <input
+        type="range"
+        min={0}
+        max={4}
+        step={1}
+        value={value ?? 0}
+        aria-label="手応え"
+        onChange={(e) => {
+          const n = parseInt(e.target.value, 10);
+          onChange(n === 0 ? null : n);
+        }}
+        className="h-1.5 flex-1 cursor-pointer accent-slate-900"
+      />
+      <span className="flex w-[88px] shrink-0 items-center justify-end gap-1 text-[13px]">
+        {cur ? (
+          <>
+            <span className="text-[16px] leading-none">{cur.emoji}</span>
+            <span className="font-semibold text-slate-800">{cur.label}</span>
+          </>
+        ) : (
+          <span className="text-slate-400">未選択</span>
+        )}
+      </span>
     </div>
   );
 }
@@ -1672,12 +1681,12 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
             <span className="text-[13px] text-slate-500">km</span>
           </div>
 
-          {/* 手応え(ラベル付き・タッチ確保) */}
-          <div className="mt-2.5 flex items-baseline gap-2">
-            <span className="text-[13px] text-slate-500">手応え</span>
-            <span className="text-[12px] text-slate-400">※ 役場には推移のみ共有</span>
+          {/* 手応え(スライダーで省スペース・#83。役場には推移のみ共有) */}
+          <div className="mt-2 flex items-center gap-2">
+            <span className="shrink-0 text-[13px] text-slate-500">手応え</span>
+            <FeelingSlider value={feeling} onChange={setFeeling} />
           </div>
-          <FeelingPicker value={feeling} onChange={setFeeling} />
+          <p className="mt-0.5 text-right text-[11px] text-slate-400">※ 役場には推移のみ共有</p>
 
           {/* 経費 */}
           <div className="mt-3 flex items-center justify-between">
