@@ -270,7 +270,7 @@ design session(design-decision/recordスキル、変更なし)
 
 ### dev-review / dev-devmerge / dev-e2e / dev-mainmerge が参照する値
 
-- `dev_url`: **未設定**（developブランチのVercelプレビューURL。`/dev-e2e` 実行前に確認して追記すること）
+- `dev_url`: `https://kyoryokutai-support-<deployment-hash>-masatyundev-5218s-projects.vercel.app`(**コミット固有URL。develop に push するたびに変わる**。Vercel の安定ブランチエイリアス`*-git-develop-*.vercel.app`は未確認のため、`/dev-e2e` 実行前に毎回 `gh api repos/masa-dev-2000/kyoryokutai_support/deployments` で最新developコミットのdeployment idを引き、`/deployments/<id>/statuses`のenvironment_urlを取得すること)
 - `e2e_accounts`: **未設定**（E2Eテスト用アカウントの id/メールアドレスのみ記載可。**パスワードはここに書かない**、`/dev-e2e` は人間にログインだけ依頼する）
 - `prod_branch`: `main`
 - `prod_deploy_commands`: **未設定**（本番デプロイコマンド列。`/dev-mainmerge` 実行前にユーザーへ確認すること）

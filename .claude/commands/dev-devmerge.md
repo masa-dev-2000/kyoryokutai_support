@@ -32,6 +32,23 @@ gh pr view <N> --json latestReviews,mergeable,baseRefName \
 - **スタック順序**: このPRが他の未マージPRをbaseにしていないか(していれば土台から順に処理)
 - **develop既存テストがgreenか**: `npm test` が現時点で通っているか
 
+## Phase 2.5: コンフリクト解消(mergeable=="CONFLICTING"の場合)
+
+`git rebase` は使わない。**「パッチが develop に既に含まれている」と誤判定してコミット全体をスキップし、他の新規ファイル/変更ごと消失させることがある**(2026-07-01実例: 1行だけ衝突する既存ファイルとの add/add コンフリクトで、無関係な新規テスト2ファイル・192行が丸ごと消失しかけた)。
+
+必ず **merge** で解消する:
+```bash
+git switch <対象ブランチ> -q
+git merge origin/develop --no-edit
+# コンフリクトが出たファイルのみ個別に解決(git checkout --ours/--theirs や手動編集)
+git add <解決したファイル>
+git commit --no-edit
+git push origin <対象ブランチ>
+```
+解消後は必ず `gh pr view <N> --json mergeable` で `MERGEABLE` に戻ったことを確認してから Phase 3 へ進む。
+
+もし誤って rebase してしまい差分が消えた場合は、**push前なら** `git branch -f <ブランチ名> origin/<ブランチ名>` でリモートの無傷な状態に復旧できる(`git reset --hard` は使わなくてよい)。
+
 ## Phase 3: develop統合
 
 ### 単独PR(base=develop)
