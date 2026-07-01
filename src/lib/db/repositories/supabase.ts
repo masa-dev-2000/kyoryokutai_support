@@ -1141,6 +1141,14 @@ export const supabaseRepos: Repos = {
         target_id: data.target_id ?? null,
       };
     },
+    async updateDetail(targetTable, targetId, detail) {
+      await supabase()
+        .from("approvals")
+        .update({ detail })
+        .eq("target_table", targetTable)
+        .eq("target_id", targetId)
+        .eq("status", "pending");
+    },
     async updateState(id, steps, currentStep, status, decision) {
       await supabase()
         .from("approvals")

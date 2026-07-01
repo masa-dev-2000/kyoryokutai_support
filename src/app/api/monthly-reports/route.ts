@@ -38,6 +38,7 @@ export async function POST(req: Request) {
   // なりすまし防止: 提出者はセッション本人に固定(body の userId は受け付けない)
   const userId = sess.userId;
   const report = await repos.monthlyReports.submit({ userId, ym: b.ym, markdown: b.markdown.trim(), plan: b.plan?.trim() });
+  const detail = { kind: "月次報告", ym: b.ym, body: b.markdown.trim(), plan: b.plan?.trim() ?? "" };
 
   // 再提出時の二重キュー防止: 同一隊員・同月の月次報告が既に承認待ちなら再エンキューしない。
   // submit() は同月を上書きするため report.id は不変。役場は既存の承認1件で再提出後の内容も確認できる。
@@ -47,7 +48,9 @@ export async function POST(req: Request) {
   );
 
   // 役場側の承認キューに投入(月次報告 ルート)
-  if (!alreadyQueued) {
+  if (alreadyQueued) {
+    await repos.approvals.updateDetail("monthly_reports", report.id, detail);
+  } else {
     const memberName = (await repos.users.nameOf(userId)) ?? "隊員";
     const { routeName, steps } = expandRoute("月次報告", "担当課");
     await repos.approvals.enqueue({
@@ -57,7 +60,7 @@ export async function POST(req: Request) {
       memberName,
       title,
       ai: "隊員が提出した月次報告。活動ログから AI 生成・本人確認済み。",
-      detail: { kind: "月次報告", ym: b.ym, body: b.markdown.trim(), plan: b.plan?.trim() ?? "" },
+      detail,
       routeName,
       steps,
       targetTable: "monthly_reports",

@@ -43,6 +43,10 @@ describe("月報 再提出の二重キュー防止", () => {
       (a) => a.kind === "月次報告" && a.applicantId === "m2"
     );
     expect(pendingAfter2.length).toBe(1); // 二重化しない
+    expect(pendingAfter2[0]?.detail).toMatchObject({
+      body: "修正後の本文(再提出)",
+      plan: "",
+    });
   });
 
   it("別の月は別の承認キューになる", async () => {
