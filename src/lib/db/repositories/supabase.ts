@@ -989,7 +989,7 @@ export const supabaseRepos: Repos = {
     async listByUser(userId) {
       const { data } = await supabase()
         .from("expenses")
-        .select("*")
+        .select("*, daily_logs(log_date)")
         .eq("user_id", userId)
         .order("created_at", { ascending: false });
       return (data ?? []).map((r) => mapExpense({ ...r, citations: JSON.stringify(r.citations ?? []) }));
@@ -1012,7 +1012,7 @@ export const supabaseRepos: Repos = {
           has_receipt: !!b.receiptKey,
           receipt_key: b.receiptKey ?? null,
         })
-        .select()
+        .select("*, daily_logs(log_date)")
         .single();
       return mapExpense({ ...data!, citations: JSON.stringify(data!.citations ?? []) });
     },

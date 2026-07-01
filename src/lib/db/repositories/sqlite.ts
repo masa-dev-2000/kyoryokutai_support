@@ -704,7 +704,14 @@ export const sqliteRepos: Repos = {
 
   expenses: {
     async listByUser(userId) {
-      return all("SELECT * FROM expenses WHERE user_id=? ORDER BY created_at DESC", [userId]).map(mapExpense);
+      return all(
+        `SELECT e.*, dl.log_date AS daily_log_date
+         FROM expenses e
+         LEFT JOIN daily_logs dl ON dl.id=e.daily_log_id
+         WHERE e.user_id=?
+         ORDER BY e.created_at DESC`,
+        [userId]
+      ).map(mapExpense);
     },
     async create(b) {
       const id = genId("exp");
@@ -713,7 +720,13 @@ export const sqliteRepos: Repos = {
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [id, b.userId, muniOf(b.userId), "single", b.category ?? "活動費", b.dailyLogId ?? null, b.title, b.amount, b.purpose, b.status ?? "申請中", "AI 判定材料は申請後に表示されます。", JSON.stringify([]), b.receiptKey ? 1 : 0, b.receiptKey ?? null, new Date().toISOString().slice(0, 10)]
       );
-      return mapExpense(all("SELECT * FROM expenses WHERE id=?", [id])[0]);
+      return mapExpense(all(
+        `SELECT e.*, dl.log_date AS daily_log_date
+         FROM expenses e
+         LEFT JOIN daily_logs dl ON dl.id=e.daily_log_id
+         WHERE e.id=?`,
+        [id]
+      )[0]);
     },
     async createFromLog(b) {
       const id = genId("exp");
