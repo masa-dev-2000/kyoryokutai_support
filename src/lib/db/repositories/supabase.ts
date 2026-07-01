@@ -1126,12 +1126,13 @@ export const supabaseRepos: Repos = {
     async getRaw(id): Promise<ApprovalRaw | undefined> {
       const { data } = await supabase()
         .from("approvals")
-        .select("id, kind, steps, current_step, status, target_table, target_id")
+        .select("id, municipality_id, kind, steps, current_step, status, target_table, target_id")
         .eq("id", id)
         .single();
       if (!data) return undefined;
       return {
         id: data.id,
+        municipality_id: data.municipality_id,
         kind: data.kind,
         steps: JSON.stringify(data.steps),
         current_step: data.current_step,
@@ -1140,10 +1141,17 @@ export const supabaseRepos: Repos = {
         target_id: data.target_id ?? null,
       };
     },
-    async updateState(id, steps, currentStep, status) {
+    async updateState(id, steps, currentStep, status, decision) {
       await supabase()
         .from("approvals")
-        .update({ steps, current_step: currentStep, status })
+        .update({
+          steps,
+          current_step: currentStep,
+          status,
+          ...(decision
+            ? { approver_id: decision.decidedBy, approved_at: new Date().toISOString(), comment: decision.comment ?? null }
+            : {}),
+        })
         .eq("id", id);
     },
     async getById(id) {
