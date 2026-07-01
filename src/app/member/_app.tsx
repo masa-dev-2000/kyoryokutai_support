@@ -1540,6 +1540,8 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
   const [inlineExpenses, setInlineExpenses] = React.useState<InlineExpense[]>([]);
   const [saving, setSaving] = React.useState(false);
   const [saveError, setSaveError] = React.useState<string | null>(null);
+  // #115: 活動入力と「移動距離・経費」を分離。活動を入れ終えてから最終ステップでまとめて入力する。
+  const [step, setStep] = React.useState<"activities" | "summary">("activities");
 
   function removeActivity(idx: number) {
     setActivities((cur) => cur.filter((_, i) => i !== idx));
@@ -1659,6 +1661,9 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
       <SheetHeader title={`${formatDateShort(targetDate)} の日報`} onClose={handleClose} />
       <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
 
+        {/* ステップ 1: 活動の記録(#115: ここでは移動距離・経費は出さない) */}
+        {step === "activities" && (
+        <>
         {/* 活動リスト(要約カード。入力は別モーダル) */}
         <div className="mb-2 flex items-center justify-between">
           <span className="text-[14px] font-bold uppercase tracking-wider text-slate-500">活動</span>
@@ -1712,12 +1717,15 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
             </button>
           </>
         )}
+        </>
+        )}
 
-        {/* 日報レベルのフィールド(コンパクト) */}
-        <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-          <div className="mb-2 flex items-baseline gap-2">
+        {/* ステップ 2: 今日のまとめ(移動距離・経費・手応え)。#115: 活動を入れ終えてからまとめて入力 */}
+        {step === "summary" && (
+        <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+          <div className="mb-2 flex items-baseline justify-between gap-2">
             <span className="text-[13px] font-bold uppercase tracking-wider text-slate-500">今日のまとめ</span>
-            <span className="text-[12px] text-slate-400">任意</span>
+            <span className="text-[12px] text-slate-400">活動 {activities.length} 件 / 任意</span>
           </div>
 
           {/* 移動距離 */}
@@ -1795,6 +1803,7 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
             </div>
           )}
         </div>
+        )}
       </div>
 
       <div className="border-t border-slate-200 bg-white px-5 py-3">
@@ -1804,9 +1813,28 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
               保存に失敗しました: {saveError}
             </p>
           )}
-          <button onClick={save} disabled={!canSave} className="w-full rounded-xl bg-slate-900 py-3 text-[17px] font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400">
-            {saving ? "記録中…" : activities.length > 0 ? `${activities.length} 件の活動を記録する` : "活動を追加してください"}
-          </button>
+          {step === "activities" ? (
+            <button
+              onClick={() => setStep("summary")}
+              disabled={activities.length === 0}
+              className="w-full rounded-xl bg-slate-900 py-3 text-[17px] font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+            >
+              {activities.length > 0 ? "次へ:移動距離・経費" : "活動を追加してください"}
+            </button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setStep("activities")}
+                className="shrink-0 rounded-xl border border-slate-300 bg-white px-4 py-3 text-[15px] font-semibold text-slate-700 transition hover:border-slate-900"
+              >
+                ← 活動
+              </button>
+              <button onClick={save} disabled={!canSave} className="flex-1 rounded-xl bg-slate-900 py-3 text-[17px] font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400">
+                {saving ? "記録中…" : `${activities.length} 件の活動を記録する`}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
