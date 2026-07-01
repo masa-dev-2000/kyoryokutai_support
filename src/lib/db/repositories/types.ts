@@ -291,6 +291,7 @@ export interface Repos {
   approvals: {
     listPending(muni: string): Promise<ApprovalDTO[]>;
     getRaw(id: string): Promise<ApprovalRaw | undefined>;
+    updateDetail(targetTable: string, targetId: string, detail: unknown): Promise<void>;
     updateState(
       id: string,
       steps: unknown[],
