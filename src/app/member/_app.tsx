@@ -90,15 +90,6 @@ type DailyLogEntry = {
   feelingScore?: number;
 };
 
-// #56: 今日の手応え。「評価」ではなく「体力・気分」の自己申告にして
-// 役場の目を気にした偽りを起きにくくする(エネルギー軸)。役場へは推移のみ共有する想定。
-const FEELINGS: { score: number; emoji: string; label: string }[] = [
-  { score: 1, emoji: "😴", label: "つかれた" },
-  { score: 2, emoji: "🙂", label: "まあまあ" },
-  { score: 3, emoji: "😊", label: "いい感じ" },
-  { score: 4, emoji: "🔥", label: "充実" },
-];
-const feelingOf = (s?: number) => FEELINGS.find((f) => f.score === s);
 
 /* -------------------- 領収書アップロード / 音声入力(P0-2・P0-3) -------------------- */
 
@@ -1333,42 +1324,8 @@ function ChipPicker({
   );
 }
 
-/* -------- 今日の手応えスライダー(#56 / #83 で省スペース化)-------- */
-// 4 ボタン(高さ ~52px)をやめ、1 行のスライダーで入力。
-// 0 = 未選択(任意項目)、1〜4 = つかれた〜充実。現在値は右側に絵文字+ラベルで表示。
-function FeelingSlider({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
-  const cur = feelingOf(value ?? undefined);
-  return (
-    <div className="flex flex-1 items-center gap-2">
-      <input
-        type="range"
-        min={0}
-        max={4}
-        step={1}
-        value={value ?? 0}
-        aria-label="手応え"
-        onChange={(e) => {
-          const n = parseInt(e.target.value, 10);
-          onChange(n === 0 ? null : n);
-        }}
-        className="h-1.5 flex-1 cursor-pointer accent-slate-900"
-      />
-      <span className="flex w-[88px] shrink-0 items-center justify-end gap-1 text-[13px]">
-        {cur ? (
-          <>
-            <span className="text-[15px] leading-none">{cur.emoji}</span>
-            <span className="font-semibold text-slate-800">{cur.label}</span>
-          </>
-        ) : (
-          <span className="text-slate-400">未選択</span>
-        )}
-      </span>
-    </div>
-  );
-}
-
 /* -------- 活動報告 作成シート -------- */
-// 1 日報に複数の活動を登録できる。移動距離・経費・手応えは日報レベルで入力。
+// 1 日報に複数の活動を登録できる。移動距離・経費は日報レベルで入力。
 
 /** #59: "HH:MM" の開始・終了から活動時間(h)を算出。終了が開始以前/未入力なら 0。 */
 function computeHours(start: string, end: string): number {
@@ -1535,7 +1492,6 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
   const [activities, setActivities] = React.useState<InlineActivity[]>([]);
   const [editor, setEditor] = React.useState<{ index: number | null } | null>(null);
   const [distance, setDistance] = React.useState<string>("");
-  const [feeling, setFeeling] = React.useState<number | null>(null);
   const [inlineExpenses, setInlineExpenses] = React.useState<InlineExpense[]>([]);
   const [saving, setSaving] = React.useState(false);
   const [saveError, setSaveError] = React.useState<string | null>(null);
@@ -1604,7 +1560,6 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
         await addDailyLog({
           date: targetDate,
           distanceKm: distance ? parseFloat(distance) : undefined,
-          feelingScore: feeling ?? undefined,
           activities: activities.map((a) => ({
             type: a.type!,
             topic: a.topic!,
@@ -1626,7 +1581,7 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
 
   // ③ 未保存の入力がある状態で閉じる時は確認(データ損失防止)
   const isDirty =
-    !isEdit && (activities.length > 0 || distance.trim() !== "" || feeling != null || inlineExpenses.length > 0);
+    !isEdit && (activities.length > 0 || distance.trim() !== "" || inlineExpenses.length > 0);
   function handleClose() {
     if (isDirty && !window.confirm("入力中の内容は保存されません。閉じてもよろしいですか?")) return;
     onClose();
@@ -1719,7 +1674,7 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
         </>
         )}
 
-        {/* ステップ 2: 今日のまとめ(移動距離・経費・手応え)。#115: 活動を入れ終えてからまとめて入力 */}
+        {/* ステップ 2: 今日のまとめ(移動距離・経費)。#115: 活動を入れ終えてからまとめて入力 */}
         {step === "summary" && (
         <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
           <div className="mb-2 flex items-baseline justify-between gap-2">
@@ -1734,12 +1689,6 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
             <span className="text-[13px] text-slate-500">km</span>
           </div>
 
-          {/* 手応え(スライダーで省スペース・#83。役場には推移のみ共有) */}
-          <div className="mt-2 flex items-center gap-2">
-            <span className="shrink-0 text-[13px] text-slate-500">手応え</span>
-            <FeelingSlider value={feeling} onChange={setFeeling} />
-          </div>
-          <p className="mt-0.5 text-right text-[11px] text-slate-400">※ 役場には推移のみ共有</p>
 
           {/* 経費 */}
           <div className="mt-3 flex items-center justify-between">
@@ -2162,12 +2111,6 @@ function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () =>
           <span>{items.length} 件 ・ {totalHours} 時間</span>
           {dl?.distanceKm != null && <span>・ {dl.distanceKm} km</span>}
           {dl?.expenseAmount != null && dl.expenseAmount > 0 && <span>・ 経費 ¥{dl.expenseAmount.toLocaleString()}</span>}
-          {dl && feelingOf(dl.feelingScore) && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5">
-              <span className="text-[16px] leading-none">{feelingOf(dl.feelingScore)!.emoji}</span>
-              <span>{feelingOf(dl.feelingScore)!.label}</span>
-            </span>
-          )}
         </div>
         <ul className="mt-3 space-y-2">
           {items.map((l) => (
