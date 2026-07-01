@@ -163,7 +163,7 @@ export function SuperApp() {
       )}
       {/* #65 管理者招待モーダル */}
       {inviteFor && (
-        <InviteModal muni={inviteFor} onClose={() => setInviteFor(null)} />
+        <InviteModal muni={inviteFor} onClose={() => setInviteFor(null)} onDone={loadOverview} />
       )}
 
       {/* #66 自治体ドリルダウン スライドオーバー */}
@@ -729,20 +729,45 @@ function MuniEditModal({
   );
 }
 
-function InviteModal({ muni, onClose }: { muni: { id: string; name: string }; onClose: () => void }) {
+function InviteModal({ muni, onClose, onDone }: { muni: { id: string; name: string }; onClose: () => void; onDone?: () => void }) {
+  // #113: 新規招待 / 既存ユーザー昇格 の2モード
+  const [mode, setMode] = React.useState<"new" | "promote">("new");
   const [email, setEmail] = React.useState("");
   const [name, setName] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState("");
   const [url, setUrl] = React.useState<string | null>(null);
+  const [promoted, setPromoted] = React.useState<string | null>(null);
   const [copied, setCopied] = React.useState(false);
 
-  async function submit() {
+  // 昇格候補: 対象自治体に所属し、まだ admin/super でない既存ユーザー
+  const [candidates, setCandidates] = React.useState<SuperUserRow[] | null>(null);
+  const [selectedId, setSelectedId] = React.useState("");
+
+  React.useEffect(() => {
+    if (mode !== "promote" || candidates !== null) return;
+    apiGet<SuperUserRow[]>(`/api/super/users?municipalityId=${muni.id}`)
+      .then((rows) => setCandidates(rows.filter((u) => u.role !== "admin" && u.role !== "super")))
+      .catch(() => setErr("既存ユーザーの取得に失敗しました"));
+  }, [mode, candidates, muni.id]);
+
+  async function submitInvite() {
     if (!email.trim() || !name.trim()) { setErr("メール・氏名は必須です"); return; }
     setBusy(true); setErr("");
     try {
       const res = await apiPost<{ url: string }>(`/api/super/municipalities/${muni.id}/admins`, { email: email.trim(), name: name.trim() });
       setUrl(res.url);
+      onDone?.();
+    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  }
+
+  async function submitPromote() {
+    if (!selectedId) { setErr("昇格するユーザーを選択してください"); return; }
+    setBusy(true); setErr("");
+    try {
+      const updated = await apiPatch<SuperUserRow>(`/api/super/users/${selectedId}`, { role: "admin" });
+      setPromoted(updated.name);
+      onDone?.();
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   }
 
@@ -753,8 +778,15 @@ function InviteModal({ muni, onClose }: { muni: { id: string; name: string }; on
     setTimeout(() => setCopied(false), 1500);
   }
 
+  function switchMode(next: "new" | "promote") {
+    setErr(""); setMode(next);
+  }
+
+  const tabCls = (active: boolean) =>
+    `flex-1 rounded-lg px-3 py-2 text-[12px] font-bold ${active ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`;
+
   return (
-    <Modal title={`${muni.name} の管理者を招待`} onClose={onClose}>
+    <Modal title={`${muni.name} の管理者を設定`} onClose={onClose}>
       {url ? (
         <div className="space-y-3">
           <p className="text-[13px] text-slate-600">招待リンクを発行しました。この URL を管理者に渡してください(7日間有効)。</p>
@@ -766,14 +798,49 @@ function InviteModal({ muni, onClose }: { muni: { id: string; name: string }; on
           </div>
           <button onClick={onClose} className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700">閉じる</button>
         </div>
+      ) : promoted ? (
+        <div className="space-y-3">
+          <p className="text-[13px] text-slate-600">「{promoted}」を {muni.name} の管理者(admin)に昇格しました。</p>
+          <button onClick={onClose} className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700">閉じる</button>
+        </div>
       ) : (
         <div className="space-y-3">
-          <Field label="管理者の氏名"><input value={name} onChange={(e) => setName(e.target.value)} placeholder="例: 山田 太郎" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></Field>
-          <Field label="メールアドレス"><input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="admin@example.jp" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></Field>
-          {err && <p className="text-[12px] text-rose-500">{err}</p>}
-          <button onClick={submit} disabled={busy} className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">
-            {busy ? "発行中…" : "招待リンクを発行"}
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => switchMode("new")} className={tabCls(mode === "new")}>新規招待</button>
+            <button onClick={() => switchMode("promote")} className={tabCls(mode === "promote")}>既存ユーザーを昇格</button>
+          </div>
+
+          {mode === "new" ? (
+            <>
+              <Field label="管理者の氏名"><input value={name} onChange={(e) => setName(e.target.value)} placeholder="例: 山田 太郎" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></Field>
+              <Field label="メールアドレス"><input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="admin@example.jp" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></Field>
+              {err && <p className="text-[12px] text-rose-500">{err}</p>}
+              <button onClick={submitInvite} disabled={busy} className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">
+                {busy ? "発行中…" : "招待リンクを発行"}
+              </button>
+            </>
+          ) : (
+            <>
+              {candidates === null ? (
+                <p className="text-[12px] text-slate-500">読み込み中…</p>
+              ) : candidates.length === 0 ? (
+                <p className="text-[12px] text-slate-500">この自治体に昇格できる既存ユーザーがいません。「新規招待」を使ってください。</p>
+              ) : (
+                <Field label="昇格するユーザー">
+                  <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                    <option value="">選択してください</option>
+                    {candidates.map((u) => (
+                      <option key={u.id} value={u.id}>{u.name}({u.email} / {u.role})</option>
+                    ))}
+                  </select>
+                </Field>
+              )}
+              {err && <p className="text-[12px] text-rose-500">{err}</p>}
+              <button onClick={submitPromote} disabled={busy || !candidates?.length} className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">
+                {busy ? "昇格中…" : "admin に昇格"}
+              </button>
+            </>
+          )}
         </div>
       )}
     </Modal>
