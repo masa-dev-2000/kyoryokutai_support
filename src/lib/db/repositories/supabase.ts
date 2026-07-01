@@ -123,13 +123,13 @@ function fyRange(fy: string): [string, string] {
 }
 
 // 新規隊員に当年度の費目別予算枠(既定配分)を投入(重複は無視)。
-async function seedDefaultBudgetSb(userId: string) {
+async function seedDefaultBudgetSb(userId: string, municipalityId = MUNI) {
   const fy = currentFiscalYear();
   await supabase()
     .from("budget_allocations")
     .upsert(
       BUDGET_CATEGORIES.map((category) => ({
-        municipality_id: MUNI,
+        municipality_id: municipalityId,
         user_id: userId,
         fiscal_year: fy,
         category,
@@ -137,6 +137,18 @@ async function seedDefaultBudgetSb(userId: string) {
       })),
       { onConflict: "user_id,fiscal_year,category", ignoreDuplicates: true }
     );
+}
+
+async function municipalityOfUserSb(userId: string): Promise<string> {
+  const { data, error } = await supabase()
+    .from("users")
+    .select("municipality_id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  const municipalityId = data?.municipality_id as string | null | undefined;
+  if (!municipalityId) throw new Error("CREATOR_NOT_FOUND");
+  return municipalityId;
 }
 
 function supabase() {
@@ -811,6 +823,42 @@ export const supabaseRepos: Repos = {
         expires_at: expiresAt,
       });
       return { token, expiresAt };
+    },
+    async createProvisioned({ email, name, role, municipalityName, createdBy }) {
+      // email に対応する users 行が無ければ先に作る(/api/auth/me が email で紐づけられるように)。
+      const { data: existing, error: selErr } = await supabase()
+        .from("users")
+        .select("id, role, municipality_id")
+        .eq("email", email)
+        .maybeSingle();
+      if (selErr) throw selErr;
+      if (existing) {
+        // 別ロールでの再招待はサイレントに権限を取り違える。明示的に弾く。
+        if ((existing.role as string) !== role) throw new Error("ROLE_CONFLICT");
+        // 同ロールの再招待は冪等。無効化されていれば再有効化する。
+        const { error: upErr } = await supabase()
+          .from("users")
+          .update({ status: "active" })
+          .eq("id", existing.id);
+        if (upErr) throw upErr;
+        if (role === "member") {
+          const municipalityId = (existing.municipality_id as string | null) ?? await municipalityOfUserSb(createdBy);
+          await seedDefaultBudgetSb(existing.id as string, municipalityId);
+        }
+      } else {
+        const creatorMuni = await municipalityOfUserSb(createdBy);
+        const orgType = role === "member" ? "member" : "municipality";
+        // insert の失敗(RLS/一意制約等)を握り潰すと users 行が無いままトークンだけ発行され
+        // 招待先が後で 403 になる。エラーは投げてルートで 500 にする。
+        const { data: created, error: insErr } = await supabase()
+          .from("users")
+          .insert({ municipality_id: creatorMuni, organization_type: orgType, role, name, email, status: "active" })
+          .select("id")
+          .single();
+        if (insErr) throw insErr;
+        if (role === "member" && created?.id) await seedDefaultBudgetSb(created.id, creatorMuni);
+      }
+      return supabaseRepos.invites.create({ email, role, municipalityName, createdBy });
     },
     async findByToken(token) {
       const { data } = await supabase()
