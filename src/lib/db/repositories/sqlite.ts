@@ -705,9 +705,11 @@ export const sqliteRepos: Repos = {
   expenses: {
     async listByUser(userId) {
       return all(
-        `SELECT e.*, dl.log_date AS daily_log_date
+        `SELECT e.*, COALESCE(direct_dl.log_date, source_dl.log_date) AS daily_log_date
          FROM expenses e
-         LEFT JOIN daily_logs dl ON dl.id=e.daily_log_id
+         LEFT JOIN daily_logs direct_dl ON direct_dl.id=e.daily_log_id
+         LEFT JOIN activity_logs source_log ON source_log.id=e.source_activity_log_id
+         LEFT JOIN daily_logs source_dl ON source_dl.id=source_log.daily_log_id
          WHERE e.user_id=?
          ORDER BY e.created_at DESC`,
         [userId]
@@ -721,30 +723,44 @@ export const sqliteRepos: Repos = {
         [id, b.userId, muniOf(b.userId), "single", b.category ?? "活動費", b.dailyLogId ?? null, b.title, b.amount, b.purpose, b.status ?? "申請中", "AI 判定材料は申請後に表示されます。", JSON.stringify([]), b.receiptKey ? 1 : 0, b.receiptKey ?? null, new Date().toISOString().slice(0, 10)]
       );
       return mapExpense(all(
-        `SELECT e.*, dl.log_date AS daily_log_date
+        `SELECT e.*, COALESCE(direct_dl.log_date, source_dl.log_date) AS daily_log_date
          FROM expenses e
-         LEFT JOIN daily_logs dl ON dl.id=e.daily_log_id
+         LEFT JOIN daily_logs direct_dl ON direct_dl.id=e.daily_log_id
+         LEFT JOIN activity_logs source_log ON source_log.id=e.source_activity_log_id
+         LEFT JOIN daily_logs source_dl ON source_dl.id=source_log.daily_log_id
          WHERE e.id=?`,
         [id]
       )[0]);
     },
     async createFromLog(b) {
       const id = genId("exp");
+      const dailyLogId = get<{ daily_log_id: string | null }>(
+        "SELECT daily_log_id FROM activity_logs WHERE id=?",
+        [b.activityLogId]
+      )?.daily_log_id ?? null;
       run(
         `INSERT INTO expenses
            (id,user_id,municipality_id,expense_kind,source_activity_log_id,source_receipt_index,
-            title,amount_requested,purpose,status,ai_note,citations,has_receipt,receipt_key,created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            daily_log_id,title,amount_requested,purpose,status,ai_note,citations,has_receipt,receipt_key,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
           id, b.userId, muniOf(b.userId), "single",
-          b.activityLogId, b.receiptIndex,
+          b.activityLogId, b.receiptIndex, dailyLogId,
           b.title, b.amount, b.purpose, b.status ?? "申請中",
           "日報経由の経費(ADR-014)。AI 判定材料は申請後に表示されます。",
           JSON.stringify([]), b.hasReceipt ? 1 : 0, b.receiptKey ?? null,
           new Date().toISOString().slice(0, 10),
         ]
       );
-      return mapExpense(all("SELECT * FROM expenses WHERE id=?", [id])[0]);
+      return mapExpense(all(
+        `SELECT e.*, COALESCE(direct_dl.log_date, source_dl.log_date) AS daily_log_date
+         FROM expenses e
+         LEFT JOIN daily_logs direct_dl ON direct_dl.id=e.daily_log_id
+         LEFT JOIN activity_logs source_log ON source_log.id=e.source_activity_log_id
+         LEFT JOIN daily_logs source_dl ON source_dl.id=source_log.daily_log_id
+         WHERE e.id=?`,
+        [id]
+      )[0]);
     },
     async update(id, b) {
       const existing = all("SELECT * FROM expenses WHERE id=?", [id])[0];

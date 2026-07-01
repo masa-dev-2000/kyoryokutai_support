@@ -72,6 +72,35 @@ describe("#82/#86 活動・日報の保存は本人の自治体に紐づく", ()
     expect(listed.find((e) => e.id === exp.id)?.dailyLogDate).toBe(date);
   });
 
+  it("expenses.listByUser は活動由来経費の日報日付も返す", async () => {
+    const date = "2026-07-04";
+    const log = await sqliteRepos.activityLogs.create({
+      userId: OTHER_USER,
+      type: "移住相談",
+      topic: "空き家内覧",
+      hours: 1.5,
+      startTime: "13:00",
+      endTime: "14:30",
+      body: "内覧同行",
+      date,
+    });
+    const exp = await sqliteRepos.expenses.createFromLog({
+      userId: OTHER_USER,
+      activityLogId: log.id,
+      receiptIndex: 0,
+      title: "交通費",
+      amount: 900,
+      purpose: "内覧同行の移動費",
+      hasReceipt: false,
+      status: "申請中",
+    });
+
+    expect(exp.dailyLogDate).toBe(date);
+    run("UPDATE expenses SET daily_log_id=NULL WHERE id=?", [exp.id]);
+    const listed = await sqliteRepos.expenses.listByUser(OTHER_USER);
+    expect(listed.find((e) => e.id === exp.id)?.dailyLogDate).toBe(date);
+  });
+
   it("users.municipalityOf は本人の所属自治体を返す", async () => {
     expect(await sqliteRepos.users.municipalityOf(OTHER_USER)).toBe(OTHER_MUNI);
     // シードの隊員 m1 は新温泉町
