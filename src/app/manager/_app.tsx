@@ -26,6 +26,7 @@ import {
   Download,
   Loader2,
 } from "lucide-react";
+import { LogoutButton } from "@/components/logout-button";
 
 /* -------- 実データ DTO(サーバの mappers と形を一致させたクライアント側型)-------- */
 type MemberDTO = { id: string; name: string; role: string; startedAt?: string; term?: string };
@@ -546,7 +547,10 @@ function Header({ userName }: { userName?: string }) {
     <header className="flex items-center justify-between border-b border-slate-100 px-5 py-2.5">
       <span />
       <div className="text-center text-[11px] text-slate-500">{userName ?? "谷本 室長"} / 新温泉町</div>
-      <ViewerRoleSwitch />
+      <div className="flex items-center gap-2">
+        <ViewerRoleSwitch />
+        <LogoutButton />
+      </div>
     </header>
   );
 }

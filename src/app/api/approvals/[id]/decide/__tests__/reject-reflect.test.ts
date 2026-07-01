@@ -45,7 +45,7 @@ async function enqueueSingleStep(kind: string, title: string, targetTable: strin
 afterEach(() => vi.unstubAllEnvs());
 
 describe("差戻しの対象反映(承認連動)", () => {
-  it("月報の差戻しで monthly_reports が rejected になる", async () => {
+  it("月報の差戻しで monthly_reports が draft(差戻し）に戻る", async () => {
     const rep = await sqliteRepos.monthlyReports.submit({ userId: "m2", ym: "2026-04", markdown: "テスト月報本文" });
     expect(rep.status).toBe("submitted");
 
@@ -54,8 +54,10 @@ describe("差戻しの対象反映(承認連動)", () => {
     expect(r.status).toBe(200);
     expect(r.json.result).toBe("rejected");
 
+    // 隊員が再提出できる編集可能状態(draft)に戻し、差戻しの意味は statusLabel が担う。
+    // 'rejected' 等の未知 status だと隊員画面が「承認済」と誤表示するため draft を採用。
     const after = (await sqliteRepos.monthlyReports.listByUser("m2")).find((x) => x.id === rep.id);
-    expect(after?.status).toBe("rejected");
+    expect(after?.status).toBe("draft");
     expect(after?.statusLabel).toContain("差戻し");
   });
 

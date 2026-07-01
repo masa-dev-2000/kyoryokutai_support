@@ -1069,9 +1069,11 @@ export const supabaseRepos: Repos = {
         .eq("id", id);
     },
     async markRejected(id) {
+      // status は 'draft' に戻す(隊員が修正・再提出できる編集可能状態)。差戻しの意味は status_label が担う。
+      // 'rejected' のような未知 status だと隊員画面が一律「承認済」と表示してしまうため(逆の意味)。
       await supabase()
         .from("monthly_reports")
-        .update({ status: "rejected", status_label: "差戻し（要修正）" })
+        .update({ status: "draft", status_label: "差戻し（要修正）" })
         .eq("id", id);
     },
     async revertToSubmitted(userId, ym) {

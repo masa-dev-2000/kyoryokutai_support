@@ -17,6 +17,7 @@ import {
   ChevronUp,
   ChevronDown,
 } from "lucide-react";
+import { LogoutButton } from "@/components/logout-button";
 import { BUDGET_CATEGORIES, ANNUAL_BUDGET_TOTAL, defaultAllocationList } from "@/lib/budget";
 
 type BudgetLine = { category: string; amountLimit: number; used: number; remaining: number };
@@ -271,7 +272,10 @@ function Header() {
       <div className="text-center text-[11px] text-slate-500">
         管理者 / 新温泉町
       </div>
-      <span className="whitespace-nowrap text-[11px] text-slate-400">v5 admin</span>
+      <div className="flex items-center gap-2">
+        <span className="whitespace-nowrap text-[11px] text-slate-400">v5 admin</span>
+        <LogoutButton />
+      </div>
     </header>
   );
 }
