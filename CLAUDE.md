@@ -241,3 +241,8 @@ Project (status: planning | active | completed, isPublic)
 - ブランチ: `claude/regional-support-system-strategy-NN5BU`
 - コミットは小さく、日本語で OK
 - 新機能提案時は必ず「3つの帽子」で整理してから着手
+
+## KIO 設定
+
+- `review_account`: `m-takehara555`（`/kio-review` の Approve / Request changes 実行用）
+- `pr_account`: `masa-dev-2000`（実装セッションが PR を作成する側、デフォルトのactiveアカウント）
