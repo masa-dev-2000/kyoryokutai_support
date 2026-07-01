@@ -6,14 +6,14 @@ import { currentFiscalYear } from "@/lib/budget";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** GET /api/budgets?userId=&fiscalYear= — 費目別予算枠サマリ。本人 or admin/super のみ。 */
+/** GET /api/budgets?userId=&fiscalYear= — 費目別予算枠サマリ。本人 or manager/admin/super のみ。 */
 export async function GET(req: Request) {
   const sess = await requireAppUser();
   if (sess instanceof Response) return sess;
   const url = new URL(req.url);
   const userId = url.searchParams.get("userId") ?? sess.userId;
   const fiscalYear = url.searchParams.get("fiscalYear") ?? currentFiscalYear();
-  const isPrivileged = sess.role === "admin" || sess.role === "super";
+  const isPrivileged = sess.role === "manager" || sess.role === "admin" || sess.role === "super";
   if (userId !== sess.userId && !isPrivileged) return bad("他の隊員の予算枠は閲覧できません", 403);
   return ok(await getRepos().budgets.summaryByUser(userId, fiscalYear));
 }
