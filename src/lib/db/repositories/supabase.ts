@@ -32,15 +32,13 @@ import type {
   BudgetLineDTO,
 } from "./types";
 import { BUDGET_CATEGORIES, DEFAULT_ALLOCATION, currentFiscalYear } from "@/lib/budget";
+import { jstDateString, jstTimeHHMM, jstYearMonth } from "@/lib/time";
 
 const MUNI = "10000000-0000-4000-8000-000000000001";
 
 // 当月 / N ヶ月前の 'YYYY-MM' を返す(ローカル時刻基準)
 function ymOffset(offset: number): string {
-  const d = new Date();
-  d.setDate(1);
-  d.setMonth(d.getMonth() + offset);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return jstYearMonth(offset);
 }
 
 // 'YYYY-MM' → JST 月初・翌月初の ISO 文字列([gte, lt) 範囲)。
@@ -159,17 +157,18 @@ async function muniOf(userId: string): Promise<string> {
 // Supabase の occurred_at(timestamptz)→ log_date / log_time に変換してマッパーに渡す
 function toLogRow(r: Record<string, unknown>): Record<string, unknown> {
   const oa = r.occurred_at as string | null;
+  const occurredAt = oa ? new Date(oa) : null;
   return {
     ...r,
-    log_date: oa ? oa.slice(0, 10) : r.log_date,
-    log_time: oa ? oa.slice(11, 16) : r.log_time ?? "",
+    log_date: occurredAt ? jstDateString(occurredAt) : r.log_date,
+    log_time: occurredAt ? jstTimeHHMM(occurredAt) : r.log_time ?? "",
   };
 }
 
 // occurred_at を生成(date + time → ISO 文字列)
 function toOccurredAt(date?: string, time?: string): string {
-  const d = date ?? new Date().toISOString().slice(0, 10);
-  const t = time ?? new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+  const d = date ?? jstDateString();
+  const t = time ?? jstTimeHHMM();
   return `${d}T${t}:00+09:00`;
 }
 
@@ -857,7 +856,7 @@ export const supabaseRepos: Repos = {
     },
     async create(b) {
       const occurredAt = toOccurredAt(b.date, b.time);
-      const date = b.date ?? new Date().toISOString().slice(0, 10);
+      const date = b.date ?? jstDateString();
       // daily_log を upsert して daily_log_id を結線
       let dailyLogId = b.dailyLogId ?? null;
       if (!dailyLogId) {

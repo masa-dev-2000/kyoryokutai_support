@@ -2,6 +2,7 @@ import { ok, bad, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
 import { expandRoute, expandAssignedRoute } from "@/lib/workflow";
 import { requireAppUser } from "@/lib/api/auth";
+import { jstDateString } from "@/lib/time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
   // ADR-021: daily_log_id の解決 — 明示指定 > 当日 upsert
   let dailyLogId = b.dailyLogId;
   if (!dailyLogId) {
-    const date = b.date ?? new Date().toISOString().slice(0, 10);
+    const date = b.date ?? jstDateString();
     const dl = await repos.dailyLogs.upsert(userId, date);
     dailyLogId = dl.id;
   }
