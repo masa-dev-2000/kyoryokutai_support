@@ -14,6 +14,8 @@ export default defineConfig([
   globalIgnores([
     ".next/**",
     ".claude/**",
+    "playwright-report/**",
+    "test-results/**",
     "out/**",
     "build/**",
     "src/_archive/**",
