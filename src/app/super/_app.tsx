@@ -53,6 +53,14 @@ type Tab = "overview" | "analytics";
 // #119: 自治体詳細でのアカウント編集に使う選択肢
 const ROLE_OPTS = ["member", "manager", "admin", "super"];
 const STATUS_OPTS = ["active", "retired", "suspended"];
+const ERROR_TEXT_CLASS = "text-[12px] text-red-700";
+
+function parseBudgetInput(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
 
 export function SuperApp() {
   const [data, setData] = React.useState<Overview | null>(null);
@@ -205,8 +213,8 @@ function OverviewTab({
           <Plus className="h-3.5 w-3.5" /> 自治体を追加
         </button>
       </div>
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-[13px]">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table className="w-full min-w-[720px] text-[13px]">
           <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
             <tr>
               <th className="px-4 py-2.5 text-left">自治体</th>
@@ -331,7 +339,11 @@ function DetailSheet({
                 >
                   <Trash2 className="h-3 w-3" /> 削除
                 </button>
-                <button onClick={onClose} className="ml-1 text-slate-400 hover:text-slate-900">
+                <button
+                  onClick={onClose}
+                  aria-label="自治体詳細を閉じる"
+                  className="ml-1 text-slate-400 hover:text-slate-900"
+                >
                   <X className="h-5 w-5" />
                 </button>
               </div>
@@ -422,14 +434,22 @@ function MuniAccounts({
 
   React.useEffect(() => { load(); }, [load]);
 
-  async function patch(id: string, body: { role?: string; status?: string; municipalityId?: string }) {
+  async function patch(user: SuperUserRow, body: { role?: string; status?: string; municipalityId?: string }) {
+    if (body.role === "super" && user.role !== "super") {
+      const ok = window.confirm(`${user.name} にsuper権限を付与します。全自治体を操作できる強い権限です。続行しますか？`);
+      if (!ok) return;
+    }
+    if (body.status && body.status !== "active" && user.status !== body.status) {
+      const ok = window.confirm(`${user.name} の状態を ${body.status} に変更します。ログインや利用に影響する可能性があります。続行しますか？`);
+      if (!ok) return;
+    }
     setErr(null);
     try {
-      const updated = await apiPatch<SuperUserRow>(`/api/super/users/${id}`, body);
+      const updated = await apiPatch<SuperUserRow>(`/api/super/users/${user.id}`, body);
       // 所属を別自治体へ移したらこの一覧からは外す
       setUsers((prev) =>
         prev
-          ? prev.flatMap((u) => (u.id !== id ? [u] : updated.municipalityId === municipalityId ? [updated] : []))
+          ? prev.flatMap((u) => (u.id !== user.id ? [u] : updated.municipalityId === municipalityId ? [updated] : []))
           : prev
       );
       onOverviewRefresh();
@@ -455,8 +475,8 @@ function MuniAccounts({
   return (
     <>
       {err && <div className="mb-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[12px] text-red-700">{err}</div>}
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-[13px]">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table className="w-full min-w-[720px] text-[13px]">
           <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
             <tr>
               <th className="px-3 py-2 text-left">氏名</th>
@@ -477,7 +497,8 @@ function MuniAccounts({
                 <td className="px-3 py-2">
                   <select
                     value={u.role}
-                    onChange={(e) => patch(u.id, { role: e.target.value })}
+                    onChange={(e) => patch(u, { role: e.target.value })}
+                    aria-label={`${u.name} のroleを変更`}
                     className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[12px]"
                   >
                     {ROLE_OPTS.map((r) => <option key={r} value={r}>{r}</option>)}
@@ -486,7 +507,8 @@ function MuniAccounts({
                 <td className="px-3 py-2">
                   <select
                     value={u.status}
-                    onChange={(e) => patch(u.id, { status: e.target.value })}
+                    onChange={(e) => patch(u, { status: e.target.value })}
+                    aria-label={`${u.name} の状態を変更`}
                     className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[12px]"
                   >
                     {STATUS_OPTS.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -495,7 +517,8 @@ function MuniAccounts({
                 <td className="px-3 py-2">
                   <select
                     value={u.municipalityId ?? ""}
-                    onChange={(e) => patch(u.id, { municipalityId: e.target.value })}
+                    onChange={(e) => patch(u, { municipalityId: e.target.value })}
+                    aria-label={`${u.name} の所属自治体を変更`}
                     className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[12px]"
                   >
                     {municipalities.map((m) => (
@@ -507,6 +530,7 @@ function MuniAccounts({
                 <td className="px-3 py-2 text-right">
                   <button
                     onClick={() => remove(u)}
+                    aria-label={`${u.name} を削除`}
                     title="このユーザーを削除"
                     className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50"
                   >
@@ -634,7 +658,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
       <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-[14px] font-bold">{title}</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="h-4 w-4" /></button>
+          <button onClick={onClose} aria-label={`${title}を閉じる`} className="text-slate-400 hover:text-slate-700"><X className="h-4 w-4" /></button>
         </div>
         {children}
       </div>
@@ -651,11 +675,13 @@ function MuniModal({ onClose, onCreated }: { onClose: () => void; onCreated: (cr
 
   async function submit() {
     if (!name.trim() || !prefecture.trim()) { setErr("自治体名・都道府県は必須です"); return; }
+    const budgetNum = parseBudgetInput(budget);
+    if (budgetNum === null) { setErr("年間活動費枠は0以上の数値で入力してください"); return; }
     setBusy(true); setErr("");
     try {
       const created = await apiPost<{ id: string; name: string; prefecture: string }>(
         "/api/super/municipalities",
-        { name: name.trim(), prefecture: prefecture.trim(), annualBudget: Number(budget) || undefined }
+        { name: name.trim(), prefecture: prefecture.trim(), annualBudget: budgetNum }
       );
       onCreated({ id: created.id, name: created.name });
     } catch (e) { setErr((e as Error).message); setBusy(false); }
@@ -667,7 +693,7 @@ function MuniModal({ onClose, onCreated }: { onClose: () => void; onCreated: (cr
         <Field label="自治体名"><input value={name} onChange={(e) => setName(e.target.value)} placeholder="例: 新温泉町" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></Field>
         <Field label="都道府県"><input value={prefecture} onChange={(e) => setPrefecture(e.target.value)} placeholder="例: 兵庫県" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></Field>
         <Field label="年間活動費枠(円)"><input value={budget} onChange={(e) => setBudget(e.target.value)} inputMode="numeric" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></Field>
-        {err && <p className="text-[12px] text-rose-500">{err}</p>}
+        {err && <p className={ERROR_TEXT_CLASS}>{err}</p>}
         <button onClick={submit} disabled={busy} className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">
           {busy ? "作成中…" : "作成する"}
         </button>
@@ -693,8 +719,8 @@ function MuniEditModal({
 
   async function submit() {
     if (!name.trim() || !prefecture.trim()) { setErr("自治体名・都道府県は必須です"); return; }
-    const budgetNum = Number(budget);
-    if (!Number.isFinite(budgetNum) || budgetNum < 0) { setErr("年間活動費枠は0以上の数値で入力してください"); return; }
+    const budgetNum = parseBudgetInput(budget);
+    if (budgetNum === null) { setErr("年間活動費枠は0以上の数値で入力してください"); return; }
     setBusy(true); setErr("");
     try {
       await apiPatch(`/api/super/municipalities/${muni.id}`, {
@@ -712,7 +738,7 @@ function MuniEditModal({
         <Field label="自治体名"><input value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></Field>
         <Field label="都道府県"><input value={prefecture} onChange={(e) => setPrefecture(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></Field>
         <Field label="年間活動費枠(円)"><input value={budget} onChange={(e) => setBudget(e.target.value)} inputMode="numeric" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></Field>
-        {err && <p className="text-[12px] text-rose-500">{err}</p>}
+        {err && <p className={ERROR_TEXT_CLASS}>{err}</p>}
         <button onClick={submit} disabled={busy} className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">
           {busy ? "保存中…" : "保存する"}
         </button>
@@ -755,6 +781,9 @@ function InviteModal({ muni, onClose, onDone }: { muni: { id: string; name: stri
 
   async function submitPromote() {
     if (!selectedId) { setErr("昇格するユーザーを選択してください"); return; }
+    const selected = candidates?.find((u) => u.id === selectedId);
+    const ok = window.confirm(`${selected?.name ?? "選択したユーザー"} を ${muni.name} のadminに昇格します。続行しますか？`);
+    if (!ok) return;
     setBusy(true); setErr("");
     try {
       const updated = await apiPatch<SuperUserRow>(`/api/super/users/${selectedId}`, { role: "admin" });
@@ -806,7 +835,7 @@ function InviteModal({ muni, onClose, onDone }: { muni: { id: string; name: stri
             <>
               <Field label="管理者の氏名"><input value={name} onChange={(e) => setName(e.target.value)} placeholder="例: 山田 太郎" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></Field>
               <Field label="メールアドレス"><input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="admin@example.jp" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></Field>
-              {err && <p className="text-[12px] text-rose-500">{err}</p>}
+              {err && <p className={ERROR_TEXT_CLASS}>{err}</p>}
               <button onClick={submitInvite} disabled={busy} className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">
                 {busy ? "発行中…" : "招待リンクを発行"}
               </button>
@@ -827,7 +856,7 @@ function InviteModal({ muni, onClose, onDone }: { muni: { id: string; name: stri
                   </select>
                 </Field>
               )}
-              {err && <p className="text-[12px] text-rose-500">{err}</p>}
+              {err && <p className={ERROR_TEXT_CLASS}>{err}</p>}
               <button onClick={submitPromote} disabled={busy || !candidates?.length} className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">
                 {busy ? "昇格中…" : "admin に昇格"}
               </button>
