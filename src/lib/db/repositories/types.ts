@@ -193,14 +193,18 @@ export interface Repos {
     analytics(): Promise<SuperAnalytics>;
   };
   members: {
-    list(): Promise<MemberDTO[]>;
-    upsert(m: { id?: string; name: string; role: string; startedAt?: string; term?: string; hostOrganizationId?: string | null; approvalRouteId?: string | null }): Promise<MemberDTO>;
-    retire(id: string): Promise<void>;
+    /** muniId 省略 = 絞り込みなし(super 専用)。admin は必ず自分の所属を渡す。 */
+    list(muniId?: string): Promise<MemberDTO[]>;
+    upsert(m: { id?: string; name: string; role: string; startedAt?: string; term?: string; hostOrganizationId?: string | null; approvalRouteId?: string | null }, muniId: string): Promise<MemberDTO>;
+    /** 対象が muniId に属さない/存在しない場合は false(ルート層は 404 に変換) */
+    retire(id: string, muniId: string): Promise<boolean>;
   };
   staff: {
-    list(): Promise<StaffDTO[]>;
-    upsert(s: { id?: string; name: string; title?: string; dept: string; email?: string }): Promise<StaffDTO>;
-    remove(id: string): Promise<void>;
+    /** muniId 省略 = 絞り込みなし(super 専用)。admin は必ず自分の所属を渡す。 */
+    list(muniId?: string): Promise<StaffDTO[]>;
+    upsert(s: { id?: string; name: string; title?: string; dept: string; email?: string }, muniId: string): Promise<StaffDTO>;
+    /** 対象が muniId に属さない/存在しない場合は false(ルート層は 404 に変換) */
+    remove(id: string, muniId: string): Promise<boolean>;
   };
   assignments: {
     map(): Promise<Record<string, string[]>>;

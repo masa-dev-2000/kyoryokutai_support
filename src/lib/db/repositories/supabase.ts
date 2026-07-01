@@ -505,17 +505,20 @@ export const supabaseRepos: Repos = {
   },
 
   members: {
-    async list() {
-      const { data } = await supabase()
+    async list(muniId) {
+      let q = supabase()
         .from("users")
         .select("*")
         .eq("role", "member")
-        .eq("status", "active")
-        .order("started_at");
+        .eq("status", "active");
+      if (muniId) q = q.eq("municipality_id", muniId);
+      const { data } = await q.order("started_at");
       return (data ?? []).map(mapMember);
     },
-    async upsert(m) {
+    async upsert(m, muniId) {
       if (m.id) {
+        const { data: existing } = await supabase().from("users").select("municipality_id, role").eq("id", m.id).maybeSingle();
+        if (!existing || (existing.municipality_id as string) !== muniId || existing.role !== "member") throw new Error("TENANT_MISMATCH");
         const { data } = await supabase()
           .from("users")
           .update({
@@ -530,7 +533,7 @@ export const supabaseRepos: Repos = {
       const { data } = await supabase()
         .from("users")
         .insert({
-          municipality_id: MUNI,
+          municipality_id: muniId,
           organization_type: "member",
           host_organization_id: m.hostOrganizationId ?? null,
           approval_route_id: m.approvalRouteId ?? null,
@@ -547,24 +550,30 @@ export const supabaseRepos: Repos = {
       if (data?.id) await seedDefaultBudgetSb(data.id);
       return mapMember(data!);
     },
-    async retire(id) {
+    async retire(id, muniId) {
+      const { data: existing } = await supabase().from("users").select("municipality_id, role").eq("id", id).maybeSingle();
+      if (!existing || (existing.municipality_id as string) !== muniId || existing.role !== "member") return false;
       await supabase().from("users").update({ status: "retired" }).eq("id", id);
       await supabase().from("assignments").delete().eq("member_id", id);
+      return true;
     },
   },
 
   staff: {
-    async list() {
-      const { data } = await supabase()
+    async list(muniId) {
+      let q = supabase()
         .from("users")
         .select("*")
         .eq("role", "manager")
-        .eq("organization_type", "municipality")
-        .order("created_at");
+        .eq("organization_type", "municipality");
+      if (muniId) q = q.eq("municipality_id", muniId);
+      const { data } = await q.order("created_at");
       return (data ?? []).map(mapStaff);
     },
-    async upsert(s) {
+    async upsert(s, muniId) {
       if (s.id) {
+        const { data: existing } = await supabase().from("users").select("municipality_id, role, organization_type").eq("id", s.id).maybeSingle();
+        if (!existing || (existing.municipality_id as string) !== muniId || existing.role !== "manager" || existing.organization_type !== "municipality") throw new Error("TENANT_MISMATCH");
         const { data } = await supabase()
           .from("users")
           .update({ name: s.name, title: s.title ?? "職員", department: s.dept, email: s.email ?? null })
@@ -576,7 +585,7 @@ export const supabaseRepos: Repos = {
       const { data } = await supabase()
         .from("users")
         .insert({
-          municipality_id: MUNI,
+          municipality_id: muniId,
           organization_type: "municipality",
           role: "manager",
           name: s.name,
@@ -589,9 +598,12 @@ export const supabaseRepos: Repos = {
         .single();
       return mapStaff(data!);
     },
-    async remove(id) {
+    async remove(id, muniId) {
+      const { data: existing } = await supabase().from("users").select("municipality_id").eq("id", id).eq("role", "manager").eq("organization_type", "municipality").maybeSingle();
+      if (!existing || (existing.municipality_id as string) !== muniId) return false;
       await supabase().from("assignments").delete().eq("staff_id", id);
       await supabase().from("users").delete().eq("id", id).eq("role", "manager");
+      return true;
     },
   },
 
