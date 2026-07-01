@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { get, run } from "@/lib/db";
 import { sqliteRepos } from "@/lib/db/repositories/sqlite";
 import { BUDGET_CATEGORIES, DEFAULT_ALLOCATION, currentFiscalYear } from "@/lib/budget";
 
@@ -87,5 +88,39 @@ describe("invites.createProvisioned (#74 招待先の pre-provision)", () => {
     await expect(
       sqliteRepos.invites.createProvisioned({ ...base, role: "admin" }),
     ).rejects.toThrow("ROLE_CONFLICT");
+  });
+
+  it("uses createdBy municipality for new invited users and member budgets", async () => {
+    const otherMuni = "muni_invite74_other";
+    const otherAdmin = "adm_invite74_other";
+    const email = "othermuni-member74@example.jp";
+
+    run("INSERT INTO municipalities (id,name,prefecture,annual_budget) VALUES (?,?,?,?)", [
+      otherMuni,
+      "Other Invite City",
+      "Other Prefecture",
+      1000000,
+    ]);
+    run(
+      "INSERT INTO users (id,municipality_id,organization_type,role,name,email,status) VALUES (?,?,?,?,?,?,?)",
+      [otherAdmin, otherMuni, "municipality", "admin", "Other Invite Admin", "other-invite-admin@example.jp", "active"]
+    );
+
+    await sqliteRepos.invites.createProvisioned({
+      email,
+      name: "Other Muni Member",
+      role: "member",
+      municipalityName: "Other Invite City",
+      createdBy: otherAdmin,
+    });
+
+    const created = get<{ id: string; municipality_id: string }>("SELECT id, municipality_id FROM users WHERE email=?", [email]);
+    expect(created?.municipality_id).toBe(otherMuni);
+
+    const budgets = get<{ c: number }>(
+      "SELECT COUNT(*) c FROM budget_allocations WHERE user_id=? AND municipality_id=? AND fiscal_year=?",
+      [created?.id, otherMuni, currentFiscalYear()]
+    );
+    expect(budgets?.c).toBe(BUDGET_CATEGORIES.length);
   });
 });

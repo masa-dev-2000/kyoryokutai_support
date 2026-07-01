@@ -69,13 +69,19 @@ function fyRange(fy: string): [string, string] {
 }
 
 // 新規隊員に当年度の費目別予算枠(既定配分)を投入(既存があればスキップ)。
-function seedDefaultBudget(userId: string) {
+function municipalityOfUser(userId: string): string {
+  const row = get<{ municipality_id: string | null }>("SELECT municipality_id FROM users WHERE id=?", [userId]);
+  if (!row?.municipality_id) throw new Error("CREATOR_NOT_FOUND");
+  return row.municipality_id;
+}
+
+function seedDefaultBudget(userId: string, municipalityId = MUNI) {
   const fy = currentFiscalYear();
   for (const category of BUDGET_CATEGORIES) {
     const exists = get("SELECT id FROM budget_allocations WHERE user_id=? AND fiscal_year=? AND category=?", [userId, fy, category]);
     if (exists) continue;
     run("INSERT INTO budget_allocations (id,municipality_id,user_id,fiscal_year,category,amount_limit) VALUES (?,?,?,?,?,?)", [
-      genId("bud"), MUNI, userId, fy, category, DEFAULT_ALLOCATION[category] ?? 0,
+      genId("bud"), municipalityId, userId, fy, category, DEFAULT_ALLOCATION[category] ?? 0,
     ]);
   }
 }
@@ -576,21 +582,22 @@ export const sqliteRepos: Repos = {
     },
     async createProvisioned({ email, name, role, municipalityName, createdBy }) {
       // email に対応する users 行が無ければ先に作る(/api/auth/me が email で紐づけられるように)。
-      const existing = get<{ id: string; role: string }>("SELECT id, role FROM users WHERE email=?", [email]);
+      const existing = get<{ id: string; role: string; municipality_id: string | null }>("SELECT id, role, municipality_id FROM users WHERE email=?", [email]);
       if (existing) {
         // 別ロールでの再招待はサイレントに権限を取り違える。明示的に弾く。
         if (existing.role !== role) throw new Error("ROLE_CONFLICT");
         // 同ロールの再招待は冪等。退職などで無効化されていれば再有効化する。
         run("UPDATE users SET status='active' WHERE id=?", [existing.id]);
-        if (role === "member") seedDefaultBudget(existing.id);
+        if (role === "member") seedDefaultBudget(existing.id, existing.municipality_id ?? municipalityOfUser(createdBy));
       } else {
+        const creatorMuni = municipalityOfUser(createdBy);
         const id = genId(role === "member" ? "m" : "s");
         const orgType = role === "member" ? "member" : "municipality";
         run(
           "INSERT INTO users (id,municipality_id,organization_type,role,name,email,status) VALUES (?,?,?,?,?,?,?)",
-          [id, MUNI, orgType, role, name, email, "active"]
+          [id, creatorMuni, orgType, role, name, email, "active"]
         );
-        if (role === "member") seedDefaultBudget(id);
+        if (role === "member") seedDefaultBudget(id, creatorMuni);
       }
       return sqliteRepos.invites.create({ email, role, municipalityName, createdBy });
     },
