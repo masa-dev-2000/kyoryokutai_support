@@ -2,6 +2,7 @@
 
 import React from "react";
 import { createSupabaseClient } from "@/lib/auth/client";
+import { homePathForRole, safeRelativePath } from "@/lib/auth/role-path";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Loader2, Mail, Lock, User, AlertCircle, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
@@ -12,7 +13,7 @@ function SignupForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const token = searchParams.get("token");
-  const next = searchParams.get("next") ?? "/member";
+  const next = safeRelativePath(searchParams.get("next"));
 
   const [invite, setInvite] = React.useState<InviteInfo | null>(null);
   const [tokenError, setTokenError] = React.useState<string | null>(null);
@@ -56,6 +57,9 @@ function SignupForm() {
     setStatus("loading");
 
     const supabase = createSupabaseClient();
+    const callbackUrl = new URL("/api/auth/callback", location.origin);
+    if (next) callbackUrl.searchParams.set("next", next);
+
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
@@ -66,7 +70,7 @@ function SignupForm() {
           role: invite.role,
           invite_token: token,
         },
-        emailRedirectTo: `${location.origin}/api/auth/callback?next=${encodeURIComponent(next)}`,
+        emailRedirectTo: callbackUrl.toString(),
       },
     });
 
@@ -80,7 +84,14 @@ function SignupForm() {
     await fetch(`/api/admin/invites/${token}`, { method: "PATCH" }).catch(() => {});
 
     if (data.session) {
-      router.push(next as Parameters<typeof router.push>[0]);
+      let role = invite.role;
+      const res = await fetch("/api/auth/me").catch(() => null);
+      if (res?.ok) {
+        const me = await res.json().catch(() => ({})) as { role?: string };
+        role = me.role ?? role;
+      }
+      const dest = next ?? homePathForRole(role);
+      router.push(dest as Parameters<typeof router.push>[0]);
       router.refresh();
     } else {
       setStatus("done");
@@ -214,7 +225,7 @@ function SignupForm() {
 
       <p className="mt-6 text-center text-[12px] text-slate-500">
         すでにアカウントをお持ちの方は{" "}
-        <Link href={`/login?next=${encodeURIComponent(next)}` as never} className="font-semibold text-slate-900 underline underline-offset-2">
+        <Link href={(next ? `/login?next=${encodeURIComponent(next)}` : "/login") as never} className="font-semibold text-slate-900 underline underline-offset-2">
           ログイン
         </Link>
       </p>
