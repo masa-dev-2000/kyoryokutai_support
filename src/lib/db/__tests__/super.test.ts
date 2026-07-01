@@ -27,6 +27,38 @@ describe("super.createMunicipality", () => {
   });
 });
 
+describe("super.updateMunicipality", () => {
+  it("名称・都道府県・年間予算を部分更新できる", async () => {
+    const created = await sqliteRepos.super.createMunicipality({ name: "旧名町", prefecture: "京都府" });
+    const updated = await sqliteRepos.super.updateMunicipality(created.id, { name: "新名町", annualBudget: 3000000 });
+
+    expect(updated).not.toBeNull();
+    expect(updated?.name).toBe("新名町");
+    expect(updated?.prefecture).toBe("京都府"); // 未指定は据え置き
+    const contract = await sqliteRepos.super.getContract(created.id);
+    expect(contract?.annualBudget).toBe(3000000);
+  });
+
+  it("存在しない ID は null を返す", async () => {
+    const r = await sqliteRepos.super.updateMunicipality("muni_does_not_exist", { name: "x" });
+    expect(r).toBeNull();
+  });
+});
+
+describe("super.deleteMunicipality", () => {
+  it("自治体を削除すると overview から消える", async () => {
+    const created = await sqliteRepos.super.createMunicipality({ name: "消える町", prefecture: "兵庫県" });
+    const before = (await sqliteRepos.super.overview()).totals.municipalities;
+
+    await sqliteRepos.super.deleteMunicipality(created.id);
+
+    const after = await sqliteRepos.super.overview();
+    expect(after.totals.municipalities).toBe(before - 1);
+    expect(after.municipalities.map((m) => m.id)).not.toContain(created.id);
+    expect(await sqliteRepos.super.municipalityDetail(created.id)).toBeNull();
+  });
+});
+
 describe("super.createAdminInvite", () => {
   it("admin を pre-provision し、招待トークンを発行する", async () => {
     const muni = await sqliteRepos.super.createMunicipality({ name: "招待先町", prefecture: "兵庫県" });
