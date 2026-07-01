@@ -2,6 +2,7 @@
 // クライアント状態機械をサーバへ移植したもの。
 
 import type { RouteDTO } from "@/lib/db/repositories/types";
+import { jstMonthDay } from "@/lib/time";
 
 export type ApproverType = "dept" | "host_org" | "admin";
 export type StepStatus = "waiting" | "pending" | "approved" | "rejected";
@@ -11,6 +12,13 @@ export type ApprovalStep = {
   status: StepStatus;
   comment?: string;
   decidedAt?: string;
+  decidedByUserId?: string;
+  decidedByRole?: string;
+};
+
+type DecisionActor = {
+  userId: string;
+  role: string;
 };
 
 // kind ごとの既定ルートを展開(隊員ごとのカスタムは Year 2)。
@@ -52,12 +60,19 @@ export function expandAssignedRoute(route: RouteDTO): { routeName: string; steps
 }
 
 const today = () =>
-  new Date().toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" });
+  jstMonthDay();
 
 // 承認:現ステップを approved に。次があれば pending、無ければ全体 approved。
-export function applyApprove(steps: ApprovalStep[], currentStep: number) {
+export function applyApprove(steps: ApprovalStep[], currentStep: number, actor?: DecisionActor) {
   const next = steps.map((s, i) =>
-    i === currentStep ? { ...s, status: "approved" as StepStatus, decidedAt: today() } : s
+    i === currentStep
+      ? {
+          ...s,
+          status: "approved" as StepStatus,
+          decidedAt: today(),
+          ...(actor ? { decidedByUserId: actor.userId, decidedByRole: actor.role } : {}),
+        }
+      : s
   );
   if (currentStep + 1 < next.length) {
     next[currentStep + 1] = { ...next[currentStep + 1], status: "pending" };
@@ -67,9 +82,17 @@ export function applyApprove(steps: ApprovalStep[], currentStep: number) {
 }
 
 // 差戻し:現ステップを rejected(コメント必須)→ 全体差戻し。
-export function applyReject(steps: ApprovalStep[], currentStep: number, comment: string) {
+export function applyReject(steps: ApprovalStep[], currentStep: number, comment: string, actor?: DecisionActor) {
   const next = steps.map((s, i) =>
-    i === currentStep ? { ...s, status: "rejected" as StepStatus, comment, decidedAt: today() } : s
+    i === currentStep
+      ? {
+          ...s,
+          status: "rejected" as StepStatus,
+          comment,
+          decidedAt: today(),
+          ...(actor ? { decidedByUserId: actor.userId, decidedByRole: actor.role } : {}),
+        }
+      : s
   );
   return { steps: next, currentStep, status: "rejected" as const };
 }

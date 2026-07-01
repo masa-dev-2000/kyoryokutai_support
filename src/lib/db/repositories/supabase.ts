@@ -32,15 +32,13 @@ import type {
   BudgetLineDTO,
 } from "./types";
 import { BUDGET_CATEGORIES, DEFAULT_ALLOCATION, currentFiscalYear } from "@/lib/budget";
+import { jstDateString, jstTimeHHMM, jstYearMonth } from "@/lib/time";
 
 const MUNI = "10000000-0000-4000-8000-000000000001";
 
 // 当月 / N ヶ月前の 'YYYY-MM' を返す(ローカル時刻基準)
 function ymOffset(offset: number): string {
-  const d = new Date();
-  d.setDate(1);
-  d.setMonth(d.getMonth() + offset);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return jstYearMonth(offset);
 }
 
 // 'YYYY-MM' → JST 月初・翌月初の ISO 文字列([gte, lt) 範囲)。
@@ -159,17 +157,18 @@ async function muniOf(userId: string): Promise<string> {
 // Supabase の occurred_at(timestamptz)→ log_date / log_time に変換してマッパーに渡す
 function toLogRow(r: Record<string, unknown>): Record<string, unknown> {
   const oa = r.occurred_at as string | null;
+  const occurredAt = oa ? new Date(oa) : null;
   return {
     ...r,
-    log_date: oa ? oa.slice(0, 10) : r.log_date,
-    log_time: oa ? oa.slice(11, 16) : r.log_time ?? "",
+    log_date: occurredAt ? jstDateString(occurredAt) : r.log_date,
+    log_time: occurredAt ? jstTimeHHMM(occurredAt) : r.log_time ?? "",
   };
 }
 
 // occurred_at を生成(date + time → ISO 文字列)
 function toOccurredAt(date?: string, time?: string): string {
-  const d = date ?? new Date().toISOString().slice(0, 10);
-  const t = time ?? new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+  const d = date ?? jstDateString();
+  const t = time ?? jstTimeHHMM();
   return `${d}T${t}:00+09:00`;
 }
 
@@ -506,17 +505,20 @@ export const supabaseRepos: Repos = {
   },
 
   members: {
-    async list() {
-      const { data } = await supabase()
+    async list(muniId) {
+      let q = supabase()
         .from("users")
         .select("*")
         .eq("role", "member")
-        .eq("status", "active")
-        .order("started_at");
+        .eq("status", "active");
+      if (muniId) q = q.eq("municipality_id", muniId);
+      const { data } = await q.order("started_at");
       return (data ?? []).map(mapMember);
     },
-    async upsert(m) {
+    async upsert(m, muniId) {
       if (m.id) {
+        const { data: existing } = await supabase().from("users").select("municipality_id, role").eq("id", m.id).maybeSingle();
+        if (!existing || (existing.municipality_id as string) !== muniId || existing.role !== "member") throw new Error("TENANT_MISMATCH");
         const { data } = await supabase()
           .from("users")
           .update({
@@ -531,7 +533,7 @@ export const supabaseRepos: Repos = {
       const { data } = await supabase()
         .from("users")
         .insert({
-          municipality_id: MUNI,
+          municipality_id: muniId,
           organization_type: "member",
           host_organization_id: m.hostOrganizationId ?? null,
           approval_route_id: m.approvalRouteId ?? null,
@@ -548,24 +550,30 @@ export const supabaseRepos: Repos = {
       if (data?.id) await seedDefaultBudgetSb(data.id);
       return mapMember(data!);
     },
-    async retire(id) {
+    async retire(id, muniId) {
+      const { data: existing } = await supabase().from("users").select("municipality_id, role").eq("id", id).maybeSingle();
+      if (!existing || (existing.municipality_id as string) !== muniId || existing.role !== "member") return false;
       await supabase().from("users").update({ status: "retired" }).eq("id", id);
       await supabase().from("assignments").delete().eq("member_id", id);
+      return true;
     },
   },
 
   staff: {
-    async list() {
-      const { data } = await supabase()
+    async list(muniId) {
+      let q = supabase()
         .from("users")
         .select("*")
         .eq("role", "manager")
-        .eq("organization_type", "municipality")
-        .order("created_at");
+        .eq("organization_type", "municipality");
+      if (muniId) q = q.eq("municipality_id", muniId);
+      const { data } = await q.order("created_at");
       return (data ?? []).map(mapStaff);
     },
-    async upsert(s) {
+    async upsert(s, muniId) {
       if (s.id) {
+        const { data: existing } = await supabase().from("users").select("municipality_id, role, organization_type").eq("id", s.id).maybeSingle();
+        if (!existing || (existing.municipality_id as string) !== muniId || existing.role !== "manager" || existing.organization_type !== "municipality") throw new Error("TENANT_MISMATCH");
         const { data } = await supabase()
           .from("users")
           .update({ name: s.name, title: s.title ?? "職員", department: s.dept, email: s.email ?? null })
@@ -577,7 +585,7 @@ export const supabaseRepos: Repos = {
       const { data } = await supabase()
         .from("users")
         .insert({
-          municipality_id: MUNI,
+          municipality_id: muniId,
           organization_type: "municipality",
           role: "manager",
           name: s.name,
@@ -590,9 +598,12 @@ export const supabaseRepos: Repos = {
         .single();
       return mapStaff(data!);
     },
-    async remove(id) {
+    async remove(id, muniId) {
+      const { data: existing } = await supabase().from("users").select("municipality_id").eq("id", id).eq("role", "manager").eq("organization_type", "municipality").maybeSingle();
+      if (!existing || (existing.municipality_id as string) !== muniId) return false;
       await supabase().from("assignments").delete().eq("staff_id", id);
       await supabase().from("users").delete().eq("id", id).eq("role", "manager");
+      return true;
     },
   },
 
@@ -857,7 +868,7 @@ export const supabaseRepos: Repos = {
     },
     async create(b) {
       const occurredAt = toOccurredAt(b.date, b.time);
-      const date = b.date ?? new Date().toISOString().slice(0, 10);
+      const date = b.date ?? jstDateString();
       // daily_log を upsert して daily_log_id を結線
       let dailyLogId = b.dailyLogId ?? null;
       if (!dailyLogId) {
@@ -989,10 +1000,45 @@ export const supabaseRepos: Repos = {
     async listByUser(userId) {
       const { data } = await supabase()
         .from("expenses")
-        .select("*")
+        .select("*, daily_logs(log_date)")
         .eq("user_id", userId)
         .order("created_at", { ascending: false });
-      return (data ?? []).map((r) => mapExpense({ ...r, citations: JSON.stringify(r.citations ?? []) }));
+      const rows = data ?? [];
+      const sourceActivityIds = Array.from(new Set(
+        rows
+          .map((r) => r.source_activity_log_id as string | null)
+          .filter((id): id is string => !!id)
+      ));
+      const dailyLogDateByActivityId = new Map<string, string>();
+      if (sourceActivityIds.length > 0) {
+        const { data: sourceLogs } = await supabase()
+          .from("activity_logs")
+          .select("id,daily_log_id")
+          .in("id", sourceActivityIds);
+        const dailyLogIds = Array.from(new Set(
+          (sourceLogs ?? [])
+            .map((r) => r.daily_log_id as string | null)
+            .filter((id): id is string => !!id)
+        ));
+        if (dailyLogIds.length > 0) {
+          const { data: dailyLogs } = await supabase()
+            .from("daily_logs")
+            .select("id,log_date")
+            .in("id", dailyLogIds);
+          const dateByDailyLogId = new Map(
+            (dailyLogs ?? []).map((r) => [r.id as string, r.log_date as string])
+          );
+          for (const sourceLog of sourceLogs ?? []) {
+            const date = dateByDailyLogId.get(sourceLog.daily_log_id as string);
+            if (date) dailyLogDateByActivityId.set(sourceLog.id as string, date);
+          }
+        }
+      }
+      return rows.map((r) => mapExpense({
+        ...r,
+        daily_log_date: dailyLogDateByActivityId.get(r.source_activity_log_id as string) ?? null,
+        citations: JSON.stringify(r.citations ?? []),
+      }));
     },
     async create(b) {
       const { data } = await supabase()
@@ -1012,11 +1058,17 @@ export const supabaseRepos: Repos = {
           has_receipt: !!b.receiptKey,
           receipt_key: b.receiptKey ?? null,
         })
-        .select()
+        .select("*, daily_logs(log_date)")
         .single();
       return mapExpense({ ...data!, citations: JSON.stringify(data!.citations ?? []) });
     },
     async createFromLog(b) {
+      const { data: sourceLog } = await supabase()
+        .from("activity_logs")
+        .select("daily_log_id")
+        .eq("id", b.activityLogId)
+        .maybeSingle();
+      const dailyLogId = (sourceLog?.daily_log_id as string | null) ?? null;
       const { data } = await supabase()
         .from("expenses")
         .insert({
@@ -1025,6 +1077,7 @@ export const supabaseRepos: Repos = {
           expense_kind: "single",
           source_activity_log_id: b.activityLogId,
           source_receipt_index: b.receiptIndex,
+          daily_log_id: dailyLogId,
           title: b.title,
           amount_requested: b.amount,
           purpose: b.purpose,
@@ -1034,7 +1087,7 @@ export const supabaseRepos: Repos = {
           has_receipt: b.hasReceipt || !!b.receiptKey,
           receipt_key: b.receiptKey ?? null,
         })
-        .select()
+        .select("*, daily_logs(log_date)")
         .single();
       return mapExpense({ ...data!, citations: JSON.stringify(data!.citations ?? []) });
     },
@@ -1126,12 +1179,13 @@ export const supabaseRepos: Repos = {
     async getRaw(id): Promise<ApprovalRaw | undefined> {
       const { data } = await supabase()
         .from("approvals")
-        .select("id, kind, steps, current_step, status, target_table, target_id")
+        .select("id, municipality_id, kind, steps, current_step, status, target_table, target_id")
         .eq("id", id)
         .single();
       if (!data) return undefined;
       return {
         id: data.id,
+        municipality_id: data.municipality_id,
         kind: data.kind,
         steps: JSON.stringify(data.steps),
         current_step: data.current_step,
@@ -1140,10 +1194,25 @@ export const supabaseRepos: Repos = {
         target_id: data.target_id ?? null,
       };
     },
-    async updateState(id, steps, currentStep, status) {
+    async updateDetail(targetTable, targetId, detail) {
       await supabase()
         .from("approvals")
-        .update({ steps, current_step: currentStep, status })
+        .update({ detail })
+        .eq("target_table", targetTable)
+        .eq("target_id", targetId)
+        .eq("status", "pending");
+    },
+    async updateState(id, steps, currentStep, status, decision) {
+      await supabase()
+        .from("approvals")
+        .update({
+          steps,
+          current_step: currentStep,
+          status,
+          ...(decision
+            ? { approver_id: decision.decidedBy, approved_at: new Date().toISOString(), comment: decision.comment ?? null }
+            : {}),
+        })
         .eq("id", id);
     },
     async getById(id) {

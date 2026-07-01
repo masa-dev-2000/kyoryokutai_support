@@ -347,3 +347,52 @@
 
 ### 関連
 - ADR-025(活動シート再設計)、ADR-023(expense_amount 移管)、ADR-016/018(AuthProvider 抽象)
+
+---
+
+## 2026-07-01
+
+### 完了
+- **Issue #119「アカウントタブ廃止→自治体ドリルダウン統合」+ #113「自治体作成→admin導線」を実装、PR #100 として develop へマージ**
+- 実装コミット(ブランチ `feat/super-delete-ui`、`c162c53`→`3c7ff78`):
+  - `c162c53` アカウント管理にユーザー削除UI追加
+  - `ee0cf6e` 自治体の編集・削除UI追加
+  - `6c11875` アカウント管理を自治体詳細に統合し、作成→招待を連結(#119/#113)
+  - `366736b` レビュー指摘の確定バグを修正(下記参照)
+  - `7dd4eb8` 自治体詳細にアカウント管理表(`MuniAccounts`)を追加し #119 回帰を解消
+  - `3c7ff78` 招待モーダルに「既存ユーザーを昇格」モードを追加し #113 差し戻しに対応
+- **オーナーレビューで CHANGES_REQUESTED を1回受けた**(2026-07-01T00:06:48Z、m-takehara555): 「#113 の②既存ユーザーをadmin昇格がUI上に導線が無い」との指摘。`InviteModal` を「新規招待/既存ユーザーを昇格」の2モードに変更(`3c7ff78`)して解消 → `APPROVED`(02:24:57Z)→ マージ(`ede290b`, 02:44:51Z)
+- **確定バグ4件を修正**(`366736b`、事前の独立コードレビューで CONFIRMED):
+  1. `ok(null, 204)` がサーバで throw し削除系APIが必ず500(Next.js の204はnullボディ不可のため)。`ok({ok:true})` の200へ統一。DELETE/更新系ルートで今後も同じ罠を踏まないよう注意。
+  2. 自治体編集で年間予算の空入力が `Number(budget)||0` により意図せず0に上書き
+  3. 自治体削除の在籍ユーザー判定が `role=super` を除外しており、super所属自治体が削除できてしまう
+  4. Supabase repository の update/delete がエラーを握り潰し、失敗時も成功扱いになっていた
+
+### 変更ファイル
+- `src/app/super/_app.tsx`: 自治体編集・削除UI、`MuniAccounts`(自治体詳細内アカウント管理表)、`InviteModal`(新規招待/既存ユーザー昇格2モード)、`MuniModal`(作成→招待連結)
+- `src/app/api/super/municipalities/[id]/route.ts`: PATCH/DELETE 追加(在籍ユーザー409ガード含む)
+- `src/app/api/super/users/[id]/route.ts`: DELETE の204バグ修正
+- `src/lib/db/repositories/{types,sqlite,supabase}.ts`: `updateMunicipality`/`deleteMunicipality` 追加、supabase側エラーハンドリング修正
+- `src/lib/db/__tests__/super.test.ts`: 上記に対応するユニットテスト追加(計22件 pass)
+- `docs/30_contract_mvp_phase2.md`: 契約UI撤去のADR(先行PR #92 分、参考)
+
+### ⚠️ 引き継ぎ注意
+- **ブランチ `feat/super-delete-ui` は使い切り(マージ済み)**。この続きの作業(下記アクション含む)は `origin/develop` から新しいワークツリー/ブランチを作ること(標準ルール①)。
+- **Issue #119 は実装完了しているが GitHub 上は未クローズ**。`7dd4eb8`(`MuniAccounts` 追加)で解決している旨をオーナーに確認の上クローズ判断すること(本セッションでは判断保留)。
+- **CI「Workers Builds: kyoryokutai-support」(Cloudflare)は本PR固有の問題ではない**。#120〜#128 など直近の全PRで同様にFAILUREしており、プロジェクト共通のCI基盤事象。実デプロイ経路のVercel Previewは成功している。対応の緊急度は低いが、放置し続けるとCI全体の信号が形骸化するため、どこかで別途原因調査が必要。
+- 契約・課金管理UIはMVPスコープ外としてPhase2へ延期済み(`docs/30_contract_mvp_phase2.md`、先行PR #92)。super画面に契約関連の導線は現状無い。
+
+### 次のアクション
+- **super画面のUI/UX レビュー(設計済み・未実施)**: 新しいブランチで以下を実施
+  - 対象: 概要一覧/自治体追加/自治体編集/自治体詳細ドリルダウン/自治体削除/管理者招待(新規・昇格)/`MuniAccounts`のrole・status・所属変更/ユーザー削除/自己変更ブロック/分析タブ/空状態全般/1280〜1920pxでの崩れ、計17項目
+  - 評価観点: 一貫性・情報階層・状態表現(エラー/空/ローディング)・操作の分かりやすさ・確認ダイアログの妥当性・PC前提のレイアウト・アクセシビリティ基礎・マイクロコピー、の8軸
+  - 検証方法: Claude-in-Chrome で `npm run dev:op`(`DEV_USER_ROLE=super` を環境変数で付与、`AUTH_PROVIDER=none` によりログイン操作不要)を実際に操作しスクリーンショットで確認。**新しいワークツリーには `.env.1password.local` が無いので、実行前にメインツリーからコピーする必要あり**
+  - 既に判明している着眼点: エラーテキストの色トークンが `red-700`/`rose-500`/`red-600` で混在、削除には確認ダイアログがあるのに role を `super` へ変更する操作には確認が無い(誤操作リスク)、`MuniModal`(作成時)と `MuniEditModal`(編集時)で予算バリデーションの強さが違う、アイコンのみボタンに `aria-label` が無い箇所がある
+  - 所見は「軽微(その場でJSX/文言修正)」と「重大(別issueに切り出し)」に分類して対応
+- **Issue #119 のクローズ判断**(オーナー確認後)
+- Cloudflare Workers Build 失敗の原因調査(緊急度低、別スレッドで可)
+
+### 関連
+- Issue #113(クローズ済 2026-06-30)、#119(open、実装済みだが未クローズ)
+- PR #100(マージ済み、`ede290b`)、先行 PR #92(契約UI撤去)
+- 204/nullボディの罠は今後 super 以外のロールでも踏みうる一般的な注意点(Next.js `NextResponse.json(null, {status:204})` は例外を投げる)

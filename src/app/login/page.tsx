@@ -2,22 +2,16 @@
 
 import React from "react";
 import { createSupabaseClient } from "@/lib/auth/client";
+import { homePathForRole, safeRelativePath } from "@/lib/auth/role-path";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Loader2, Mail, Lock } from "lucide-react";
 import Link from "next/link";
-
-const ROLE_PATH: Record<string, string> = {
-  super: "/super",
-  admin: "/admin",
-  manager: "/manager",
-  member: "/member",
-};
 
 function LoginForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
   // ?next= が指定されていればそちら優先、なければロールで振り分け
-  const nextParam = searchParams.get("next");
+  const nextParam = safeRelativePath(searchParams.get("next"));
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -58,7 +52,7 @@ function LoginForm() {
         return;
       }
       const data = await res.json() as { role?: string };
-      const dest = nextParam ?? ROLE_PATH[data.role ?? ""] ?? "/member";
+      const dest = nextParam ?? homePathForRole(data.role);
       router.push(dest as Parameters<typeof router.push>[0]);
       router.refresh();
     } catch {
