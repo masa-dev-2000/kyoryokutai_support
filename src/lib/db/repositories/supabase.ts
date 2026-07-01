@@ -988,10 +988,45 @@ export const supabaseRepos: Repos = {
     async listByUser(userId) {
       const { data } = await supabase()
         .from("expenses")
-        .select("*")
+        .select("*, daily_logs(log_date)")
         .eq("user_id", userId)
         .order("created_at", { ascending: false });
-      return (data ?? []).map((r) => mapExpense({ ...r, citations: JSON.stringify(r.citations ?? []) }));
+      const rows = data ?? [];
+      const sourceActivityIds = Array.from(new Set(
+        rows
+          .map((r) => r.source_activity_log_id as string | null)
+          .filter((id): id is string => !!id)
+      ));
+      const dailyLogDateByActivityId = new Map<string, string>();
+      if (sourceActivityIds.length > 0) {
+        const { data: sourceLogs } = await supabase()
+          .from("activity_logs")
+          .select("id,daily_log_id")
+          .in("id", sourceActivityIds);
+        const dailyLogIds = Array.from(new Set(
+          (sourceLogs ?? [])
+            .map((r) => r.daily_log_id as string | null)
+            .filter((id): id is string => !!id)
+        ));
+        if (dailyLogIds.length > 0) {
+          const { data: dailyLogs } = await supabase()
+            .from("daily_logs")
+            .select("id,log_date")
+            .in("id", dailyLogIds);
+          const dateByDailyLogId = new Map(
+            (dailyLogs ?? []).map((r) => [r.id as string, r.log_date as string])
+          );
+          for (const sourceLog of sourceLogs ?? []) {
+            const date = dateByDailyLogId.get(sourceLog.daily_log_id as string);
+            if (date) dailyLogDateByActivityId.set(sourceLog.id as string, date);
+          }
+        }
+      }
+      return rows.map((r) => mapExpense({
+        ...r,
+        daily_log_date: dailyLogDateByActivityId.get(r.source_activity_log_id as string) ?? null,
+        citations: JSON.stringify(r.citations ?? []),
+      }));
     },
     async create(b) {
       const { data } = await supabase()
@@ -1011,11 +1046,17 @@ export const supabaseRepos: Repos = {
           has_receipt: !!b.receiptKey,
           receipt_key: b.receiptKey ?? null,
         })
-        .select()
+        .select("*, daily_logs(log_date)")
         .single();
       return mapExpense({ ...data!, citations: JSON.stringify(data!.citations ?? []) });
     },
     async createFromLog(b) {
+      const { data: sourceLog } = await supabase()
+        .from("activity_logs")
+        .select("daily_log_id")
+        .eq("id", b.activityLogId)
+        .maybeSingle();
+      const dailyLogId = (sourceLog?.daily_log_id as string | null) ?? null;
       const { data } = await supabase()
         .from("expenses")
         .insert({
@@ -1024,6 +1065,7 @@ export const supabaseRepos: Repos = {
           expense_kind: "single",
           source_activity_log_id: b.activityLogId,
           source_receipt_index: b.receiptIndex,
+          daily_log_id: dailyLogId,
           title: b.title,
           amount_requested: b.amount,
           purpose: b.purpose,
@@ -1033,7 +1075,7 @@ export const supabaseRepos: Repos = {
           has_receipt: b.hasReceipt || !!b.receiptKey,
           receipt_key: b.receiptKey ?? null,
         })
-        .select()
+        .select("*, daily_logs(log_date)")
         .single();
       return mapExpense({ ...data!, citations: JSON.stringify(data!.citations ?? []) });
     },
