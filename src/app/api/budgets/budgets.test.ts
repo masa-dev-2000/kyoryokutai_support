@@ -34,7 +34,7 @@ describe("seedDefaultBudget (新規隊員作成時の予算枠自動投入)", ()
     const created = await sqliteRepos.members.upsert({
       name: "予算 検証太郎",
       role: "member",
-    });
+    }, "muni_shinonsen");
     expect(created.id).toBeTruthy();
 
     const fy = currentFiscalYear();
