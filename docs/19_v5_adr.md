@@ -844,3 +844,32 @@ daily_logs(日報) ← 新規
 - 新規:`{ index: null }`、編集:`{ index }` を持つローカル `editor` state で `ActivityEditor` を出し分け
 - `emptyActivity(startTime)` で既定 1 時間ブロックを生成
 - `validActivities` を廃止(モーダルが入力時に妥当性を担保するため、ホームの `activities` は常に妥当)
+
+---
+
+## ADR-026: PRレビュー運用は作成者アカウントとレビューアカウントを分離し、最新レビュー状態を正とする
+
+**確定日:** 2026-07-01
+
+### Context
+- このプロジェクトでは複数セッションが並行してブランチ/PRを作り、別セッションがレビュー・merge判断を行う。
+- GitHub はPR作成者自身のApproveを正式レビューとして扱えないため、PR作成アカウントとレビュー実行アカウントを分ける必要がある。
+- PRのレビュー履歴には過去の `CHANGES_REQUESTED` が残る。#106 のように、指摘後に修正され最新レビューが `APPROVED` になっても、全履歴を単純に見ると「過去NGがあるPR」と誤判定される。
+- `reviewDecision` はブランチ保護ルール設定に依存して空になることがあり、今回の運用では信頼できる唯一の判定材料ではない。
+
+### Decision
+1. PR作成・通常GitHub操作は `pr_account = masa-dev-2000` で行う。
+2. GitHub上の正式レビュー投稿は `review_account = m-takehara555` で行う。
+3. `gh auth switch --user m-takehara555` でレビューし、投稿後は必ず `gh auth switch --user masa-dev-2000` に戻す。
+4. merge候補判定では `reviewDecision` や「PR全履歴に `CHANGES_REQUESTED` があるか」ではなく、`reviews[]` をレビュアーごとに見て、各レビュアーの最新レビュー状態を正とする。
+5. `/kio-devmerge` のPhase 1フィルタは、過去 `CHANGES_REQUESTED` の存在判定ではなく、レビュアーごとの最新レビュー状態に基づく判定へ修正する。
+
+### Consequence
+- PR作成者本人による自己Approve問題を避け、GitHub上の正式なレビュー記録を残せる。
+- #106 のような「過去 `CHANGES_REQUESTED` → 修正後 `APPROVED`」のPRを正しくmerge候補に戻せる。
+- `gh auth switch` はマシン全体のアクティブアカウントに影響するため、レビュー中は切替時間を短くし、終了時に `masa-dev-2000` へ戻したことを確認する必要がある。
+- 並行セッションではPR状態が短時間で変わるため、レビュー・merge・issue close の直前にGitHubの現在状態を再確認する。
+
+### 実例
+- #106: 旧commitに `CHANGES_REQUESTED` が残っていたが、最新commit `a9f1be8` に対して `m-takehara555` が `APPROVED`。最新レビューを正として再レビュー・merge判断できた。
+- #152: draft解除後に `m-takehara555` で再APPROVEし、mergeState `CLEAN` を確認してmerge対象にできた。

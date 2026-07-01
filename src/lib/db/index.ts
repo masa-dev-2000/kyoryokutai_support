@@ -38,6 +38,15 @@ export function getDb(): DB {
   return g.__appDb;
 }
 
+export function closeDbForTests(): void {
+  if (!g.__appDb) return;
+  try {
+    g.__appDb.close();
+  } finally {
+    delete g.__appDb;
+  }
+}
+
 // 便利ヘルパ
 export function all<T = Record<string, unknown>>(sql: string, params: unknown[] = []): T[] {
   return getDb().prepare(sql).all(...(params as never[])) as T[];

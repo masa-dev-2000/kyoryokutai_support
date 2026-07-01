@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { POST, GET } from "@/app/api/daily-logs/route";
+import { POST as POST_EXPENSE } from "@/app/api/expenses/route";
 import { getRepos } from "@/lib/db/repositories";
 
 // 日報 POST の統合テスト(#82/#86 の回帰防止 + 経費同時申請)。
@@ -8,6 +9,14 @@ import { getRepos } from "@/lib/db/repositories";
 
 function postReq(body: unknown): Request {
   return new Request("http://localhost/api/daily-logs", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function postExpenseReq(body: unknown): Request {
+  return new Request("http://localhost/api/expenses", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -63,5 +72,26 @@ describe("POST /api/daily-logs(活動・日報・経費の保存)", () => {
     expect(res.status).toBe(201);
     const json = (await res.json()) as { expensesCreated: number };
     expect(json.expensesCreated).toBe(0);
+  });
+  it("日付指定の経費申請は対象日の dailyLogId に紐づき日次合計を更新する", async () => {
+    const date = "2026-07-12";
+    const res = await POST_EXPENSE(
+      postExpenseReq({
+        date,
+        title: "会場資料印刷",
+        amount: 1800,
+        purpose: "地域説明会で配布する資料の印刷",
+        status: "申請中",
+        category: "活動費",
+      })
+    );
+    expect(res.status).toBe(201);
+
+    const repos = getRepos();
+    const dl = await repos.dailyLogs.getByDate("m1", date);
+    expect(dl?.expenseAmount).toBe(1800);
+
+    const exps = await repos.expenses.listByUser("m1");
+    expect(exps.some((e) => e.title === "会場資料印刷" && e.dailyLogId === dl?.id)).toBe(true);
   });
 });

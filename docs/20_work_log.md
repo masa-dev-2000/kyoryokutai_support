@@ -350,49 +350,39 @@
 
 ---
 
-## 2026-07-01
+## 2026-07-01(レビュー運用・PR整理)
 
 ### 完了
-- **Issue #119「アカウントタブ廃止→自治体ドリルダウン統合」+ #113「自治体作成→admin導線」を実装、PR #100 として develop へマージ**
-- 実装コミット(ブランチ `feat/super-delete-ui`、`c162c53`→`3c7ff78`):
-  - `c162c53` アカウント管理にユーザー削除UI追加
-  - `ee0cf6e` 自治体の編集・削除UI追加
-  - `6c11875` アカウント管理を自治体詳細に統合し、作成→招待を連結(#119/#113)
-  - `366736b` レビュー指摘の確定バグを修正(下記参照)
-  - `7dd4eb8` 自治体詳細にアカウント管理表(`MuniAccounts`)を追加し #119 回帰を解消
-  - `3c7ff78` 招待モーダルに「既存ユーザーを昇格」モードを追加し #113 差し戻しに対応
-- **オーナーレビューで CHANGES_REQUESTED を1回受けた**(2026-07-01T00:06:48Z、m-takehara555): 「#113 の②既存ユーザーをadmin昇格がUI上に導線が無い」との指摘。`InviteModal` を「新規招待/既存ユーザーを昇格」の2モードに変更(`3c7ff78`)して解消 → `APPROVED`(02:24:57Z)→ マージ(`ede290b`, 02:44:51Z)
-- **確定バグ4件を修正**(`366736b`、事前の独立コードレビューで CONFIRMED):
-  1. `ok(null, 204)` がサーバで throw し削除系APIが必ず500(Next.js の204はnullボディ不可のため)。`ok({ok:true})` の200へ統一。DELETE/更新系ルートで今後も同じ罠を踏まないよう注意。
-  2. 自治体編集で年間予算の空入力が `Number(budget)||0` により意図せず0に上書き
-  3. 自治体削除の在籍ユーザー判定が `role=super` を除外しており、super所属自治体が削除できてしまう
-  4. Supabase repository の update/delete がエラーを握り潰し、失敗時も成功扱いになっていた
+- **レビュー専用セッションとして、並行PRの正式レビュー・再レビュー・merge後追認を整理した。**
+- GitHub の制約に合わせ、PR作成側 `masa-dev-2000` とレビュー側 `m-takehara555` を分離して運用した。レビュー投稿後は毎回 `masa-dev-2000` に戻す。
+- #106 `feat(admin): #74 招待発行時に招待先ユーザーを pre-provision`
+  - 過去 `CHANGES_REQUESTED` 後の修正を再確認し、`m-takehara555` で再APPROVE。
+  - 固定MUNIではなく `createdBy` 由来 municipality で invited user / member budget を作ること、別ロール再招待を `ROLE_CONFLICT` で拒否することを確認。
+  - その後MERGED済み。
+- #141 `[codex] Scope admin member and staff routes by tenant`
+  - MERGED済みPRとして追認。
+  - admin member/staff route が本人 municipality にスコープされ、別自治体データを 404/非表示にすることを再検証。
+- #150 `Disable future dates in member activity calendar`
+  - MERGED済みPRとして追認。
+  - 未来日セル disabled、未来日タップ抑止、未来日の day modal 到達時の距離保存・活動追加・経費追加無効化を再検証。
+- #152 `[codex] super画面UI/UXレビューとローカル検証修正`
+  - `m-takehara555` で再APPROVE。
+  - ESLint flat config、`GET /api/super/overview` の `requireSuper()` 統一、super UI の危険操作確認/aria/table overflow/予算入力バリデーション、review doc を確認。
+  - その後MERGED済み。
+- #149 merge後、#97 `ymOffset` UTC問題は解消扱いでCLOSED済み。
+- 一時引継ぎメモ `docs/31_review_session_handoff.md` の内容は、本作業ログと ADR-026 に統合する方針に変更した。
 
-### 変更ファイル
-- `src/app/super/_app.tsx`: 自治体編集・削除UI、`MuniAccounts`(自治体詳細内アカウント管理表)、`InviteModal`(新規招待/既存ユーザー昇格2モード)、`MuniModal`(作成→招待連結)
-- `src/app/api/super/municipalities/[id]/route.ts`: PATCH/DELETE 追加(在籍ユーザー409ガード含む)
-- `src/app/api/super/users/[id]/route.ts`: DELETE の204バグ修正
-- `src/lib/db/repositories/{types,sqlite,supabase}.ts`: `updateMunicipality`/`deleteMunicipality` 追加、supabase側エラーハンドリング修正
-- `src/lib/db/__tests__/super.test.ts`: 上記に対応するユニットテスト追加(計22件 pass)
-- `docs/30_contract_mvp_phase2.md`: 契約UI撤去のADR(先行PR #92 分、参考)
+### 検証
+- #106: `npm test -- src/app/api/admin/invites/provision.test.ts src/app/api/admin/invites/invites.test.ts src/app/api/admin/approval-routes.test.ts src/app/api/budgets/budgets.test.ts` → 8 files / 34 tests passed、`npm run typecheck` passed。
+- #141: `npm test -- src/app/api/members/__tests__/tenant-scope.test.ts src/app/api/staff/__tests__/tenant-scope.test.ts` → 2 files / 17 tests passed、`npm run typecheck` passed。
+- #150: `npm run typecheck`、`npm test -- src/app/api/__tests__/daily-logs.test.ts src/lib/db/__tests__/member-save.test.ts` → 2 files / 7 tests passed、`npm test` → 16 files / 52 tests passed、`npm run build` passed。
+- #152: `git diff --check` passed、`npm run lint` → 0 errors / 21 existing warnings、`npm run typecheck` passed、`npm test -- src/app/api/super/overview/__tests__/authz.test.ts src/lib/db/__tests__/super.test.ts` → 2 files / 11 tests passed、`npm test` → 15 files / 45 tests passed、`npm run build` passed。
+- GitHub 上の最終確認ではOPEN PRは0件。#106/#141/#150/#152 はMERGED済み。
 
-### ⚠️ 引き継ぎ注意
-- **ブランチ `feat/super-delete-ui` は使い切り(マージ済み)**。この続きの作業(下記アクション含む)は `origin/develop` から新しいワークツリー/ブランチを作ること(標準ルール①)。
-- **Issue #119 は実装完了しているが GitHub 上は未クローズ**。`7dd4eb8`(`MuniAccounts` 追加)で解決している旨をオーナーに確認の上クローズ判断すること(本セッションでは判断保留)。
-- **CI「Workers Builds: kyoryokutai-support」(Cloudflare)は本PR固有の問題ではない**。#120〜#128 など直近の全PRで同様にFAILUREしており、プロジェクト共通のCI基盤事象。実デプロイ経路のVercel Previewは成功している。対応の緊急度は低いが、放置し続けるとCI全体の信号が形骸化するため、どこかで別途原因調査が必要。
-- 契約・課金管理UIはMVPスコープ外としてPhase2へ延期済み(`docs/30_contract_mvp_phase2.md`、先行PR #92)。super画面に契約関連の導線は現状無い。
-
-### 次のアクション
-- **super画面のUI/UX レビュー(設計済み・未実施)**: 新しいブランチで以下を実施
-  - 対象: 概要一覧/自治体追加/自治体編集/自治体詳細ドリルダウン/自治体削除/管理者招待(新規・昇格)/`MuniAccounts`のrole・status・所属変更/ユーザー削除/自己変更ブロック/分析タブ/空状態全般/1280〜1920pxでの崩れ、計17項目
-  - 評価観点: 一貫性・情報階層・状態表現(エラー/空/ローディング)・操作の分かりやすさ・確認ダイアログの妥当性・PC前提のレイアウト・アクセシビリティ基礎・マイクロコピー、の8軸
-  - 検証方法: Claude-in-Chrome で `npm run dev:op`(`DEV_USER_ROLE=super` を環境変数で付与、`AUTH_PROVIDER=none` によりログイン操作不要)を実際に操作しスクリーンショットで確認。**新しいワークツリーには `.env.1password.local` が無いので、実行前にメインツリーからコピーする必要あり**
-  - 既に判明している着眼点: エラーテキストの色トークンが `red-700`/`rose-500`/`red-600` で混在、削除には確認ダイアログがあるのに role を `super` へ変更する操作には確認が無い(誤操作リスク)、`MuniModal`(作成時)と `MuniEditModal`(編集時)で予算バリデーションの強さが違う、アイコンのみボタンに `aria-label` が無い箇所がある
-  - 所見は「軽微(その場でJSX/文言修正)」と「重大(別issueに切り出し)」に分類して対応
-- **Issue #119 のクローズ判断**(オーナー確認後)
-- Cloudflare Workers Build 失敗の原因調査(緊急度低、別スレッドで可)
+### 残課題
+- `/kio-devmerge` Phase 1 のレビュー判定は、PR全履歴に過去 `CHANGES_REQUESTED` があるだけで除外するのではなく、レビュアーごとの最新レビュー状態だけを見るよう修正する(ADR-026)。
+- `.claude/worktrees/super-uiux-review` やメイン作業treeには、別セッション由来と思われる `e2e/`、`playwright.config.ts`、`playwright-report/`、`test-results/`、package系差分が見えている。今回のレビュー統合作業では触らない。
+- 空の物理残骸 `.claude/worktrees/manager-authz` / `.claude/worktrees/member-voice-ai-verify` は、ロックが外れてから削除する。
 
 ### 関連
-- Issue #113(クローズ済 2026-06-30)、#119(open、実装済みだが未クローズ)
-- PR #100(マージ済み、`ede290b`)、先行 PR #92(契約UI撤去)
-- 204/nullボディの罠は今後 super 以外のロールでも踏みうる一般的な注意点(Next.js `NextResponse.json(null, {status:204})` は例外を投げる)
+- ADR-026(PRレビュー運用)、#106、#141、#150、#152、#97

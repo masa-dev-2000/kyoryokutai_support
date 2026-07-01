@@ -1124,6 +1124,7 @@ export const supabaseRepos: Repos = {
           municipality_id: await muniOf(b.userId),
           expense_kind: "single",
           source_activity_log_id: b.activityLogId,
+          daily_log_id: b.dailyLogId ?? null,
           source_receipt_index: b.receiptIndex,
           daily_log_id: dailyLogId,
           title: b.title,

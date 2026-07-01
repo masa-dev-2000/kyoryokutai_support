@@ -2,7 +2,6 @@ import { ok, bad, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
 import { expandRoute, expandAssignedRoute } from "@/lib/workflow";
 import { requireAppUser } from "@/lib/api/auth";
-import { jstDateString } from "@/lib/time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,14 +33,18 @@ export async function POST(req: Request) {
   const userId = sess.userId;
 
   // ADR-021: daily_log_id の解決 — 明示指定 > 当日 upsert
+  const date = b.date ?? new Date().toISOString().slice(0, 10);
   let dailyLogId = b.dailyLogId;
   if (!dailyLogId) {
-    const date = b.date ?? jstDateString();
     const dl = await repos.dailyLogs.upsert(userId, date);
     dailyLogId = dl.id;
   }
 
   const created = await repos.expenses.create({ userId, title: b.title, amount: b.amount, purpose: b.purpose, status: b.status, category: b.category, dailyLogId, receiptKey: b.receiptKey });
+  const dayExpenseSum = (await repos.expenses.listByUser(userId))
+    .filter((e) => e.dailyLogId === dailyLogId)
+    .reduce((sum, e) => sum + e.amount, 0);
+  await repos.dailyLogs.upsert(userId, date, { expenseAmount: dayExpenseSum > 0 ? dayExpenseSum : undefined });
 
   // 役場側の承認キューに投入(隊員申請 → 役場が見える、ADR-012)
   const memberName = (await repos.users.nameOf(userId)) ?? "隊員";

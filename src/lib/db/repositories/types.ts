@@ -278,6 +278,7 @@ export interface Repos {
     createFromLog(e: {
       userId: string;
       activityLogId: string;
+      dailyLogId?: string;
       receiptIndex: number;
       title: string;
       amount: number;

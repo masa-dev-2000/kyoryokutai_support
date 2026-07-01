@@ -90,6 +90,7 @@ export async function POST(req: Request) {
     const exp = await repos.expenses.createFromLog({
       userId,
       activityLogId,
+      dailyLogId: dl.id,
       receiptIndex: i,
       title: e.title?.trim() || e.purpose.slice(0, 15),
       amount: e.amount,

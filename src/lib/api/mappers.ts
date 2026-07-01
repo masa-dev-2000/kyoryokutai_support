@@ -89,7 +89,6 @@ export function mapMonthlyCycle(r: Row) {
 
 export function mapExpense(r: Row) {
   const citations = j<{ source: string; quote: string }[]>(r.citations, []);
-  const dailyLogs = r.daily_logs as { log_date?: string | null } | null | undefined;
   return {
     id: r.id as string,
     title: r.title as string,
@@ -102,8 +101,7 @@ export function mapExpense(r: Row) {
     createdAt: (r.created_at as string)?.slice(0, 10) ?? "",
     hasReceipt: !!(r.has_receipt as number),
     receiptKey: (r.receipt_key as string | null) ?? null,
-    dailyLogId: (r.daily_log_id as string | null) ?? null,
-    dailyLogDate: (r.daily_log_date as string | null) ?? dailyLogs?.log_date ?? null,
+    dailyLogId: (r.daily_log_id as string | null) ?? undefined,
     expenseKind: r.expense_kind as string,
     parentExpenseId: (r.parent_expense_id as string | null) ?? undefined,
   };

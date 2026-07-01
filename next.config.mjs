@@ -1,4 +1,8 @@
 /** @type {import('next').NextConfig} */
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // BUILD_STATIC=1 のときだけ静的エクスポート(古い GitHub Pages 互換、バックエンドなし)。
 // 既定はサーバモード(API Routes + SQLite を動かすローカル/Vercel 用)。
@@ -16,6 +20,7 @@ const nextConfig = {
   ...(basePath ? { basePath, assetPrefix: basePath } : {}),
   images: { unoptimized: true },
   trailingSlash: true,
+  turbopack: { root: __dirname },
   // node:sqlite を使う Route Handler をバンドル対象から外す
   serverExternalPackages: ["node:sqlite"],
 };
