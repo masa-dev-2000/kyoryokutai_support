@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import type {
   SuperMuniDetail,
+  SuperUserRow,
   SuperAnalytics,
 } from "@/lib/db/repositories/types";
 
@@ -50,8 +51,8 @@ type Overview = {
 type Tab = "overview" | "analytics";
 
 // #119: 自治体詳細でのアカウント編集に使う選択肢
+const ROLE_OPTS = ["member", "manager", "admin", "super"];
 const STATUS_OPTS = ["active", "retired", "suspended"];
-const STAFF_ROLE_OPTS = ["manager", "admin"];
 
 export function SuperApp() {
   const [data, setData] = React.useState<Overview | null>(null);
@@ -173,6 +174,8 @@ export function SuperApp() {
           onClose={() => setDetailId(null)}
           onReload={() => { if (detailId) openDetail(detailId); loadOverview(); }}
           onAfterDelete={() => { setDetailId(null); loadOverview(); }}
+          municipalities={data?.municipalities ?? []}
+          onOverviewRefresh={loadOverview}
         />
       )}
     </main>
@@ -274,12 +277,16 @@ function DetailSheet({
   onClose,
   onReload,
   onAfterDelete,
+  municipalities,
+  onOverviewRefresh,
 }: {
   detail: SuperMuniDetail | null;
   error: string | null;
   onClose: () => void;
   onReload: () => void;
   onAfterDelete: () => void;
+  municipalities: MuniRow[];
+  onOverviewRefresh: () => void;
 }) {
   const [editing, setEditing] = React.useState(false);
   const [opErr, setOpErr] = React.useState<string | null>(null);
@@ -293,29 +300,6 @@ function DetailSheet({
       onAfterDelete();
     } catch (e) {
       // 所属ユーザーが居る場合はサーバ側で 409。メッセージを表示。
-      setOpErr(e instanceof Error ? e.message : "削除に失敗しました");
-    }
-  }
-
-  // #119: 自治体ごとのアカウント管理(role/status 変更・削除)を詳細内で行う
-  async function patchUser(id: string, body: { role?: string; status?: string }) {
-    setOpErr(null);
-    try {
-      await apiPatch(`/api/super/users/${id}`, body);
-      onReload();
-    } catch (e) {
-      setOpErr(e instanceof Error ? e.message : "更新に失敗しました");
-    }
-  }
-
-  async function removeUser(id: string, name: string) {
-    if (!window.confirm(`「${name}」を削除します。元に戻せません。よろしいですか?`)) return;
-    setOpErr(null);
-    try {
-      await apiDelete(`/api/super/users/${id}`);
-      onReload();
-    } catch (e) {
-      // 自分自身の削除はサーバ側で 400 ブロック。
       setOpErr(e instanceof Error ? e.message : "削除に失敗しました");
     }
   }
@@ -380,99 +364,13 @@ function DetailSheet({
               <StatCard icon={<ClipboardCheck className="h-4 w-4" />} label="保留承認" value={detail.pendingApprovals.total} />
             </div>
 
-            {/* 隊員一覧 */}
-            <h3 className="mt-6 mb-2 text-[13px] font-bold text-slate-700">隊員一覧</h3>
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <table className="w-full text-[13px]">
-                <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2 text-left">名前</th>
-                    <th className="px-3 py-2 text-left">役割</th>
-                    <th className="px-3 py-2 text-left">任期</th>
-                    <th className="px-3 py-2 text-left">着任日</th>
-                    <th className="px-3 py-2 text-left">状態</th>
-                    <th className="px-3 py-2 text-right">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {detail.members.map((m) => (
-                    <tr key={m.id}>
-                      <td className="px-3 py-2 font-medium">{m.name}</td>
-                      <td className="px-3 py-2 text-slate-500">{m.role}</td>
-                      <td className="px-3 py-2 text-slate-500">{m.term}</td>
-                      <td className="px-3 py-2 text-slate-500">{m.startedAt}</td>
-                      <td className="px-3 py-2">
-                        <select
-                          value={m.status}
-                          onChange={(e) => patchUser(m.id, { status: e.target.value })}
-                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[12px]"
-                        >
-                          {STATUS_OPTS.map((s) => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <button
-                          onClick={() => removeUser(m.id, m.name)}
-                          title="この隊員を削除"
-                          className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50"
-                        >
-                          <Trash2 className="h-3 w-3" /> 削除
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {detail.members.length === 0 && (
-                    <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-400">隊員がいません</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* 職員一覧 */}
-            <h3 className="mt-6 mb-2 text-[13px] font-bold text-slate-700">職員一覧</h3>
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <table className="w-full text-[13px]">
-                <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2 text-left">名前</th>
-                    <th className="px-3 py-2 text-left">役職</th>
-                    <th className="px-3 py-2 text-left">所属課</th>
-                    <th className="px-3 py-2 text-left">role</th>
-                    <th className="px-3 py-2 text-right">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {detail.staff.map((s) => (
-                    <tr key={s.id}>
-                      <td className="px-3 py-2 font-medium">{s.name}</td>
-                      <td className="px-3 py-2 text-slate-500">{s.title}</td>
-                      <td className="px-3 py-2 text-slate-500">{s.dept}</td>
-                      <td className="px-3 py-2">
-                        <select
-                          value={s.role}
-                          onChange={(e) => patchUser(s.id, { role: e.target.value })}
-                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[12px]"
-                        >
-                          {STAFF_ROLE_OPTS.map((r) => <option key={r} value={r}>{r}</option>)}
-                        </select>
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <button
-                          onClick={() => removeUser(s.id, s.name)}
-                          title="この職員を削除"
-                          className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50"
-                        >
-                          <Trash2 className="h-3 w-3" /> 削除
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {detail.staff.length === 0 && (
-                    <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-400">職員がいません</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            {/* #119: 自治体内アカウント管理(role/状態/所属変更・削除) */}
+            <h3 className="mt-6 mb-2 text-[13px] font-bold text-slate-700">アカウント</h3>
+            <MuniAccounts
+              municipalityId={detail.municipality.id}
+              municipalities={municipalities}
+              onOverviewRefresh={onOverviewRefresh}
+            />
 
             {/* 最近の保留承認 */}
             <h3 className="mt-6 mb-2 text-[13px] font-bold text-slate-700">最近の保留承認</h3>
@@ -505,6 +403,136 @@ function DetailSheet({
         )}
       </div>
     </div>
+  );
+}
+
+/* ---------------- 自治体内アカウント管理(#119) ---------------- */
+
+// 自治体ドリルダウン内で、その自治体の全ユーザーを role/状態/所属変更・削除する。
+// 変更はローカル state を楽観更新し、概要のカウントのみ再取得(詳細の再取得ちらつきを避ける)。
+function MuniAccounts({
+  municipalityId,
+  municipalities,
+  onOverviewRefresh,
+}: {
+  municipalityId: string;
+  municipalities: MuniRow[];
+  onOverviewRefresh: () => void;
+}) {
+  const [users, setUsers] = React.useState<SuperUserRow[] | null>(null);
+  const [err, setErr] = React.useState<string | null>(null);
+
+  const load = React.useCallback(() => {
+    apiGet<SuperUserRow[]>(`/api/super/users?municipalityId=${municipalityId}`)
+      .then(setUsers)
+      .catch(() => setErr("ユーザーの取得に失敗しました"));
+  }, [municipalityId]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  async function patch(id: string, body: { role?: string; status?: string; municipalityId?: string }) {
+    setErr(null);
+    try {
+      const updated = await apiPatch<SuperUserRow>(`/api/super/users/${id}`, body);
+      // 所属を別自治体へ移したらこの一覧からは外す
+      setUsers((prev) =>
+        prev
+          ? prev.flatMap((u) => (u.id !== id ? [u] : updated.municipalityId === municipalityId ? [updated] : []))
+          : prev
+      );
+      onOverviewRefresh();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "更新に失敗しました");
+      load(); // 失敗時(自己変更ブロック等)はサーバ状態へ戻す
+    }
+  }
+
+  async function remove(u: SuperUserRow) {
+    if (!window.confirm(`「${u.name}」(${u.email})を削除します。元に戻せません。よろしいですか?`)) return;
+    setErr(null);
+    try {
+      await apiDelete(`/api/super/users/${u.id}`);
+      setUsers((prev) => (prev ? prev.filter((x) => x.id !== u.id) : prev));
+      onOverviewRefresh();
+    } catch (e) {
+      // 自分自身の削除はサーバ側で 400 ブロック。
+      setErr(e instanceof Error ? e.message : "削除に失敗しました");
+    }
+  }
+
+  return (
+    <>
+      {err && <div className="mb-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[12px] text-red-700">{err}</div>}
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <table className="w-full text-[13px]">
+          <thead className="bg-slate-50 text-[11px] uppercase text-slate-500">
+            <tr>
+              <th className="px-3 py-2 text-left">氏名</th>
+              <th className="px-3 py-2 text-left">role</th>
+              <th className="px-3 py-2 text-left">状態</th>
+              <th className="px-3 py-2 text-left">所属</th>
+              <th className="px-3 py-2 text-right">活動</th>
+              <th className="px-3 py-2 text-right">操作</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {(users ?? []).map((u) => (
+              <tr key={u.id} className="hover:bg-slate-50">
+                <td className="px-3 py-2">
+                  <div className="font-medium">{u.name}</div>
+                  <div className="text-[11px] text-slate-400">{u.email}</div>
+                </td>
+                <td className="px-3 py-2">
+                  <select
+                    value={u.role}
+                    onChange={(e) => patch(u.id, { role: e.target.value })}
+                    className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[12px]"
+                  >
+                    {ROLE_OPTS.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </td>
+                <td className="px-3 py-2">
+                  <select
+                    value={u.status}
+                    onChange={(e) => patch(u.id, { status: e.target.value })}
+                    className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[12px]"
+                  >
+                    {STATUS_OPTS.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </td>
+                <td className="px-3 py-2">
+                  <select
+                    value={u.municipalityId ?? ""}
+                    onChange={(e) => patch(u.id, { municipalityId: e.target.value })}
+                    className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[12px]"
+                  >
+                    {municipalities.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums">{u.activityLogs}</td>
+                <td className="px-3 py-2 text-right">
+                  <button
+                    onClick={() => remove(u)}
+                    title="このユーザーを削除"
+                    className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-3 w-3" /> 削除
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {users && users.length === 0 && (
+              <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">ユーザーがいません</td></tr>
+            )}
+            {!users && !err && (
+              <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-400">読み込み中…</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
