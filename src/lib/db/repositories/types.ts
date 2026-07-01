@@ -70,6 +70,7 @@ export type LogForAI = {
 // 承認の状態遷移に必要な生フィールド
 export type ApprovalRaw = {
   id: string;
+  municipality_id: string;
   kind: string;
   steps: string; // JSON
   current_step: number;
@@ -290,7 +291,13 @@ export interface Repos {
   approvals: {
     listPending(muni: string): Promise<ApprovalDTO[]>;
     getRaw(id: string): Promise<ApprovalRaw | undefined>;
-    updateState(id: string, steps: unknown[], currentStep: number, status: string): Promise<void>;
+    updateState(
+      id: string,
+      steps: unknown[],
+      currentStep: number,
+      status: string,
+      decision?: { decidedBy: string; comment?: string | null }
+    ): Promise<void>;
     getById(id: string): Promise<ApprovalDTO | undefined>;
     enqueue(a: {
       muni: string;

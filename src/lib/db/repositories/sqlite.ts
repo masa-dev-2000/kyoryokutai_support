@@ -788,9 +788,15 @@ export const sqliteRepos: Repos = {
       return all("SELECT * FROM approvals WHERE municipality_id=? AND status='pending' ORDER BY created_at", [muni]).map(mapApproval);
     },
     async getRaw(id) {
-      return get<ApprovalRaw>("SELECT id,kind,steps,current_step,status,target_table,target_id FROM approvals WHERE id=?", [id]);
+      return get<ApprovalRaw>("SELECT id,municipality_id,kind,steps,current_step,status,target_table,target_id FROM approvals WHERE id=?", [id]);
     },
-    async updateState(id, steps, currentStep, status) {
+    async updateState(id, steps, currentStep, status, decision) {
+      if (decision) {
+        run("UPDATE approvals SET steps=?, current_step=?, status=?, decided_by=?, decided_at=datetime('now'), comment=? WHERE id=?", [
+          JSON.stringify(steps), currentStep, status, decision.decidedBy, decision.comment ?? null, id,
+        ]);
+        return;
+      }
       run("UPDATE approvals SET steps=?, current_step=?, status=? WHERE id=?", [JSON.stringify(steps), currentStep, status, id]);
     },
     async getById(id) {

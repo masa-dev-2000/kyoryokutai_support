@@ -21,6 +21,9 @@ function open(): DB {
   for (const sql of [
     "ALTER TABLE expenses ADD COLUMN receipt_key TEXT",
     "ALTER TABLE municipalities ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'",
+    "ALTER TABLE approvals ADD COLUMN decided_by TEXT",
+    "ALTER TABLE approvals ADD COLUMN decided_at TEXT",
+    "ALTER TABLE approvals ADD COLUMN comment TEXT",
   ]) {
     try { db.exec(sql); } catch { /* 既に存在 */ }
   }
