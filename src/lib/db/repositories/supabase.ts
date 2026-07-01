@@ -240,6 +240,28 @@ export const supabaseRepos: Repos = {
       return { id: data!.id, name: data!.name, prefecture: data!.prefecture };
     },
 
+    async updateMunicipality(id, patch) {
+      const fields: Record<string, unknown> = {};
+      if (patch.name !== undefined) fields.name = patch.name;
+      if (patch.prefecture !== undefined) fields.prefecture = patch.prefecture;
+      if (patch.annualBudget !== undefined) fields.annual_budget = patch.annualBudget;
+      const { data, error } = await supabase()
+        .from("municipalities")
+        .update(fields)
+        .eq("id", id)
+        .select("id,name,prefecture")
+        .maybeSingle();
+      // エラーは握りつぶさず投げる(誤った 404 を防ぎ、sqlite の挙動に揃える)
+      if (error) throw error;
+      return data ? { id: data.id, name: data.name, prefecture: data.prefecture } : null;
+    },
+
+    async deleteMunicipality(id): Promise<void> {
+      // FK/RLS で失敗した場合に「成功扱い」にしない
+      const { error } = await supabase().from("municipalities").delete().eq("id", id);
+      if (error) throw error;
+    },
+
     async createAdminInvite(a) {
       const { data: muni } = await supabase().from("municipalities").select("name").eq("id", a.municipalityId).maybeSingle();
       // admin を pre-provision(/api/auth/me が email で auth_id を紐づけられるよう先に行を作る)
