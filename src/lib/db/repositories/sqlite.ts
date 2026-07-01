@@ -750,7 +750,10 @@ export const sqliteRepos: Repos = {
       run("UPDATE monthly_reports SET status='approved', status_label='役場承認' WHERE id=?", [id]);
     },
     async markRejected(id) {
-      run("UPDATE monthly_reports SET status='rejected', status_label='差戻し（要修正）' WHERE id=?", [id]);
+      // status は 'draft' に戻す(隊員が修正・再提出できる編集可能状態)。差戻しの意味は status_label が担う。
+      // 'rejected' のような未知 status を入れると、隊員画面が status!=draft&&!=submitted を一律「承認済」と
+      // 表示してしまい、差戻しが承認済に見える(逆の意味)。隊員側 UI は draft/submitted/approved の3値のみ対応。
+      run("UPDATE monthly_reports SET status='draft', status_label='差戻し（要修正）' WHERE id=?", [id]);
     },
     async revertToSubmitted(userId, ym) {
       run(
