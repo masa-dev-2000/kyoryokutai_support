@@ -384,12 +384,16 @@ export const sqliteRepos: Repos = {
   },
 
   members: {
-    async list() {
+    async list(muniId) {
+      if (muniId) {
+        return all("SELECT * FROM users WHERE role='member' AND status='active' AND municipality_id=? ORDER BY started_at", [muniId]).map(mapMember);
+      }
       return all("SELECT * FROM users WHERE role='member' AND status='active' ORDER BY started_at").map(mapMember);
     },
-    async upsert(m) {
-      const existing = m.id ? get("SELECT id FROM users WHERE id=?", [m.id]) : undefined;
+    async upsert(m, muniId) {
+      const existing = m.id ? get<{ id: string; municipality_id: string; role: string }>("SELECT id, municipality_id, role FROM users WHERE id=?", [m.id]) : undefined;
       if (existing) {
+        if (existing.municipality_id !== muniId || existing.role !== "member") throw new Error("TENANT_MISMATCH");
         run("UPDATE users SET name=?, role_label=?, started_at=?, term=?, host_organization_id=?, approval_route_id=? WHERE id=?", [
           m.name, m.role, m.startedAt ?? "未設定", m.term ?? "1 年目", m.hostOrganizationId ?? null, m.approvalRouteId ?? null, m.id,
         ]);
@@ -399,27 +403,37 @@ export const sqliteRepos: Repos = {
       run(
         `INSERT INTO users (id,municipality_id,host_organization_id,organization_type,role,name,email,role_label,term,started_at,status,approval_route_id)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, MUNI, m.hostOrganizationId ?? null, "member", "member", m.name, `${id}@member.example.jp`, m.role, m.term ?? "1 年目", m.startedAt ?? "未設定", "active", m.approvalRouteId ?? null]
+        [id, muniId, m.hostOrganizationId ?? null, "member", "member", m.name, `${id}@member.example.jp`, m.role, m.term ?? "1 年目", m.startedAt ?? "未設定", "active", m.approvalRouteId ?? null]
       );
       // 新規隊員に当年度の費目別予算枠(既定配分)を自動生成
       seedDefaultBudget(id);
       return mapMember(all("SELECT * FROM users WHERE id=?", [id])[0]);
     },
-    async retire(id) {
+    async retire(id, muniId) {
+      const existing = get<{ municipality_id: string; role: string }>("SELECT municipality_id, role FROM users WHERE id=?", [id]);
+      if (!existing || existing.municipality_id !== muniId || existing.role !== "member") return false;
       run("UPDATE users SET status='retired' WHERE id=?", [id]);
       run("DELETE FROM assignments WHERE member_id=?", [id]);
+      return true;
     },
   },
 
   staff: {
-    async list() {
+    async list(muniId) {
+      if (muniId) {
+        return all(
+          "SELECT * FROM users WHERE role='manager' AND organization_type='municipality' AND municipality_id=? ORDER BY created_at",
+          [muniId]
+        ).map(mapStaff);
+      }
       return all(
         "SELECT * FROM users WHERE role='manager' AND organization_type='municipality' ORDER BY created_at"
       ).map(mapStaff);
     },
-    async upsert(s) {
-      const existing = s.id ? get("SELECT id FROM users WHERE id=?", [s.id]) : undefined;
+    async upsert(s, muniId) {
+      const existing = s.id ? get<{ id: string; municipality_id: string; role: string; organization_type: string }>("SELECT id, municipality_id, role, organization_type FROM users WHERE id=?", [s.id]) : undefined;
       if (existing) {
+        if (existing.municipality_id !== muniId || existing.role !== "manager" || existing.organization_type !== "municipality") throw new Error("TENANT_MISMATCH");
         run("UPDATE users SET name=?, title=?, department=?, email=? WHERE id=?", [
           s.name, s.title ?? "職員", s.dept, s.email ?? "", s.id,
         ]);
@@ -429,13 +443,16 @@ export const sqliteRepos: Repos = {
       run(
         `INSERT INTO users (id,municipality_id,organization_type,role,name,email,title,department,status)
          VALUES (?,?,?,?,?,?,?,?,?)`,
-        [id, MUNI, "municipality", "manager", s.name, s.email ?? "", s.title ?? "職員", s.dept, "active"]
+        [id, muniId, "municipality", "manager", s.name, s.email ?? "", s.title ?? "職員", s.dept, "active"]
       );
       return mapStaff(all("SELECT * FROM users WHERE id=?", [id])[0]);
     },
-    async remove(id) {
+    async remove(id, muniId) {
+      const existing = get<{ municipality_id: string }>("SELECT municipality_id FROM users WHERE id=? AND role='manager' AND organization_type='municipality'", [id]);
+      if (!existing || existing.municipality_id !== muniId) return false;
       run("DELETE FROM assignments WHERE staff_id=?", [id]);
       run("DELETE FROM users WHERE id=? AND role='manager'", [id]);
+      return true;
     },
   },
 
