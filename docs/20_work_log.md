@@ -396,3 +396,56 @@
 - Issue #113(クローズ済 2026-06-30)、#119(open、実装済みだが未クローズ)
 - PR #100(マージ済み、`ede290b`)、先行 PR #92(契約UI撤去)
 - 204/nullボディの罠は今後 super 以外のロールでも踏みうる一般的な注意点(Next.js `NextResponse.json(null, {status:204})` は例外を投げる)
+
+---
+
+## 2026-07-01(続 / super画面 UI/UXレビュー + E2E)
+
+### 完了
+- **PR #152: super画面 UI/UXレビュー修正と Playwright E2E を追加**(ブランチ `codex/super-uiux-review-20260701`)
+- 旧 `feat/super-delete-ui` は PR #100 でマージ済みのため再利用せず、`origin/develop` から新ワークツリー `.claude/worktrees/super-uiux-review` を切って作業。
+- `4ed17e0 chore: restore lint on Next 16`
+  - Next 16 で `next lint` が無くなっていたため、ESLint 9 用 `eslint.config.mjs` を追加し、`npm run lint` を `eslint .` に戻した。
+- `2b8bf57 fix: improve super UI review flow`
+  - `GET /api/super/overview` を他の super API と同じ `requireSuper()` に統一し、`AUTH_PROVIDER=none` のローカル super 検証で Supabase 環境変数を要求しないようにした。
+  - 自治体追加/編集の年間活動費枠バリデーションを `parseBudgetInput` に統一し、空入力や負数が 0 上書きにならないようにした。
+  - `role=super` 付与、非 active 状態への変更、既存ユーザー admin 昇格に確認ダイアログを追加。
+  - 概要表/アカウント管理表に横スクロール余地を追加し、閉じるボタン/select/削除ボタンに `aria-label` を追加。
+  - モーダル内エラー文の色を `text-red-700` に統一。
+- `181e353 test: add super dashboard e2e coverage`
+  - `@playwright/test` と `npm run e2e` を追加。
+  - `playwright.config.ts` で `AUTH_PROVIDER=none` / `DEV_USER_ROLE=super` / SQLite の一意 DB / mock provider を指定し、ログイン不要で super 画面を検証できるようにした。
+  - `e2e/super.spec.ts` で概要/分析、自治体作成→管理者設定、自治体詳細/アカウント管理、危険操作 confirm、所属ユーザーあり自治体の削除ブロックを検証。
+
+### 変更ファイル
+- `eslint.config.mjs`, `package.json`, `package-lock.json`, `.gitignore`
+- `playwright.config.ts`, `e2e/super.spec.ts`
+- `src/app/super/_app.tsx`
+- `src/app/api/super/overview/route.ts`, `src/app/api/super/overview/__tests__/authz.test.ts`
+- `docs/31_super_uiux_review.md`
+
+### 検証
+- `npm run e2e`: 4 tests passed
+- `npm run lint`: 0 errors / 21 warnings(既存 warning)
+- `npm run typecheck`: passed
+- `npm run test -- src/app/api/super/overview/__tests__/authz.test.ts src/lib/db/__tests__/super.test.ts`: 2 files / 11 tests passed
+- `git diff --check`: passed
+- PR #152 checks: Vercel pass / Vercel Preview Comments pass / Supabase Preview skipped
+
+### ⚠️ 引き継ぎ注意
+- E2E は**ローカル実行用**で、CI にはまだ組み込んでいない。重さとブラウザ依存を見て、CI 組み込みは別判断にする。
+- `npm run e2e` は Next dev server を起動する。既に同一 worktree で Next dev が動いていると Next 側の dev server ロックに当たるため、残プロセスがある場合は停止してから実行する。
+- Playwright の既定ポートは `3210`。競合時は `E2E_PORT` で変更可能。
+- in-app Browser は本セッションでも利用不可(`Browser is not available: iab`)。Preview `/super/` は super セッションが無く app レベルの権限エラーになるため、実操作確認はローカル E2E を正とした。
+- lint warning 21 件は既存の未使用 import 等で、本 PR の追加差分に起因しない。
+
+### 次のアクション
+- PR #152 のレビュー/マージ判断。
+- Issue #119 は実装済みだが未クローズのまま。PR #100/#152 の内容を踏まえてオーナー判断でクローズ。
+- E2E を CI に入れるかは別途判断。入れる場合は実行時間、ブラウザキャッシュ、Vercel/Actions の責務分担を決める。
+- Cloudflare Workers Build 失敗は本 PR 固有ではないため、別スレッドで原因調査。
+
+### 関連
+- PR #152: `[codex] super画面UI/UXレビューとローカル検証修正`
+- ADR-026(super画面 Playwright E2E)
+- `docs/31_super_uiux_review.md`

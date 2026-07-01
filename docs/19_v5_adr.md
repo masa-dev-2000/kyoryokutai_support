@@ -844,3 +844,46 @@ daily_logs(日報) ← 新規
 - 新規:`{ index: null }`、編集:`{ index }` を持つローカル `editor` state で `ActivityEditor` を出し分け
 - `emptyActivity(startTime)` で既定 1 時間ブロックを生成
 - `validActivities` を廃止(モーダルが入力時に妥当性を担保するため、ホームの `activities` は常に妥当)
+
+---
+
+## ADR-026: super画面の主要導線を Playwright E2E でローカル検証する
+
+**確定日:** 2026-07-01
+
+### Context
+- super画面は自治体作成、管理者設定、アカウント role/status/所属変更、削除ブロックなど、誤操作時の影響が大きい運営者向け導線を持つ
+- PR #100 後の UI/UX レビューでは、危険操作 confirm、予算バリデーション、アクセシビリティラベル、横スクロールなど、ブラウザ上の実操作で確認すべき項目が残っていた
+- in-app Browser は利用不可で、Vercel Preview の `/super/` は super 権限セッションが無いため実操作レビューに使えなかった
+- 単体テストだけでは、作成後に管理者設定モーダルへ続く導線や confirm ダイアログの有無を検証しにくい
+
+### Decision
+1. `@playwright/test` を devDependency として導入し、`npm run e2e` で実行する
+2. Playwright の webServer はローカル Next dev を起動し、以下の環境で super 権限を固定する
+   - `AUTH_PROVIDER=none`
+   - `DEV_USER_ROLE=super`
+   - `DEV_USER_ID=u_super`
+   - `DB_PROVIDER=sqlite`
+   - `DATABASE_PATH=.data/e2e-super-<timestamp>.db`
+   - `AI_PROVIDER=mock` / `STORAGE_PROVIDER=local` / `EMAIL_PROVIDER=console`
+3. E2E の対象は super 画面の主要 smoke と高リスク操作に限定する
+   - 概要/分析の表示
+   - 自治体作成後の管理者設定モーダル遷移
+   - 自治体詳細とアカウント管理表の表示
+   - 年間活動費枠の空/負数バリデーション
+   - `role=super` 付与と既存ユーザー admin 昇格の confirm
+   - 所属ユーザーがいる自治体の削除 409 ガード
+4. CI 組み込みはこの ADR では決めない。まずはローカルで再現可能な regression check として運用する
+
+### Consequence
+- super 画面の主要導線を、Supabase セッションや本番 Preview に依存せず再現できる
+- UI 修正時に、作成→設定、詳細→編集、危険操作 confirm、削除ブロックの回帰をブラウザレベルで検出できる
+- E2E 用 SQLite DB は実行ごとに一意にし、テストデータの持ち越しを避ける
+- Playwright ブラウザ導入と Next dev 起動が必要になり、unit/typecheck より重い検証になる
+- CI に入れる場合は、実行時間・ブラウザキャッシュ・既存 Vercel Preview との役割分担を別途決める
+
+### 検証
+- `npm run e2e`: 4 tests passed
+- `npm run lint`: 0 errors / 21 warnings(既存 warning)
+- `npm run typecheck`: passed
+- `npm run test -- src/app/api/super/overview/__tests__/authz.test.ts src/lib/db/__tests__/super.test.ts`: 11 tests passed
