@@ -29,6 +29,7 @@ import type {
   BudgetLineDTO,
 } from "./types";
 import { BUDGET_CATEGORIES, DEFAULT_ALLOCATION, currentFiscalYear } from "@/lib/budget";
+import { jstDateString, jstTimeHHMM, jstYearMonth } from "@/lib/time";
 
 // SQLite 実装(ローカル / Vercel デモ)。SQL はここに集約し、Route からは追放する。
 const MUNI = "muni_shinonsen";
@@ -41,10 +42,7 @@ function muniOf(userId: string): string {
 
 // 当月 / N ヶ月前の 'YYYY-MM' を返す(ローカル時刻基準)
 function ymOffset(offset: number): string {
-  const d = new Date();
-  d.setDate(1);
-  d.setMonth(d.getMonth() + offset);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return jstYearMonth(offset);
 }
 
 // municipalities の contract_* 専用カラム → ContractDTO に合成
@@ -651,8 +649,8 @@ export const sqliteRepos: Repos = {
     },
     async create(b) {
       const id = genId("log");
-      const date = b.date ?? new Date().toISOString().slice(0, 10);
-      const time = b.time ?? new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+      const date = b.date ?? jstDateString();
+      const time = b.time ?? jstTimeHHMM();
       // ADR-021: 活動作成時に当日の daily_log を自動 upsert し daily_log_id を結線する
       const muni = muniOf(b.userId);
       let dailyLogId = b.dailyLogId ?? null;
@@ -711,7 +709,7 @@ export const sqliteRepos: Repos = {
       run(
         `INSERT INTO expenses (id,user_id,municipality_id,expense_kind,category,daily_log_id,title,amount_requested,purpose,status,ai_note,citations,has_receipt,receipt_key,created_at)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, b.userId, muniOf(b.userId), "single", b.category ?? "活動費", b.dailyLogId ?? null, b.title, b.amount, b.purpose, b.status ?? "申請中", "AI 判定材料は申請後に表示されます。", JSON.stringify([]), b.receiptKey ? 1 : 0, b.receiptKey ?? null, new Date().toISOString().slice(0, 10)]
+        [id, b.userId, muniOf(b.userId), "single", b.category ?? "活動費", b.dailyLogId ?? null, b.title, b.amount, b.purpose, b.status ?? "申請中", "AI 判定材料は申請後に表示されます。", JSON.stringify([]), b.receiptKey ? 1 : 0, b.receiptKey ?? null, jstDateString()]
       );
       return mapExpense(all("SELECT * FROM expenses WHERE id=?", [id])[0]);
     },
@@ -728,7 +726,7 @@ export const sqliteRepos: Repos = {
           b.title, b.amount, b.purpose, b.status ?? "申請中",
           "日報経由の経費(ADR-014)。AI 判定材料は申請後に表示されます。",
           JSON.stringify([]), b.hasReceipt ? 1 : 0, b.receiptKey ?? null,
-          new Date().toISOString().slice(0, 10),
+          jstDateString(),
         ]
       );
       return mapExpense(all("SELECT * FROM expenses WHERE id=?", [id])[0]);

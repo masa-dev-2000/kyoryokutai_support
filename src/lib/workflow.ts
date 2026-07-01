@@ -2,6 +2,7 @@
 // クライアント状態機械をサーバへ移植したもの。
 
 import type { RouteDTO } from "@/lib/db/repositories/types";
+import { jstMonthDay } from "@/lib/time";
 
 export type ApproverType = "dept" | "host_org" | "admin";
 export type StepStatus = "waiting" | "pending" | "approved" | "rejected";
@@ -59,7 +60,7 @@ export function expandAssignedRoute(route: RouteDTO): { routeName: string; steps
 }
 
 const today = () =>
-  new Date().toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" });
+  jstMonthDay();
 
 // 承認:現ステップを approved に。次があれば pending、無ければ全体 approved。
 export function applyApprove(steps: ApprovalStep[], currentStep: number, actor?: DecisionActor) {

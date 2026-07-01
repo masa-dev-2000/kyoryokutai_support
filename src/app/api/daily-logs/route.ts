@@ -2,6 +2,7 @@ import { ok, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
 import { expandRoute, expandAssignedRoute } from "@/lib/workflow";
 import { requireAppUser } from "@/lib/api/auth";
+import { jstDateString, jstTimeHHMM } from "@/lib/time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
   if (sess instanceof Response) return sess;
   const b = await readJson<CreateBody>(req);
   const userId = sess.userId;
-  const date = b.date ?? new Date().toISOString().slice(0, 10);
+  const date = b.date ?? jstDateString();
   const repos = getRepos();
 
   const expenses = (b.expenses ?? []).filter((e) => e.amount > 0 && e.purpose?.trim());
@@ -58,7 +59,7 @@ export async function POST(req: Request) {
   });
 
   // 各活動を登録
-  const time = new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+  const time = jstTimeHHMM();
   const createdActivities = [];
   for (const a of (Array.isArray(b.activities) ? b.activities : [])) {
     const created = await repos.activityLogs.create({
