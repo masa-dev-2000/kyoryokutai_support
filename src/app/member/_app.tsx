@@ -90,7 +90,6 @@ type DailyLogEntry = {
   feelingScore?: number;
 };
 
-
 /* -------------------- 領収書アップロード / 音声入力(P0-2・P0-3) -------------------- */
 
 // 領収書を Storage に保存し { key, url } を返す。失敗時 null。
@@ -211,6 +210,12 @@ type ExpenseRequest = {
   createdAt: string;
   hasReceipt: boolean;
   receiptKey?: string | null;
+  dailyLogId?: string | null;
+  dailyLogDate?: string | null;
+};
+
+type ExpenseCreateInput = Omit<ExpenseRequest, "id" | "createdAt" | "aiNote" | "citation" | "hasReceipt" | "dailyLogId" | "dailyLogDate"> & {
+  date?: string;
 };
 
 
@@ -278,11 +283,12 @@ type Notice = { id: string; title: string; body: string; date: string; kind: str
 type Sheet =
   // ADR-020: date を指定するとその日付の活動として作成(カレンダー日付タップ起点)
   | { kind: "activity-create"; editing?: ActivityLog; date?: string }
+  | { kind: "activity-add"; date: string }
   | { kind: "activity-detail"; log: ActivityLog }
   | { kind: "report-day"; date: string }
   | { kind: "report-detail"; report: Report }
   | { kind: "expense-detail"; item: ExpenseRequest }
-  | { kind: "expense-create" }
+  | { kind: "expense-create"; date?: string }
   | { kind: "expense-settle"; item: ExpenseRequest }
   | { kind: "case-detail"; case: CaseItem }
   | { kind: "case-author"; userId: string; name: string; area: string }
@@ -326,7 +332,7 @@ type Ctx = {
   types: string[];
   addType: (t: string) => void;
   expenses: ExpenseRequest[];
-  addExpense: (e: Omit<ExpenseRequest, "id" | "createdAt" | "aiNote" | "citation" | "hasReceipt">) => void | Promise<void>;
+  addExpense: (e: ExpenseCreateInput) => void | Promise<void>;
   markSettled: (id: string, receiptKey?: string) => void | Promise<void>;
   reports: Report[];
   /** 月報を役場に提出(永続化 + 承認キュー投入)。提出後の Report を返す */
@@ -623,6 +629,10 @@ function formatDateShort(d: string) {
   return `${Number(m)}/${Number(day)}`;
 }
 
+function expenseLogDate(e: ExpenseRequest) {
+  return e.dailyLogDate ?? e.createdAt;
+}
+
 /* -------------------- 2. 月報タブ -------------------- */
 
 // ADR-020: 月報タブをカレンダー起点に。日付タップで活動の閲覧/作成へ。
@@ -702,14 +712,20 @@ function ReportTab() {
 
 // ADR-020: サマリー→カレンダー→グラフの月次オーバービュー(月報タブ・月報詳細で共有)
 function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) => void }) {
-  const { logs, dailyLogs } = useApp();
+  const { logs, expenses } = useApp();
   const monthLogs = logs.filter((l) => l.date.startsWith(ym));
-  const monthDailyLogs = dailyLogs.filter((d) => d.date.startsWith(ym));
+  const monthExpenses = expenses.filter((e) => expenseLogDate(e)?.startsWith(ym));
 
   const totalHours = monthLogs.reduce((s, l) => s + l.hours, 0);
-  const totalExpense = monthDailyLogs.reduce((s, d) => s + (d.expenseAmount ?? 0), 0);
+  const totalExpense = monthExpenses.reduce((s, e) => s + e.amount, 0);
   const byDate: Record<string, ActivityLog[]> = {};
   for (const l of monthLogs) (byDate[l.date] ??= []).push(l);
+  const expenseByDate: Record<string, number> = {};
+  for (const e of monthExpenses) {
+    const d = expenseLogDate(e);
+    if (!d) continue;
+    expenseByDate[d] = (expenseByDate[d] ?? 0) + e.amount;
+  }
 
   // 活動時間:種類別(積算棒) — ACTIVITY_TYPES 順を優先し、それ以外は末尾に追加
   // #87: 記録があれば活動時間 0h の種類も一覧に出す(byType に載る=その月に1件以上記録あり)。
@@ -724,14 +740,11 @@ function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) 
   const hoursRemain = Math.max(MIN_MONTHLY_HOURS - totalHours, 0);
   const hoursOver = Math.max(totalHours - MIN_MONTHLY_HOURS, 0);
 
-  // 経費:カテゴリ(= 活動内容 topic)別合計(日報レベルの expenseAmount を使用)
+  // 経費:カテゴリ別合計(経費明細を使用)
   const byCat: Record<string, number> = {};
-  for (const d of monthDailyLogs) {
-    if (d.expenseAmount && d.expenseAmount > 0) {
-      const dayLogs = byDate[d.date] ?? [];
-      const key = dayLogs[0]?.topic ?? "その他";
-      byCat[key] = (byCat[key] ?? 0) + d.expenseAmount;
-    }
+  for (const e of monthExpenses) {
+    const key = e.category ?? "その他";
+    byCat[key] = (byCat[key] ?? 0) + e.amount;
   }
   const catOrder = Object.entries(byCat).sort((a, b) => b[1] - a[1]).map(([k]) => k);
   const expBudgetPct = Math.min((totalExpense / MONTHLY_BUDGET) * 100, 100);
@@ -772,7 +785,7 @@ function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) 
                     <span className="absolute bottom-3 left-1 right-1 hidden text-[12px] font-semibold text-slate-700 sm:block">
                       {c.logs.reduce((s, l) => s + l.hours, 0)}h
                     </span>
-                    {(() => { const d = monthDailyLogs.find((d) => d.date === c.date); return d?.expenseAmount ? <span className="absolute bottom-0.5 left-1 right-1 hidden truncate text-[10px] text-slate-500 sm:block">¥{Math.round(d.expenseAmount / 100) / 10}k</span> : null; })()}
+                    {expenseByDate[c.date] ? <span className="absolute bottom-0.5 left-1 right-1 hidden truncate text-[10px] text-slate-500 sm:block">¥{Math.round(expenseByDate[c.date] / 100) / 10}k</span> : null}
                     <span className="absolute bottom-1.5 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-slate-400 sm:hidden" />
                   </>
                 ) : (
@@ -1232,10 +1245,11 @@ function SheetRoot() {
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-white">
       {sheet.kind === "activity-create" && <ActivityCreateSheet onClose={close} editing={sheet.editing} date={sheet.date} />}
+      {sheet.kind === "activity-add" && <ActivityAddSheet onClose={close} date={sheet.date} />}
       {sheet.kind === "report-day" && <ReportDaySheet date={sheet.date} onClose={close} depth={stackDepth} />}
       {sheet.kind === "report-detail" && <ReportDetailSheet report={sheet.report} onClose={close} />}
       {sheet.kind === "expense-detail" && <ExpenseDetailSheet item={sheet.item} onClose={close} />}
-      {sheet.kind === "expense-create" && <ExpenseCreateSheet onClose={close} />}
+      {sheet.kind === "expense-create" && <ExpenseCreateSheet onClose={close} date={sheet.date} />}
       {sheet.kind === "expense-settle" && <ExpenseSettleSheet item={sheet.item} onClose={close} />}
       {sheet.kind === "case-detail" && <CaseDetailSheet item={sheet.case} onClose={close} />}
       {sheet.kind === "case-author" && <CaseAuthorSheet userId={sheet.userId} name={sheet.name} area={sheet.area} onClose={close} />}
@@ -1473,6 +1487,59 @@ function ActivityEditor({ initial, isNew, onCancel, onSubmit }: { initial: Inlin
   );
 }
 
+function ActivityAddSheet({ onClose, date }: { onClose: () => void; date: string }) {
+  const { addDailyLog, showDay } = useApp();
+  const [draft, setDraft] = React.useState<InlineActivity>(() => emptyActivity());
+  const [saving, setSaving] = React.useState(false);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
+  const hours = computeHours(draft.startTime, draft.endTime);
+  const canSubmit = !!draft.type && !!draft.topic && hours > 0 && !saving;
+
+  async function save() {
+    if (!canSubmit) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await addDailyLog({
+        date,
+        activities: [{
+          type: draft.type!,
+          topic: draft.topic!,
+          hours,
+          startTime: draft.startTime,
+          endTime: draft.endTime,
+          body: draft.body.trim(),
+        }],
+      });
+      showDay(date);
+    } catch (e) {
+      setSaveError((e as Error)?.message || "保存に失敗しました。時間をおいて再度お試しください。");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <SheetHeader title={`${formatDateShort(date)} の活動を追加`} onClose={onClose} />
+      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+        <ActivityFieldset value={draft} onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))} />
+      </div>
+      <div className="border-t border-slate-200 bg-white px-5 py-3">
+        <div className="mx-auto max-w-2xl">
+          {saveError && (
+            <p role="alert" className="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-[13px] text-rose-700">
+              保存に失敗しました: {saveError}
+            </p>
+          )}
+          <button onClick={save} disabled={!canSubmit} className="w-full rounded-xl bg-slate-900 py-3 text-[16px] font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400">
+            {saving ? "保存中..." : "活動を保存"}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; editing?: ActivityLog; date?: string }) {
   const { addDailyLog, updateLog, showDay } = useApp();
   const isEdit = !!editing;
@@ -1688,7 +1755,6 @@ function ActivityCreateSheet({ onClose, editing, date }: { onClose: () => void; 
             <input type="number" step="1" min="0" inputMode="numeric" value={distance} onChange={(e) => setDistance(e.target.value)} placeholder="0" className="w-16 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[15px] focus:border-slate-900 focus:outline-none" />
             <span className="text-[13px] text-slate-500">km</span>
           </div>
-
 
           {/* 経費 */}
           <div className="mt-3 flex items-center justify-between">
@@ -2097,21 +2163,97 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
 }
 
 function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () => void; depth: number }) {
-  const { logs, dailyLogs, pushSheet } = useApp();
+  const { logs, dailyLogs, expenses, addDailyLog, pushSheet } = useApp();
   const items = logs.filter((l) => l.date === date);
   const dl = dailyLogs.find((d) => d.date === date);
+  const dayExpenses = expenses.filter((e) => expenseLogDate(e) === date);
   const totalHours = items.reduce((s, l) => s + l.hours, 0);
+  const totalExpense = dayExpenses.reduce((s, e) => s + e.amount, 0);
+  const [distance, setDistance] = React.useState(dl?.distanceKm != null ? String(dl.distanceKm) : "");
+  const [savingDistance, setSavingDistance] = React.useState(false);
+  const [distanceError, setDistanceError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    setDistance(dl?.distanceKm != null ? String(dl.distanceKm) : "");
+  }, [dl?.distanceKm]);
+
+  async function saveDistance() {
+    const value = distance.trim();
+    setSavingDistance(true);
+    setDistanceError(null);
+    try {
+      await addDailyLog({
+        date,
+        distanceKm: value ? parseFloat(value) : undefined,
+        activities: [],
+      });
+    } catch (e) {
+      setDistanceError((e as Error)?.message || "保存に失敗しました。");
+    } finally {
+      setSavingDistance(false);
+    }
+  }
 
   return (
     <>
-      <SheetHeader title={`${formatDateShort(date)} の活動`} onClose={onClose} backLabel={depth > 1 ? "カレンダー" : undefined} />
+      <SheetHeader title={`${formatDateShort(date)} の日報`} onClose={onClose} backLabel={depth > 1 ? "カレンダー" : undefined} />
       <div className="flex-1 overflow-y-auto">
       <div className="mx-auto w-full max-w-2xl px-5 py-4">
-        <div className="flex items-center gap-3 text-[14px] text-slate-500">
-          <span>{items.length} 件 ・ {totalHours} 時間</span>
-          {dl?.distanceKm != null && <span>・ {dl.distanceKm} km</span>}
-          {dl?.expenseAmount != null && dl.expenseAmount > 0 && <span>・ 経費 ¥{dl.expenseAmount.toLocaleString()}</span>}
+        <div className="grid grid-cols-3 gap-2">
+          <SummaryCell value={String(items.length)} label="活動" suffix="件" icon={<FileText className="h-4 w-4" />} />
+          <SummaryCell value={String(totalHours)} label="時間" suffix="h" icon={<Clock className="h-4 w-4" />} />
+          <SummaryCell value={`¥${totalExpense.toLocaleString()}`} label="経費" icon={<Receipt className="h-4 w-4" />} />
         </div>
+
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <Label>移動距離</Label>
+              <div className="mt-1 flex items-center gap-2">
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  inputMode="numeric"
+                  value={distance}
+                  onChange={(e) => setDistance(e.target.value)}
+                  placeholder="0"
+                  className="w-28 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[16px] focus:border-slate-900 focus:outline-none"
+                />
+                <span className="text-[14px] font-semibold text-slate-500">km</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={saveDistance}
+              disabled={savingDistance}
+              className="rounded-xl bg-slate-900 px-4 py-2 text-[15px] font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+            >
+              {savingDistance ? "保存中..." : "保存"}
+            </button>
+          </div>
+          {distanceError && <p role="alert" className="mt-2 text-[13px] text-rose-700">{distanceError}</p>}
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => pushSheet({ kind: "activity-add", date })}
+            className="inline-flex items-center justify-center gap-1 rounded-xl border border-dashed border-slate-300 py-3 text-[15px] font-semibold text-slate-600 transition hover:border-slate-900 hover:text-slate-900"
+          >
+            <Plus className="h-4 w-4" />
+            活動を追加
+          </button>
+          <button
+            type="button"
+            onClick={() => pushSheet({ kind: "expense-create", date })}
+            className="inline-flex items-center justify-center gap-1 rounded-xl border border-slate-300 bg-white py-3 text-[15px] font-semibold text-slate-700 transition hover:border-slate-900 hover:bg-slate-50"
+          >
+            <Receipt className="h-4 w-4" />
+            経費を追加
+          </button>
+        </div>
+
         <ul className="mt-3 space-y-2">
           {items.map((l) => (
             <li key={l.id}>
@@ -2145,14 +2287,38 @@ function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () =>
           </div>
         )}
 
-        {/* ADR-020: ReportDaySheet から当該日付の活動を追加 */}
-        <button
-          onClick={() => pushSheet({ kind: "activity-create", date })}
-          className="mt-3 flex w-full items-center justify-center gap-1 rounded-xl border border-dashed border-slate-300 py-3 text-[15px] font-semibold text-slate-600 transition hover:border-slate-900 hover:text-slate-900"
-        >
-          <Plus className="h-4 w-4" />
-          この日の活動を追加
-        </button>
+        <div className="mt-5">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="text-[14px] font-bold uppercase tracking-wider text-slate-500">経費</div>
+            <div className="text-[13px] font-semibold text-slate-600">¥{totalExpense.toLocaleString()}</div>
+          </div>
+          {dayExpenses.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-4 text-center text-[14px] text-slate-500">
+              この日の経費はまだありません
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {dayExpenses.map((e) => (
+                <li key={e.id}>
+                  <button
+                    type="button"
+                    onClick={() => pushSheet({ kind: "expense-detail", item: e })}
+                    className="group w-full rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-slate-900 hover:bg-slate-50/60"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-slate-900">{e.title}</span>
+                      <span className="shrink-0 text-[14px] font-bold text-slate-700">¥{e.amount.toLocaleString()}</span>
+                    </div>
+                    <div className="mt-1 flex items-center gap-2 text-[13px] text-slate-500">
+                      {e.category && <span>{e.category}</span>}
+                      <span className="truncate">{e.purpose}</span>
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
       </div>
       </div>
@@ -2263,7 +2429,7 @@ function ExpenseDetailSheet({ item, onClose }: { item: ExpenseRequest; onClose: 
 
 /* -------- 経費 申請シート(用途欄に相談ボタン) -------- */
 
-function ExpenseCreateSheet({ onClose }: { onClose: () => void }) {
+function ExpenseCreateSheet({ onClose, date }: { onClose: () => void; date?: string }) {
   const { addExpense, pushSheet } = useApp();
   const [title, setTitle] = React.useState("");
   const [amount, setAmount] = React.useState("");
@@ -2285,7 +2451,7 @@ function ExpenseCreateSheet({ onClose }: { onClose: () => void }) {
     if (!canSubmit) return;
     setSaving(true);
     try {
-      await addExpense({ title: title.trim(), amount: amountNum, purpose: purpose.trim(), status: "申請中", category });
+      await addExpense({ title: title.trim(), amount: amountNum, purpose: purpose.trim(), status: "申請中", category, date });
       onClose();
     } catch {
       setSaving(false);
