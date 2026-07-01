@@ -171,6 +171,26 @@ export const sqliteRepos: Repos = {
       return { id, name: m.name, prefecture: m.prefecture };
     },
 
+    async updateMunicipality(id, patch) {
+      run(
+        `UPDATE municipalities SET
+           name=COALESCE(?,name),
+           prefecture=COALESCE(?,prefecture),
+           annual_budget=COALESCE(?,annual_budget)
+         WHERE id=?`,
+        [patch.name ?? null, patch.prefecture ?? null, patch.annualBudget ?? null, id]
+      );
+      const m = get<{ id: string; name: string; prefecture: string }>(
+        "SELECT id, name, prefecture FROM municipalities WHERE id=?",
+        [id]
+      );
+      return m ?? null;
+    },
+
+    async deleteMunicipality(id): Promise<void> {
+      run("DELETE FROM municipalities WHERE id=?", [id]);
+    },
+
     async createAdminInvite(a) {
       const muni = get<{ name: string }>("SELECT name FROM municipalities WHERE id=?", [a.municipalityId]);
       // admin を pre-provision(/api/auth/me が email で auth_id を紐づけられるよう先に行を作る)
@@ -785,9 +805,15 @@ export const sqliteRepos: Repos = {
       return all("SELECT * FROM approvals WHERE municipality_id=? AND status='pending' ORDER BY created_at", [muni]).map(mapApproval);
     },
     async getRaw(id) {
-      return get<ApprovalRaw>("SELECT id,kind,steps,current_step,status,target_table,target_id FROM approvals WHERE id=?", [id]);
+      return get<ApprovalRaw>("SELECT id,municipality_id,kind,steps,current_step,status,target_table,target_id FROM approvals WHERE id=?", [id]);
     },
-    async updateState(id, steps, currentStep, status) {
+    async updateState(id, steps, currentStep, status, decision) {
+      if (decision) {
+        run("UPDATE approvals SET steps=?, current_step=?, status=?, decided_by=?, decided_at=datetime('now'), comment=? WHERE id=?", [
+          JSON.stringify(steps), currentStep, status, decision.decidedBy, decision.comment ?? null, id,
+        ]);
+        return;
+      }
       run("UPDATE approvals SET steps=?, current_step=?, status=? WHERE id=?", [JSON.stringify(steps), currentStep, status, id]);
     },
     async getById(id) {

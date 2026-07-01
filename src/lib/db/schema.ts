@@ -180,6 +180,9 @@ CREATE TABLE IF NOT EXISTS approvals (
   status TEXT NOT NULL DEFAULT 'pending',  -- pending | approved | rejected
   target_table TEXT,
   target_id TEXT,
+  decided_by TEXT,
+  decided_at TEXT,
+  comment TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

@@ -38,7 +38,7 @@ beforeAll(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("GET /api/members tenant scope", () => {
-  it("rejects non-admin users before listing members", async () => {
+  it("rejects member users before listing members", async () => {
     vi.stubEnv("AUTH_PROVIDER", "none");
     vi.stubEnv("DEV_USER_ROLE", "member");
     vi.stubEnv("DEV_USER_ID", "m1");
@@ -62,6 +62,18 @@ describe("GET /api/members tenant scope", () => {
   it("hides municipality A members from municipality B admin", async () => {
     vi.stubEnv("AUTH_PROVIDER", "none");
     vi.stubEnv("DEV_USER_ROLE", "admin");
+    vi.stubEnv("DEV_USER_ID", adminBId);
+    const mod = await loadRoute();
+    const res = await mod.GET();
+    expect(res.status).toBe(200);
+    const list = (await res.json()) as { id: string }[];
+    expect(list.some((m) => m.id === "m1")).toBe(false);
+    expect(list.some((m) => m.id === memberBId)).toBe(true);
+  });
+
+  it("lets managers list members in their municipality only", async () => {
+    vi.stubEnv("AUTH_PROVIDER", "none");
+    vi.stubEnv("DEV_USER_ROLE", "manager");
     vi.stubEnv("DEV_USER_ID", adminBId);
     const mod = await loadRoute();
     const res = await mod.GET();
