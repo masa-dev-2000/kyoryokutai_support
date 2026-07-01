@@ -44,7 +44,7 @@ import { LogoutButton } from "@/components/logout-button";
    ============================================================ */
 
 // ADR-020: 日報タブを廃止し「活動記録・経費・お知らせ・事例」の4タブに統合
-type Tab = "report" | "expense" | "announce" | "case";
+type Tab = "report" | "expense" | "announce" | "case" | "cycle";
 
 /* -------------------- 活動分類 -------------------- */
 
@@ -192,6 +192,23 @@ type Report = {
   statusLabel: string;
   bodyMd?: string;
   planNext?: string;
+};
+
+type CycleWeekPlan = {
+  week: number;
+  title: string;
+  actions: string[];
+  expectedOutcome: string;
+  checkPoint: string;
+};
+
+type MonthlyCycleSummary = {
+  id: string;
+  ym: string;
+  monthlyGoal: string;
+  actionPlan: CycleWeekPlan[];
+  reflection: string;
+  status: string;
 };
 
 
@@ -549,6 +566,7 @@ export function MemberApp() {
             {tab === "expense" && <ExpenseTab />}
             {tab === "announce" && <AnnounceTab />}
             {tab === "case" && <CaseTab />}
+            {tab === "cycle" && <CycleTab />}
           </div>
         </div>
 
@@ -579,18 +597,19 @@ function Header({ onSettings, userName }: { onSettings: () => void; userName?: s
 
 function Tabs({ active, onChange, unread }: { active: Tab; onChange: (t: Tab) => void; unread: number }) {
   return (
-    <nav className="flex items-center justify-center gap-1 border-b border-slate-100 px-5 py-1.5">
+    <nav className="flex items-center justify-center gap-1 overflow-x-auto border-b border-slate-100 px-3 py-1.5">
       <TabBtn label="活動" active={active === "report"} onClick={() => onChange("report")} />
       <TabBtn label="経費" active={active === "expense"} onClick={() => onChange("expense")} />
       <TabBtn label="連絡" active={active === "announce"} onClick={() => onChange("announce")} badge={unread > 0 ? unread : undefined} />
       <TabBtn label="事例" active={active === "case"} onClick={() => onChange("case")} />
+      <TabBtn label="目標" active={active === "cycle"} onClick={() => onChange("cycle")} />
     </nav>
   );
 }
 
 function TabBtn({ label, active, onClick, badge }: { label: string; active: boolean; onClick: () => void; badge?: number }) {
   return (
-    <button onClick={onClick} className={`relative px-4 py-1.5 text-[15px] font-semibold transition ${active ? "text-slate-900" : "text-slate-500 hover:text-slate-700"}`}>
+    <button onClick={onClick} className={`relative shrink-0 px-3 py-1.5 text-[15px] font-semibold transition sm:px-4 ${active ? "text-slate-900" : "text-slate-500 hover:text-slate-700"}`}>
       {label}
       {badge !== undefined && (
         <span className="absolute -right-1 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-0.5 text-[12px] font-bold text-white">
@@ -635,6 +654,110 @@ function formatDateShort(d: string) {
 
 function expenseLogDate(e: ExpenseRequest) {
   return e.dailyLogDate ?? e.createdAt;
+}
+
+function CycleTab() {
+  const [ym] = React.useState<string>(currentYm());
+  const [cycle, setCycle] = React.useState<MonthlyCycleSummary | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [failed, setFailed] = React.useState(false);
+
+  React.useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setFailed(false);
+    apiGet<MonthlyCycleSummary | null>(`/api/monthly-cycles?ym=${encodeURIComponent(ym)}`)
+      .then((c) => {
+        if (!alive) return;
+        setCycle(c);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setFailed(true);
+        setCycle(null);
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [ym]);
+
+  const hasCycle = !!cycle && !!cycle.monthlyGoal.trim() && cycle.actionPlan.length > 0;
+
+  return (
+    <div className="relative">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold tracking-tight">今月の目標</h1>
+        <p className="mt-1 text-[15px] text-slate-500">{formatYm(ym)} の目標とアクションプラン</p>
+      </div>
+
+      <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[13px] font-bold uppercase tracking-wider text-slate-500">Monthly Cycle</div>
+            <h2 className="mt-1 text-[22px] font-black leading-tight text-slate-900">
+              {loading ? "読み込み中..." : hasCycle ? cycle.monthlyGoal : "今月の目標をまだ設定していません"}
+            </h2>
+          </div>
+          {hasCycle && (
+            <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[12px] font-semibold text-slate-500">
+              {cycle.status || "planning"}
+            </span>
+          )}
+        </div>
+
+        {failed && (
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] leading-relaxed text-amber-800">
+            目標データを読み込めませんでした。作成・編集画面は開けます。
+          </p>
+        )}
+
+        {!loading && hasCycle && (
+          <div className="mt-4 space-y-2">
+            {cycle.actionPlan.slice(0, 4).map((week) => (
+              <div key={week.week} className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[12px] font-bold text-white">
+                    {week.week}
+                  </span>
+                  <div className="min-w-0 flex-1 truncate text-[15px] font-bold text-slate-900">{week.title}</div>
+                </div>
+                {week.actions.length > 0 && (
+                  <ul className="mt-2 space-y-1 text-[14px] leading-relaxed text-slate-600">
+                    {week.actions.slice(0, 2).map((action, idx) => (
+                      <li key={`${week.week}-${idx}`} className="flex gap-2">
+                        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+                        <span>{action}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loading && !hasCycle && (
+          <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50/60 px-4 py-6 text-center">
+            <Lightbulb className="mx-auto h-7 w-7 text-slate-400" />
+            <p className="mt-2 text-[15px] leading-relaxed text-slate-600">
+              今月やることを決めると、週ごとのアクションプランまで作成できます。
+            </p>
+          </div>
+        )}
+
+        <Link
+          href="/member/monthly-cycle"
+          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-[15px] font-bold text-white transition hover:bg-slate-800"
+        >
+          {hasCycle ? "目標を編集する" : "目標を立てる"}
+          <ArrowRight className="h-4 w-4" />
+        </Link>
+      </div>
+    </div>
+  );
 }
 
 /* -------------------- 2. 月報タブ -------------------- */

@@ -396,3 +396,37 @@
 - Issue #113(クローズ済 2026-06-30)、#119(open、実装済みだが未クローズ)
 - PR #100(マージ済み、`ede290b`)、先行 PR #92(契約UI撤去)
 - 204/nullボディの罠は今後 super 以外のロールでも踏みうる一般的な注意点(Next.js `NextResponse.json(null, {status:204})` は例外を投げる)
+
+---
+
+## 2026-07-01(追記 / #146 月次目標・アクションプラン導線)
+
+### 完了
+- **Issue #146「目標設定とアクションプランの策定をできるようにする」の最小統合スライスを実装**
+- 既存の月次サイクル Phase A(`/member/monthly-cycle`, `/api/monthly-cycles`, `monthly_cycles`)は維持し、`/member` の通常導線に5つ目の `目標` タブを追加
+- `目標` タブでは今月の `monthly_cycles` を read-only 取得し、月間目標と週次アクションプラン要約を表示
+- 未作成時は空状態と「目標を立てる」導線、作成済み時は要約と「目標を編集する」導線を表示
+- 作成・編集は既存 `/member/monthly-cycle` に遷移させ、フル埋め込みはしない方針にした
+- 5タブ化でモバイル幅が詰まるため、タブバーを横スクロール可能にし、タブボタンを `shrink-0` に調整
+- ADR-024 に「member メイン画面への導線統合(#146)」として追補を追加
+
+### 変更ファイル
+- `src/app/member/_app.tsx`: `Tab` に `cycle` を追加、`目標` タブと `CycleTab` を追加、既存 `/member/monthly-cycle` への導線を追加
+- `docs/19_v5_adr.md`: ADR-024 追補(#146)
+- `docs/20_work_log.md`: 本作業ログ
+
+### 検証
+- `npm run typecheck`: pass
+- `npm run build`: pass
+  - 既存 warning: Next.js/Turbopack の workspace root 推定、`middleware`→`proxy` 移行警告、NFT trace warning
+- `npm test`: pass(26 files / 103 tests)
+  - `npm run build` 後に `.next/standalone/.../*.test.ts` を Vitest が拾い一度失敗したため、`.next` を削除して再実行し pass
+- `git diff --check`: pass
+- 確認用 dev server: `http://localhost:3001`
+
+### 引き継ぎ注意
+- 今回は API / DB schema / 保存形式を変更していない
+- 作業ブランチ: `feat/member-monthly-cycle-tab`
+- 作業ツリー: `.claude/worktrees/member-monthly-cycle-tab`
+- `origin/develop` は PR #152 の merge と lint 復旧コミットを含む最新へ rebase 済み
+- Phase B として、活動記録との進捗比較、月次報告書生成連携、AI 調整提案の本格統合は別 issue / 別スライスで扱う
