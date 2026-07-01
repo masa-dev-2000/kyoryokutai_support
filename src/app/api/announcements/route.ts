@@ -5,7 +5,10 @@ import { requireAppUser } from "@/lib/api/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MUNI = process.env.NEXT_PUBLIC_DEMO_MUNI_ID ?? "10000000-0000-4000-8000-000000000001";
+// ローカル sqlite のフォールバックは seed/sqlite の自治体 id("muni_shinonsen")に合わせる。
+// 以前は UUID 既定で、env 未設定のローカル開発だとお知らせが seed と別自治体になり空表示だった(H5)。
+// 本番(Supabase)は NEXT_PUBLIC_DEMO_MUNI_ID を設定するためこの既定は使われない。
+const MUNI = process.env.NEXT_PUBLIC_DEMO_MUNI_ID ?? "muni_shinonsen";
 
 // お知らせ閲覧はログイン必須(隊員も自町のお知らせを読む)。未認証アクセスを遮断。
 export async function GET(req: Request) {

@@ -26,6 +26,7 @@ import {
   Download,
   Loader2,
 } from "lucide-react";
+import { LogoutButton } from "@/components/logout-button";
 
 /* -------- 実データ DTO(サーバの mappers と形を一致させたクライアント側型)-------- */
 type MemberDTO = { id: string; name: string; role: string; startedAt?: string; term?: string };
@@ -420,6 +421,13 @@ export function ManagerApp() {
         const ms = await apiGet<MemberDTO[]>("/api/members");
         const mapped: Member[] = ms.map((m) => ({ id: m.id, name: m.name, role: m.role, initials: initialsOf(m.name) }));
         setMembers(mapped);
+        // 実データの隊員を既定の担当・配信先に反映(モック名のままだとロスター/配信先が空になる)。
+        // PoC では自治体の全隊員を担当として表示し、設定で絞り込み可能にする。
+        const memberNames = mapped.map((m) => m.name);
+        if (memberNames.length) {
+          setManaged(memberNames);
+          setNoticeTargets(memberNames);
+        }
         const entries = await Promise.all(
           mapped.map(async (m) => {
             try {
@@ -539,7 +547,10 @@ function Header({ userName }: { userName?: string }) {
     <header className="flex items-center justify-between border-b border-slate-100 px-5 py-2.5">
       <span />
       <div className="text-center text-[11px] text-slate-500">{userName ?? "谷本 室長"} / 新温泉町</div>
-      <ViewerRoleSwitch />
+      <div className="flex items-center gap-2">
+        <ViewerRoleSwitch />
+        <LogoutButton />
+      </div>
     </header>
   );
 }
@@ -1677,7 +1688,7 @@ function NoticeDetailSheet({ notice, onClose }: { notice: NoticeItem; onClose: (
 }
 
 function SettingsSheet({ onClose }: { onClose: () => void }) {
-  const { managed, setManaged } = useApp();
+  const { managed, setManaged, members } = useApp();
   const [local, setLocal] = React.useState<string[]>(managed);
 
   function toggle(name: string) {
@@ -1708,10 +1719,10 @@ function SettingsSheet({ onClose }: { onClose: () => void }) {
         </p>
 
         <ul className="mt-3 space-y-px">
-          {ALL_MEMBERS.map((m) => {
+          {members.map((m) => {
             const on = local.includes(m.name);
             return (
-              <li key={m.name}>
+              <li key={m.id}>
                 <button
                   onClick={() => toggle(m.name)}
                   className="flex w-full items-center gap-3 border-b border-slate-100 py-2.5 text-left hover:bg-slate-50"

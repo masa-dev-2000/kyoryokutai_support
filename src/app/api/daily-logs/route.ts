@@ -2,12 +2,10 @@ import { ok, readJson } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
 import { expandRoute, expandAssignedRoute } from "@/lib/workflow";
 import { requireAppUser } from "@/lib/api/auth";
+import { jstDateString, jstTimeHHMM } from "@/lib/time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-// 単一テナント(対象自治体)の ID。デモ USER とは無関係のテナント定数。
-const MUNI = process.env.NEXT_PUBLIC_DEMO_MUNI_ID ?? "10000000-0000-4000-8000-000000000001";
 
 type ActivityInput = {
   type: string;
@@ -47,7 +45,7 @@ export async function POST(req: Request) {
   if (sess instanceof Response) return sess;
   const b = await readJson<CreateBody>(req);
   const userId = sess.userId;
-  const date = b.date ?? new Date().toISOString().slice(0, 10);
+  const date = b.date ?? jstDateString();
   const repos = getRepos();
 
   const expenses = (b.expenses ?? []).filter((e) => e.amount > 0 && e.purpose?.trim());
@@ -61,7 +59,7 @@ export async function POST(req: Request) {
   });
 
   // 各活動を登録
-  const time = new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+  const time = jstTimeHHMM();
   const createdActivities = [];
   for (const a of (Array.isArray(b.activities) ? b.activities : [])) {
     const created = await repos.activityLogs.create({
@@ -81,6 +79,8 @@ export async function POST(req: Request) {
 
   // 経費明細を登録
   const memberName = (await repos.users.nameOf(userId)) ?? "隊員";
+  // 承認キューのテナントは本人の所属自治体(固定定数では本番 FK 違反になる)
+  const muni = await repos.users.municipalityOf(userId);
   // ADR-012: 隊員に割り当てられたルートを優先(委託型=団体ステップ含む)。未割当は既定。
   const assigned = await repos.routes.getForUser(userId);
   for (let i = 0; i < expenses.length; i++) {
@@ -101,7 +101,7 @@ export async function POST(req: Request) {
     const { routeName, steps } =
       assigned && assigned.steps.length ? expandAssignedRoute(assigned) : expandRoute("経費", "担当課");
     await repos.approvals.enqueue({
-      muni: MUNI,
+      muni,
       kind: "経費",
       applicantId: userId,
       memberName,

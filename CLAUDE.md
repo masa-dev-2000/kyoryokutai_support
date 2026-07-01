@@ -241,3 +241,39 @@ Project (status: planning | active | completed, isPublic)
 - ブランチ: `claude/regional-support-system-strategy-NN5BU`
 - コミットは小さく、日本語で OK
 - 新機能提案時は必ず「3つの帽子」で整理してから着手
+
+## 開発フロー設定
+
+このプロジェクトでは `kio-*`(グローバル `~/.claude/commands/`)ではなく、プロジェクトローカルの **`/dev-*` コマンド群**(`.claude/commands/dev-*.md`)を使う。
+
+```
+design session(design-decision/recordスキル、変更なし)
+→ issue session(issues/deepenスキル、変更なし)→ role:{super|admin|manager|member} + status:ready ラベル付与
+→ coding loop(.claude/hooks/dispatcher-stop.sh 起点、plan→human承認→check→action、.claude/agents/coding-loop-dev.md)
+→ review session(/dev-review、review_accountでポーリング自律実行)
+→ merge session(/dev-devmerge → /dev-e2e → /dev-mainmerge)
+```
+
+- `review_account`: `m-takehara555`（PR Approve / Request changes 実行用）
+- `pr_account`: `masa-dev-2000`（実装PR作成側、デフォルトのactiveアカウント）
+- エスカレーション基準: 同一PRへの Changes Requested が**2回連続**で `status:blocked` ラベル付与+human判断へ委ねる(指摘内容の同一性判定はしない、回数ベース)
+
+### ロール別許可編集域
+
+| role | 担当ディレクトリ |
+|---|---|
+| member | `src/app/member/`, `src/app/api/{daily-logs,expenses,activity-logs,monthly-cycles,cases}` |
+| admin | `src/app/admin/`, `src/app/api/{members,staff,host-organizations,budgets,assignments}` |
+| super | `src/app/super/`, `src/app/api/super` |
+| manager | `src/app/manager/`, `src/app/api/{monthly-reports,approvals,approval-routes,announcements}` |
+| 共有(原則触らない・追加のみ) | `src/lib/db/repositories/*`, `schema.ts`, `auth.ts`, `mappers.ts`, `migrations/`, `src/app/api/{auth,users,topics,visions,files,health}`, `src/app/{login,signup}` |
+
+### dev-review / dev-devmerge / dev-e2e / dev-mainmerge が参照する値
+
+- `dev_url`: **未設定**（developブランチのVercelプレビューURL。`/dev-e2e` 実行前に確認して追記すること）
+- `e2e_accounts`: **未設定**（E2Eテスト用アカウントの id/メールアドレスのみ記載可。**パスワードはここに書かない**、`/dev-e2e` は人間にログインだけ依頼する）
+- `prod_branch`: `main`
+- `prod_deploy_commands`: **未設定**（本番デプロイコマンド列。`/dev-mainmerge` 実行前にユーザーへ確認すること）
+- `prod_url`: **未設定**
+- 本番Supabase project id: `flntuqjllqsvhnwqsmxp`（`/dev-mainmerge` のマイグレーション適用先）
+- `db_migration_command`: 未設定なら MCP `apply_migration`→`execute_sql` を使う（`/dev-mainmerge` Phase 5-2参照）

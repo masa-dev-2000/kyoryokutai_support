@@ -70,6 +70,7 @@ export type LogForAI = {
 // 承認の状態遷移に必要な生フィールド
 export type ApprovalRaw = {
   id: string;
+  municipality_id: string;
   kind: string;
   steps: string; // JSON
   current_step: number;
@@ -162,12 +163,18 @@ export interface Repos {
   users: {
     count(): Promise<number>;
     nameOf(id: string): Promise<string | undefined>;
+    /** 書込時に使うテナント = 本人の所属自治体。固定定数では本番のテナント不一致で FK 違反になるため、必ず本人由来で解決する。 */
+    municipalityOf(id: string): Promise<string>;
     getProfile(id: string): Promise<{ name: string; municipality: string; bio?: string; assigned_at?: string } | null>;
   };
   super: {
     overview(): Promise<SuperOverview>;
     /** #65: 運営者が自治体を新規作成 */
     createMunicipality(m: { name: string; prefecture: string; annualBudget?: number }): Promise<{ id: string; name: string; prefecture: string }>;
+    /** 自治体の名称/都道府県/年間予算を部分更新 */
+    updateMunicipality(id: string, patch: { name?: string; prefecture?: string; annualBudget?: number }): Promise<{ id: string; name: string; prefecture: string } | null>;
+    /** 自治体を削除(所属ユーザーの有無チェックは呼び出し側で行う) */
+    deleteMunicipality(id: string): Promise<void>;
     /** #65: 指定自治体の admin を pre-provision + 招待トークン発行(url は Route 側で付与) */
     createAdminInvite(a: { municipalityId: string; email: string; name: string; createdBy: string }): Promise<{ token: string; expiresAt: string }>;
     /** #66: 自治体ドリルダウン詳細(隊員・職員・活動・保留承認) */
@@ -186,14 +193,18 @@ export interface Repos {
     analytics(): Promise<SuperAnalytics>;
   };
   members: {
-    list(): Promise<MemberDTO[]>;
-    upsert(m: { id?: string; name: string; role: string; startedAt?: string; term?: string; hostOrganizationId?: string | null; approvalRouteId?: string | null }): Promise<MemberDTO>;
-    retire(id: string): Promise<void>;
+    /** muniId 省略 = 絞り込みなし(super 専用)。admin は必ず自分の所属を渡す。 */
+    list(muniId?: string): Promise<MemberDTO[]>;
+    upsert(m: { id?: string; name: string; role: string; startedAt?: string; term?: string; hostOrganizationId?: string | null; approvalRouteId?: string | null }, muniId: string): Promise<MemberDTO>;
+    /** 対象が muniId に属さない/存在しない場合は false(ルート層は 404 に変換) */
+    retire(id: string, muniId: string): Promise<boolean>;
   };
   staff: {
-    list(): Promise<StaffDTO[]>;
-    upsert(s: { id?: string; name: string; title?: string; dept: string; email?: string }): Promise<StaffDTO>;
-    remove(id: string): Promise<void>;
+    /** muniId 省略 = 絞り込みなし(super 専用)。admin は必ず自分の所属を渡す。 */
+    list(muniId?: string): Promise<StaffDTO[]>;
+    upsert(s: { id?: string; name: string; title?: string; dept: string; email?: string }, muniId: string): Promise<StaffDTO>;
+    /** 対象が muniId に属さない/存在しない場合は false(ルート層は 404 に変換) */
+    remove(id: string, muniId: string): Promise<boolean>;
   };
   assignments: {
     map(): Promise<Record<string, string[]>>;
@@ -218,6 +229,12 @@ export interface Repos {
   invites: {
     /** トークンと 7 日有効期限を採番して発行する */
     create(i: { email: string | null; role: string; municipalityName: string; createdBy: string }): Promise<{ token: string; expiresAt: string }>;
+    /**
+     * 招待先の users 行を事前作成(email で冪等)してからトークンを発行する。
+     * /api/auth/me は email で auth_id を紐づけるだけ(#64)なので、先に行が無いと
+     * 招待されても 403 になる(#74)。super.createAdminInvite と同じ pre-provision 方式。
+     */
+    createProvisioned(i: { email: string; name: string; role: string; municipalityName: string; createdBy: string }): Promise<{ token: string; expiresAt: string }>;
     findByToken(token: string): Promise<InviteRow | null>;
     /** used_at が未設定のときだけ使用済みにする */
     markUsed(token: string): Promise<void>;
@@ -276,13 +293,22 @@ export interface Repos {
     /** 隊員が月報を役場に提出(同月の下書きがあれば更新、なければ作成)。status=submitted */
     submit(b: { userId: string; ym: string; markdown: string; plan?: string }): Promise<ReportDTO>;
     markApproved(id: string): Promise<void>;
+    /** 役場が月報を差戻し → status=rejected(隊員が修正・再提出できる状態に戻す) */
+    markRejected(id: string): Promise<void>;
     /** 活動報告を編集/削除した場合、同月の承認済み月報を「提出済」に差し戻す */
     revertToSubmitted(userId: string, ym: string): Promise<void>;
   };
   approvals: {
     listPending(muni: string): Promise<ApprovalDTO[]>;
     getRaw(id: string): Promise<ApprovalRaw | undefined>;
-    updateState(id: string, steps: unknown[], currentStep: number, status: string): Promise<void>;
+    updateDetail(targetTable: string, targetId: string, detail: unknown): Promise<void>;
+    updateState(
+      id: string,
+      steps: unknown[],
+      currentStep: number,
+      status: string,
+      decision?: { decidedBy: string; comment?: string | null }
+    ): Promise<void>;
     getById(id: string): Promise<ApprovalDTO | undefined>;
     enqueue(a: {
       muni: string;

@@ -29,16 +29,20 @@ import type {
   BudgetLineDTO,
 } from "./types";
 import { BUDGET_CATEGORIES, DEFAULT_ALLOCATION, currentFiscalYear } from "@/lib/budget";
+import { jstDateString, jstTimeHHMM, jstYearMonth } from "@/lib/time";
 
 // SQLite 実装(ローカル / Vercel デモ)。SQL はここに集約し、Route からは追放する。
 const MUNI = "muni_shinonsen";
 
+// 書込時の municipality_id は固定定数ではなく本人の所属自治体から解決する。
+// (本番では users が想定と別テナントに属することがあり、固定値だと daily_logs 等で FK 違反になる)
+function muniOf(userId: string): string {
+  return get<{ municipality_id: string }>("SELECT municipality_id FROM users WHERE id=?", [userId])?.municipality_id ?? MUNI;
+}
+
 // 当月 / N ヶ月前の 'YYYY-MM' を返す(ローカル時刻基準)
 function ymOffset(offset: number): string {
-  const d = new Date();
-  d.setDate(1);
-  d.setMonth(d.getMonth() + offset);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return jstYearMonth(offset);
 }
 
 // municipalities の contract_* 専用カラム → ContractDTO に合成
@@ -69,13 +73,19 @@ function fyRange(fy: string): [string, string] {
 }
 
 // 新規隊員に当年度の費目別予算枠(既定配分)を投入(既存があればスキップ)。
-function seedDefaultBudget(userId: string) {
+function municipalityOfUser(userId: string): string {
+  const row = get<{ municipality_id: string | null }>("SELECT municipality_id FROM users WHERE id=?", [userId]);
+  if (!row?.municipality_id) throw new Error("CREATOR_NOT_FOUND");
+  return row.municipality_id;
+}
+
+function seedDefaultBudget(userId: string, municipalityId = MUNI) {
   const fy = currentFiscalYear();
   for (const category of BUDGET_CATEGORIES) {
     const exists = get("SELECT id FROM budget_allocations WHERE user_id=? AND fiscal_year=? AND category=?", [userId, fy, category]);
     if (exists) continue;
     run("INSERT INTO budget_allocations (id,municipality_id,user_id,fiscal_year,category,amount_limit) VALUES (?,?,?,?,?,?)", [
-      genId("bud"), MUNI, userId, fy, category, DEFAULT_ALLOCATION[category] ?? 0,
+      genId("bud"), municipalityId, userId, fy, category, DEFAULT_ALLOCATION[category] ?? 0,
     ]);
   }
 }
@@ -121,6 +131,9 @@ export const sqliteRepos: Repos = {
     async nameOf(id) {
       return get<{ name: string }>("SELECT name FROM users WHERE id=?", [id])?.name;
     },
+    async municipalityOf(id) {
+      return muniOf(id);
+    },
     async getProfile(id) {
       const r = get<{ name: string; municipality_id: string; bio?: string; started_at?: string }>(
         "SELECT name, municipality_id, bio, started_at FROM users WHERE id=?", [id]
@@ -160,6 +173,26 @@ export const sqliteRepos: Repos = {
       const id = genId("muni");
       run("INSERT INTO municipalities (id,name,prefecture,annual_budget) VALUES (?,?,?,?)", [id, m.name, m.prefecture, m.annualBudget ?? 2000000]);
       return { id, name: m.name, prefecture: m.prefecture };
+    },
+
+    async updateMunicipality(id, patch) {
+      run(
+        `UPDATE municipalities SET
+           name=COALESCE(?,name),
+           prefecture=COALESCE(?,prefecture),
+           annual_budget=COALESCE(?,annual_budget)
+         WHERE id=?`,
+        [patch.name ?? null, patch.prefecture ?? null, patch.annualBudget ?? null, id]
+      );
+      const m = get<{ id: string; name: string; prefecture: string }>(
+        "SELECT id, name, prefecture FROM municipalities WHERE id=?",
+        [id]
+      );
+      return m ?? null;
+    },
+
+    async deleteMunicipality(id): Promise<void> {
+      run("DELETE FROM municipalities WHERE id=?", [id]);
     },
 
     async createAdminInvite(a) {
@@ -375,12 +408,16 @@ export const sqliteRepos: Repos = {
   },
 
   members: {
-    async list() {
+    async list(muniId) {
+      if (muniId) {
+        return all("SELECT * FROM users WHERE role='member' AND status='active' AND municipality_id=? ORDER BY started_at", [muniId]).map(mapMember);
+      }
       return all("SELECT * FROM users WHERE role='member' AND status='active' ORDER BY started_at").map(mapMember);
     },
-    async upsert(m) {
-      const existing = m.id ? get("SELECT id FROM users WHERE id=?", [m.id]) : undefined;
+    async upsert(m, muniId) {
+      const existing = m.id ? get<{ id: string; municipality_id: string; role: string }>("SELECT id, municipality_id, role FROM users WHERE id=?", [m.id]) : undefined;
       if (existing) {
+        if (existing.municipality_id !== muniId || existing.role !== "member") throw new Error("TENANT_MISMATCH");
         run("UPDATE users SET name=?, role_label=?, started_at=?, term=?, host_organization_id=?, approval_route_id=? WHERE id=?", [
           m.name, m.role, m.startedAt ?? "未設定", m.term ?? "1 年目", m.hostOrganizationId ?? null, m.approvalRouteId ?? null, m.id,
         ]);
@@ -390,27 +427,37 @@ export const sqliteRepos: Repos = {
       run(
         `INSERT INTO users (id,municipality_id,host_organization_id,organization_type,role,name,email,role_label,term,started_at,status,approval_route_id)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, MUNI, m.hostOrganizationId ?? null, "member", "member", m.name, `${id}@member.example.jp`, m.role, m.term ?? "1 年目", m.startedAt ?? "未設定", "active", m.approvalRouteId ?? null]
+        [id, muniId, m.hostOrganizationId ?? null, "member", "member", m.name, `${id}@member.example.jp`, m.role, m.term ?? "1 年目", m.startedAt ?? "未設定", "active", m.approvalRouteId ?? null]
       );
       // 新規隊員に当年度の費目別予算枠(既定配分)を自動生成
       seedDefaultBudget(id);
       return mapMember(all("SELECT * FROM users WHERE id=?", [id])[0]);
     },
-    async retire(id) {
+    async retire(id, muniId) {
+      const existing = get<{ municipality_id: string; role: string }>("SELECT municipality_id, role FROM users WHERE id=?", [id]);
+      if (!existing || existing.municipality_id !== muniId || existing.role !== "member") return false;
       run("UPDATE users SET status='retired' WHERE id=?", [id]);
       run("DELETE FROM assignments WHERE member_id=?", [id]);
+      return true;
     },
   },
 
   staff: {
-    async list() {
+    async list(muniId) {
+      if (muniId) {
+        return all(
+          "SELECT * FROM users WHERE role='manager' AND organization_type='municipality' AND municipality_id=? ORDER BY created_at",
+          [muniId]
+        ).map(mapStaff);
+      }
       return all(
         "SELECT * FROM users WHERE role='manager' AND organization_type='municipality' ORDER BY created_at"
       ).map(mapStaff);
     },
-    async upsert(s) {
-      const existing = s.id ? get("SELECT id FROM users WHERE id=?", [s.id]) : undefined;
+    async upsert(s, muniId) {
+      const existing = s.id ? get<{ id: string; municipality_id: string; role: string; organization_type: string }>("SELECT id, municipality_id, role, organization_type FROM users WHERE id=?", [s.id]) : undefined;
       if (existing) {
+        if (existing.municipality_id !== muniId || existing.role !== "manager" || existing.organization_type !== "municipality") throw new Error("TENANT_MISMATCH");
         run("UPDATE users SET name=?, title=?, department=?, email=? WHERE id=?", [
           s.name, s.title ?? "職員", s.dept, s.email ?? "", s.id,
         ]);
@@ -420,13 +467,16 @@ export const sqliteRepos: Repos = {
       run(
         `INSERT INTO users (id,municipality_id,organization_type,role,name,email,title,department,status)
          VALUES (?,?,?,?,?,?,?,?,?)`,
-        [id, MUNI, "municipality", "manager", s.name, s.email ?? "", s.title ?? "職員", s.dept, "active"]
+        [id, muniId, "municipality", "manager", s.name, s.email ?? "", s.title ?? "職員", s.dept, "active"]
       );
       return mapStaff(all("SELECT * FROM users WHERE id=?", [id])[0]);
     },
-    async remove(id) {
+    async remove(id, muniId) {
+      const existing = get<{ municipality_id: string }>("SELECT municipality_id FROM users WHERE id=? AND role='manager' AND organization_type='municipality'", [id]);
+      if (!existing || existing.municipality_id !== muniId) return false;
       run("DELETE FROM assignments WHERE staff_id=?", [id]);
       run("DELETE FROM users WHERE id=? AND role='manager'", [id]);
+      return true;
     },
   },
 
@@ -574,6 +624,27 @@ export const sqliteRepos: Repos = {
       );
       return { token, expiresAt };
     },
+    async createProvisioned({ email, name, role, municipalityName, createdBy }) {
+      // email に対応する users 行が無ければ先に作る(/api/auth/me が email で紐づけられるように)。
+      const existing = get<{ id: string; role: string; municipality_id: string | null }>("SELECT id, role, municipality_id FROM users WHERE email=?", [email]);
+      if (existing) {
+        // 別ロールでの再招待はサイレントに権限を取り違える。明示的に弾く。
+        if (existing.role !== role) throw new Error("ROLE_CONFLICT");
+        // 同ロールの再招待は冪等。退職などで無効化されていれば再有効化する。
+        run("UPDATE users SET status='active' WHERE id=?", [existing.id]);
+        if (role === "member") seedDefaultBudget(existing.id, existing.municipality_id ?? municipalityOfUser(createdBy));
+      } else {
+        const creatorMuni = municipalityOfUser(createdBy);
+        const id = genId(role === "member" ? "m" : "s");
+        const orgType = role === "member" ? "member" : "municipality";
+        run(
+          "INSERT INTO users (id,municipality_id,organization_type,role,name,email,status) VALUES (?,?,?,?,?,?,?)",
+          [id, creatorMuni, orgType, role, name, email, "active"]
+        );
+        if (role === "member") seedDefaultBudget(id, creatorMuni);
+      }
+      return sqliteRepos.invites.create({ email, role, municipalityName, createdBy });
+    },
     async findByToken(token) {
       const r = get<{
         token: string;
@@ -622,16 +693,17 @@ export const sqliteRepos: Repos = {
     },
     async create(b) {
       const id = genId("log");
-      const date = b.date ?? new Date().toISOString().slice(0, 10);
-      const time = b.time ?? new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+      const date = b.date ?? jstDateString();
+      const time = b.time ?? jstTimeHHMM();
       // ADR-021: 活動作成時に当日の daily_log を自動 upsert し daily_log_id を結線する
+      const muni = muniOf(b.userId);
       let dailyLogId = b.dailyLogId ?? null;
       if (!dailyLogId) {
         const dlId = genId("dl");
         run(
           `INSERT INTO daily_logs (id,user_id,municipality_id,log_date) VALUES (?,?,?,?)
            ON CONFLICT(user_id,log_date) DO NOTHING`,
-          [dlId, b.userId, MUNI, date]
+          [dlId, b.userId, muni, date]
         );
         const dl = get<{ id: string }>("SELECT id FROM daily_logs WHERE user_id=? AND log_date=?", [b.userId, date]);
         dailyLogId = dl?.id ?? null;
@@ -639,7 +711,7 @@ export const sqliteRepos: Repos = {
       run(
         `INSERT INTO activity_logs (id,user_id,municipality_id,daily_log_id,activity_type,topic,hours,start_time,end_time,body,log_date,log_time)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, b.userId, MUNI, dailyLogId, b.type, b.topic, b.hours, b.startTime ?? null, b.endTime ?? null, b.body, date, time]
+        [id, b.userId, muni, dailyLogId, b.type, b.topic, b.hours, b.startTime ?? null, b.endTime ?? null, b.body, date, time]
       );
       return mapLog(all("SELECT * FROM activity_logs WHERE id=?", [id])[0]);
     },
@@ -674,34 +746,63 @@ export const sqliteRepos: Repos = {
 
   expenses: {
     async listByUser(userId) {
-      return all("SELECT * FROM expenses WHERE user_id=? ORDER BY created_at DESC", [userId]).map(mapExpense);
+      return all(
+        `SELECT e.*, COALESCE(direct_dl.log_date, source_dl.log_date) AS daily_log_date
+         FROM expenses e
+         LEFT JOIN daily_logs direct_dl ON direct_dl.id=e.daily_log_id
+         LEFT JOIN activity_logs source_log ON source_log.id=e.source_activity_log_id
+         LEFT JOIN daily_logs source_dl ON source_dl.id=source_log.daily_log_id
+         WHERE e.user_id=?
+         ORDER BY e.created_at DESC`,
+        [userId]
+      ).map(mapExpense);
     },
     async create(b) {
       const id = genId("exp");
       run(
         `INSERT INTO expenses (id,user_id,municipality_id,expense_kind,category,daily_log_id,title,amount_requested,purpose,status,ai_note,citations,has_receipt,receipt_key,created_at)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [id, b.userId, MUNI, "single", b.category ?? "活動費", b.dailyLogId ?? null, b.title, b.amount, b.purpose, b.status ?? "申請中", "AI 判定材料は申請後に表示されます。", JSON.stringify([]), b.receiptKey ? 1 : 0, b.receiptKey ?? null, new Date().toISOString().slice(0, 10)]
+        [id, b.userId, muniOf(b.userId), "single", b.category ?? "活動費", b.dailyLogId ?? null, b.title, b.amount, b.purpose, b.status ?? "申請中", "AI 判定材料は申請後に表示されます。", JSON.stringify([]), b.receiptKey ? 1 : 0, b.receiptKey ?? null, jstDateString()]
       );
-      return mapExpense(all("SELECT * FROM expenses WHERE id=?", [id])[0]);
+      return mapExpense(all(
+        `SELECT e.*, COALESCE(direct_dl.log_date, source_dl.log_date) AS daily_log_date
+         FROM expenses e
+         LEFT JOIN daily_logs direct_dl ON direct_dl.id=e.daily_log_id
+         LEFT JOIN activity_logs source_log ON source_log.id=e.source_activity_log_id
+         LEFT JOIN daily_logs source_dl ON source_dl.id=source_log.daily_log_id
+         WHERE e.id=?`,
+        [id]
+      )[0]);
     },
     async createFromLog(b) {
       const id = genId("exp");
+      const dailyLogId = get<{ daily_log_id: string | null }>(
+        "SELECT daily_log_id FROM activity_logs WHERE id=?",
+        [b.activityLogId]
+      )?.daily_log_id ?? null;
       run(
         `INSERT INTO expenses
            (id,user_id,municipality_id,expense_kind,source_activity_log_id,source_receipt_index,
-            title,amount_requested,purpose,status,ai_note,citations,has_receipt,receipt_key,created_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            daily_log_id,title,amount_requested,purpose,status,ai_note,citations,has_receipt,receipt_key,created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [
-          id, b.userId, MUNI, "single",
-          b.activityLogId, b.receiptIndex,
+          id, b.userId, muniOf(b.userId), "single",
+          b.activityLogId, b.receiptIndex, dailyLogId,
           b.title, b.amount, b.purpose, b.status ?? "申請中",
           "日報経由の経費(ADR-014)。AI 判定材料は申請後に表示されます。",
           JSON.stringify([]), b.hasReceipt ? 1 : 0, b.receiptKey ?? null,
-          new Date().toISOString().slice(0, 10),
+          jstDateString(),
         ]
       );
-      return mapExpense(all("SELECT * FROM expenses WHERE id=?", [id])[0]);
+      return mapExpense(all(
+        `SELECT e.*, COALESCE(direct_dl.log_date, source_dl.log_date) AS daily_log_date
+         FROM expenses e
+         LEFT JOIN daily_logs direct_dl ON direct_dl.id=e.daily_log_id
+         LEFT JOIN activity_logs source_log ON source_log.id=e.source_activity_log_id
+         LEFT JOIN daily_logs source_dl ON source_dl.id=source_log.daily_log_id
+         WHERE e.id=?`,
+        [id]
+      )[0]);
     },
     async update(id, b) {
       const existing = all("SELECT * FROM expenses WHERE id=?", [id])[0];
@@ -732,12 +833,18 @@ export const sqliteRepos: Repos = {
       run(
         `INSERT INTO monthly_reports (id,user_id,municipality_id,year_month,status,status_label,summary,plan_next)
          VALUES (?,?,?,?,?,?,?,?)`,
-        [id, b.userId, MUNI, b.ym, "submitted", "提出済", b.markdown, b.plan ?? null]
+        [id, b.userId, muniOf(b.userId), b.ym, "submitted", "提出済", b.markdown, b.plan ?? null]
       );
       return mapReport(all("SELECT * FROM monthly_reports WHERE id=?", [id])[0]);
     },
     async markApproved(id) {
       run("UPDATE monthly_reports SET status='approved', status_label='役場承認' WHERE id=?", [id]);
+    },
+    async markRejected(id) {
+      // status は 'draft' に戻す(隊員が修正・再提出できる編集可能状態)。差戻しの意味は status_label が担う。
+      // 'rejected' のような未知 status を入れると、隊員画面が status!=draft&&!=submitted を一律「承認済」と
+      // 表示してしまい、差戻しが承認済に見える(逆の意味)。隊員側 UI は draft/submitted/approved の3値のみ対応。
+      run("UPDATE monthly_reports SET status='draft', status_label='差戻し（要修正）' WHERE id=?", [id]);
     },
     async revertToSubmitted(userId, ym) {
       run(
@@ -752,9 +859,21 @@ export const sqliteRepos: Repos = {
       return all("SELECT * FROM approvals WHERE municipality_id=? AND status='pending' ORDER BY created_at", [muni]).map(mapApproval);
     },
     async getRaw(id) {
-      return get<ApprovalRaw>("SELECT id,kind,steps,current_step,status,target_table,target_id FROM approvals WHERE id=?", [id]);
+      return get<ApprovalRaw>("SELECT id,municipality_id,kind,steps,current_step,status,target_table,target_id FROM approvals WHERE id=?", [id]);
     },
-    async updateState(id, steps, currentStep, status) {
+    async updateDetail(targetTable, targetId, detail) {
+      run(
+        "UPDATE approvals SET detail=? WHERE target_table=? AND target_id=? AND status='pending'",
+        [JSON.stringify(detail), targetTable, targetId]
+      );
+    },
+    async updateState(id, steps, currentStep, status, decision) {
+      if (decision) {
+        run("UPDATE approvals SET steps=?, current_step=?, status=?, decided_by=?, decided_at=datetime('now'), comment=? WHERE id=?", [
+          JSON.stringify(steps), currentStep, status, decision.decidedBy, decision.comment ?? null, id,
+        ]);
+        return;
+      }
       run("UPDATE approvals SET steps=?, current_step=?, status=? WHERE id=?", [JSON.stringify(steps), currentStep, status, id]);
     },
     async getById(id) {
@@ -839,7 +958,7 @@ export const sqliteRepos: Repos = {
       const id = genId("dl");
       run(
         `INSERT INTO daily_logs (id,user_id,municipality_id,log_date,note,distance_km,expense_amount,feeling_score) VALUES (?,?,?,?,?,?,?,?)`,
-        [id, userId, MUNI, date, fields?.note ?? null, fields?.distanceKm ?? null, fields?.expenseAmount ?? null, fields?.feelingScore ?? null]
+        [id, userId, muniOf(userId), date, fields?.note ?? null, fields?.distanceKm ?? null, fields?.expenseAmount ?? null, fields?.feelingScore ?? null]
       );
       return mapDailyLog(all("SELECT * FROM daily_logs WHERE id=?", [id])[0]);
     },
@@ -901,7 +1020,7 @@ export const sqliteRepos: Repos = {
         `INSERT INTO monthly_cycles (id,user_id,municipality_id,year_month,monthly_goal,action_plan,intake,reflection,status)
          VALUES (?,?,?,?,?,?,?,?,?)`,
         [
-          id, userId, MUNI, ym,
+          id, userId, muniOf(userId), ym,
           fields.monthlyGoal ?? null,
           JSON.stringify(fields.actionPlan ?? []),
           fields.intake ? JSON.stringify(fields.intake) : null,

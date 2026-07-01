@@ -6,7 +6,10 @@ import { requireAppUser } from "@/lib/api/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MUNI = process.env.NEXT_PUBLIC_DEMO_MUNI_ID ?? "10000000-0000-4000-8000-000000000001";
+// ローカル sqlite のフォールバックは seed/sqlite の自治体 id("muni_shinonsen")に合わせる。
+// 以前は UUID 既定で、env 未設定のローカル開発だと提出月報の承認キューが seed と別自治体になり空表示だった(H5)。
+// 本番(Supabase)は NEXT_PUBLIC_DEMO_MUNI_ID を設定するためこの既定は使われない。
+const MUNI = process.env.NEXT_PUBLIC_DEMO_MUNI_ID ?? "muni_shinonsen";
 
 export async function GET(req: Request) {
   const sess = await requireAppUser();
@@ -35,23 +38,35 @@ export async function POST(req: Request) {
   // なりすまし防止: 提出者はセッション本人に固定(body の userId は受け付けない)
   const userId = sess.userId;
   const report = await repos.monthlyReports.submit({ userId, ym: b.ym, markdown: b.markdown.trim(), plan: b.plan?.trim() });
+  const detail = { kind: "月次報告", ym: b.ym, body: b.markdown.trim(), plan: b.plan?.trim() ?? "" };
+
+  // 再提出時の二重キュー防止: 同一隊員・同月の月次報告が既に承認待ちなら再エンキューしない。
+  // submit() は同月を上書きするため report.id は不変。役場は既存の承認1件で再提出後の内容も確認できる。
+  const title = `${report.yearMonth} の月次報告`;
+  const alreadyQueued = (await repos.approvals.listPending(MUNI)).some(
+    (a) => a.kind === "月次報告" && a.applicantId === userId && a.title === title
+  );
 
   // 役場側の承認キューに投入(月次報告 ルート)
-  const memberName = (await repos.users.nameOf(userId)) ?? "隊員";
-  const { routeName, steps } = expandRoute("月次報告", "担当課");
-  await repos.approvals.enqueue({
-    muni: MUNI,
-    kind: "月次報告",
-    applicantId: userId,
-    memberName,
-    title: `${report.yearMonth} の月次報告`,
-    ai: "隊員が提出した月次報告。活動ログから AI 生成・本人確認済み。",
-    detail: { kind: "月次報告", ym: b.ym, body: b.markdown.trim(), plan: b.plan?.trim() ?? "" },
-    routeName,
-    steps,
-    targetTable: "monthly_reports",
-    targetId: report.id,
-  });
+  if (alreadyQueued) {
+    await repos.approvals.updateDetail("monthly_reports", report.id, detail);
+  } else {
+    const memberName = (await repos.users.nameOf(userId)) ?? "隊員";
+    const { routeName, steps } = expandRoute("月次報告", "担当課");
+    await repos.approvals.enqueue({
+      muni: MUNI,
+      kind: "月次報告",
+      applicantId: userId,
+      memberName,
+      title,
+      ai: "隊員が提出した月次報告。活動ログから AI 生成・本人確認済み。",
+      detail,
+      routeName,
+      steps,
+      targetTable: "monthly_reports",
+      targetId: report.id,
+    });
+  }
 
   return ok(report, 201);
 }
