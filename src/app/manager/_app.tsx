@@ -521,7 +521,7 @@ export function ManagerApp() {
 
   return (
     <AppCtx.Provider value={ctx}>
-      <main className="flex h-screen flex-col bg-white text-slate-900">
+      <main data-testid="manager-root" className="flex h-screen flex-col bg-white text-slate-900">
         <Header userName={userName ?? undefined} />
         <Tabs active={tab} onChange={setTab} />
 
@@ -585,16 +585,17 @@ function Tabs({ active, onChange }: { active: Tab; onChange: (t: Tab) => void })
   const myCount = approvals.filter((a) => isMyTurn(a, viewerRole)).length;
   return (
     <nav className="flex items-center justify-center gap-1 border-b border-slate-100 px-5 py-1.5">
-      <TabBtn label="承認" badge={myCount} active={active === "approve"} onClick={() => onChange("approve")} />
-      <TabBtn label="月報" active={active === "report"} onClick={() => onChange("report")} />
-      <TabBtn label="お知らせ" active={active === "notice"} onClick={() => onChange("notice")} />
+      <TabBtn label="承認" badge={myCount} active={active === "approve"} onClick={() => onChange("approve")} testId="manager-tab-approve" />
+      <TabBtn label="月報" active={active === "report"} onClick={() => onChange("report")} testId="manager-tab-report" />
+      <TabBtn label="お知らせ" active={active === "notice"} onClick={() => onChange("notice")} testId="manager-tab-notice" />
     </nav>
   );
 }
 
-function TabBtn({ label, badge, active, onClick }: { label: string; badge?: number; active: boolean; onClick: () => void }) {
+function TabBtn({ label, badge, active, onClick, testId }: { label: string; badge?: number; active: boolean; onClick: () => void; testId?: string }) {
   return (
     <button
+      data-testid={testId}
       onClick={onClick}
       className={`relative px-4 py-1.5 text-[12px] font-semibold transition ${
         active ? "text-slate-900" : "text-slate-500 hover:text-slate-700"
@@ -748,7 +749,7 @@ function ApprovalRow({
 }) {
   const waitingLabel = a.steps[a.currentStep]?.approverLabel ?? "—";
   return (
-    <li className={`border-b border-slate-100 py-3 last:border-b-0 ${actionable ? "" : "opacity-70"}`}>
+    <li data-testid="approval-card" className={`border-b border-slate-100 py-3 last:border-b-0 ${actionable ? "" : "opacity-70"}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
@@ -776,6 +777,7 @@ function ApprovalRow({
         </div>
         <div className="flex shrink-0 items-center gap-1.5 pt-1">
           <button
+            data-testid="approval-detail-button"
             onClick={onDetail}
             className="rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold text-slate-700 hover:border-slate-500"
           >
@@ -899,6 +901,7 @@ function ReportTab() {
             return (
               <button
                 key={m.name}
+                data-testid="report-member-card"
                 onClick={() => openSheet({ kind: "member-month-detail", userId: m.id, member: m.name, ym })}
                 className="flex flex-col items-center gap-1.5 rounded-lg border border-slate-200 bg-white p-3 text-center transition hover:border-slate-400 hover:shadow-sm"
               >
@@ -987,6 +990,7 @@ function NoticeTab() {
           {notices.map((n) => (
             <li key={n.id}>
               <button
+                data-testid="notice-card"
                 onClick={() => openSheet({ kind: "notice-detail", notice: n })}
                 className="flex w-full items-center gap-3 border-b border-slate-100 py-2 text-left last:border-b-0 hover:bg-slate-50"
               >
@@ -1084,7 +1088,7 @@ function ApprovalDetailSheet({ approval, onClose }: { approval: Approval; onClos
   return (
     <>
       <SheetHeader title={`${approval.kind} ・ ${approval.member}`} onClose={onClose} />
-      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+      <div data-testid="approval-detail-sheet" className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
         <h1 className="text-xl font-bold tracking-tight">{approval.title}</h1>
 
         {/* 承認の進捗(多段階)*/}
@@ -1333,7 +1337,7 @@ function RejectSheet({ approval, onClose }: { approval: Approval; onClose: () =>
   return (
     <>
       <SheetHeader title="差戻し" onClose={onClose} />
-      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+      <div data-testid="reject-comment-sheet" className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
         <div className="text-[11px] text-slate-500">
           {approval.kind} ・ {approval.member}
         </div>
@@ -1448,7 +1452,7 @@ function MemberMonthSheet({ userId, name, ym, onClose }: { userId?: string; name
   return (
     <>
       <SheetHeader title={`${name} ・ ${monthLabel}`} onClose={onClose} />
-      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+      <div data-testid="member-month-sheet" className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-[13px] font-bold text-slate-700 ring-1 ring-slate-200">
             {member?.initials}
@@ -1587,7 +1591,7 @@ function ReportDaySheet({ userId, name, date, onClose }: { userId?: string; name
   return (
     <>
       <SheetHeader title={`${name} ・ ${Number(m)}/${Number(d)}`} onClose={onClose} />
-      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+      <div data-testid="report-day-sheet" className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
         <div className="text-[11px] text-slate-500">
           {logs.length} 件 ・ {totalHours} 時間
           {totalExpense > 0 && ` ・ 経費 ¥${totalExpense.toLocaleString()}`}
@@ -1647,7 +1651,7 @@ function TargetsSheet({ onClose }: { onClose: () => void }) {
           </button>
         }
       />
-      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+      <div data-testid="notice-targets-sheet" className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
         <p className="text-[11px] text-slate-500">
           チェック済み {local.length} / {managed.length} 名
         </p>
@@ -1678,7 +1682,7 @@ function NoticeDetailSheet({ notice, onClose }: { notice: NoticeItem; onClose: (
   return (
     <>
       <SheetHeader title="お知らせ" onClose={onClose} />
-      <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+      <div data-testid="notice-detail-sheet" className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
         <h1 className="text-xl font-bold tracking-tight">{notice.title}</h1>
         <div className="mt-1 text-[11px] text-slate-500">{notice.date} ・ 既読 {notice.read} / {notice.targets}</div>
         <div className="mt-5 whitespace-pre-wrap text-[13px] leading-relaxed text-slate-800">{notice.body}</div>

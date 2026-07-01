@@ -17,6 +17,7 @@
     "db:reset": "rm -rf .data",
     "db:migrate": "tsx scripts/apply-migrations.ts",
     "e2e": "playwright test",
+    "e2e:manager": "node scripts/reset-e2e-db.mjs && playwright test -c playwright.manager.config.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
