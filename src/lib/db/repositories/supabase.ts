@@ -275,26 +275,16 @@ export const supabaseRepos: Repos = {
 
     async createAdminInvite(a) {
       const { data: muni } = await supabase().from("municipalities").select("name").eq("id", a.municipalityId).maybeSingle();
-      // admin を pre-provision(/api/auth/me が email で auth_id を紐づけられるよう先に行を作る)
-      await supabase().from("users").insert({
-        municipality_id: a.municipalityId,
-        organization_type: "municipality",
-        role: "admin",
+      // pre-provision + トークン発行は createProvisioned に委譲する
+      // (ROLE_CONFLICT 検知・同 email+同 role の冪等再有効化・insert エラー伝播を共通化)。
+      return supabaseRepos.invites.createProvisioned({
+        email: a.email,
         name: a.name,
-        email: a.email,
-        status: "active",
-      });
-      const token = Array.from(crypto.getRandomValues(new Uint8Array(24))).map((b) => b.toString(16).padStart(2, "0")).join("");
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      await supabase().from("invite_tokens").insert({
-        token,
-        email: a.email,
         role: "admin",
-        municipality_name: muni?.name ?? "",
-        created_by: a.createdBy,
-        expires_at: expiresAt,
+        municipalityName: muni?.name ?? "",
+        createdBy: a.createdBy,
+        municipalityId: a.municipalityId,
       });
-      return { token, expiresAt };
     },
 
     async municipalityDetail(municipalityId): Promise<SuperMuniDetail | null> {
@@ -845,8 +835,10 @@ export const supabaseRepos: Repos = {
       });
       return { token, expiresAt };
     },
-    async createProvisioned({ email, name, role, municipalityName, createdBy }) {
+    async createProvisioned({ email, name, role, municipalityName, createdBy, municipalityId }) {
       // email に対応する users 行が無ければ先に作る(/api/auth/me が email で紐づけられるように)。
+      // municipalityId 明示時はその自治体へ provisioning(super は users に不在なので
+      // municipalityOfUserSb(createdBy) を呼ばずに済むよう ?? の右辺に置いて短絡させる)。
       const { data: existing, error: selErr } = await supabase()
         .from("users")
         .select("id, role, municipality_id")
@@ -863,21 +855,21 @@ export const supabaseRepos: Repos = {
           .eq("id", existing.id);
         if (upErr) throw upErr;
         if (role === "member") {
-          const municipalityId = (existing.municipality_id as string | null) ?? await municipalityOfUserSb(createdBy);
-          await seedDefaultBudgetSb(existing.id as string, municipalityId);
+          const targetMuni = (existing.municipality_id as string | null) ?? municipalityId ?? await municipalityOfUserSb(createdBy);
+          await seedDefaultBudgetSb(existing.id as string, targetMuni);
         }
       } else {
-        const creatorMuni = await municipalityOfUserSb(createdBy);
+        const targetMuni = municipalityId ?? await municipalityOfUserSb(createdBy);
         const orgType = role === "member" ? "member" : "municipality";
         // insert の失敗(RLS/一意制約等)を握り潰すと users 行が無いままトークンだけ発行され
         // 招待先が後で 403 になる。エラーは投げてルートで 500 にする。
         const { data: created, error: insErr } = await supabase()
           .from("users")
-          .insert({ municipality_id: creatorMuni, organization_type: orgType, role, name, email, status: "active" })
+          .insert({ municipality_id: targetMuni, organization_type: orgType, role, name, email, status: "active" })
           .select("id")
           .single();
         if (insErr) throw insErr;
-        if (role === "member" && created?.id) await seedDefaultBudgetSb(created.id, creatorMuni);
+        if (role === "member" && created?.id) await seedDefaultBudgetSb(created.id, targetMuni);
       }
       return supabaseRepos.invites.create({ email, role, municipalityName, createdBy });
     },

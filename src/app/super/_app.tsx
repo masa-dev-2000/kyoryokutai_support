@@ -163,7 +163,11 @@ export function SuperApp() {
       )}
       {/* #65 管理者招待モーダル */}
       {inviteFor && (
-        <InviteModal muni={inviteFor} onClose={() => setInviteFor(null)} onDone={loadOverview} />
+        <InviteModal
+          muni={inviteFor}
+          onClose={() => setInviteFor(null)}
+          onDone={() => { loadOverview(); if (detailId) openDetail(detailId); }}
+        />
       )}
 
       {/* #66 自治体ドリルダウン スライドオーバー */}
@@ -174,6 +178,7 @@ export function SuperApp() {
           onClose={() => setDetailId(null)}
           onReload={() => { if (detailId) openDetail(detailId); loadOverview(); }}
           onAfterDelete={() => { setDetailId(null); loadOverview(); }}
+          onInvite={(m) => setInviteFor(m)}
           municipalities={data?.municipalities ?? []}
           onOverviewRefresh={loadOverview}
         />
@@ -277,6 +282,7 @@ function DetailSheet({
   onClose,
   onReload,
   onAfterDelete,
+  onInvite,
   municipalities,
   onOverviewRefresh,
 }: {
@@ -285,6 +291,7 @@ function DetailSheet({
   onClose: () => void;
   onReload: () => void;
   onAfterDelete: () => void;
+  onInvite: (m: { id: string; name: string }) => void;
   municipalities: MuniRow[];
   onOverviewRefresh: () => void;
 }) {
@@ -332,6 +339,12 @@ function DetailSheet({
                   className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
                 >
                   <Pencil className="h-3 w-3" /> 編集
+                </button>
+                <button
+                  onClick={() => onInvite({ id: detail.municipality.id, name: detail.municipality.name })}
+                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
+                >
+                  <UserPlus className="h-3 w-3" /> 管理者を招待
                 </button>
                 <button
                   onClick={remove}

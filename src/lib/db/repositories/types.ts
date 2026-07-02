@@ -175,7 +175,10 @@ export interface Repos {
     updateMunicipality(id: string, patch: { name?: string; prefecture?: string; annualBudget?: number }): Promise<{ id: string; name: string; prefecture: string } | null>;
     /** 自治体を削除(所属ユーザーの有無チェックは呼び出し側で行う) */
     deleteMunicipality(id: string): Promise<void>;
-    /** #65: 指定自治体の admin を pre-provision + 招待トークン発行(url は Route 側で付与) */
+    /**
+     * #65: 指定自治体の admin を pre-provision + 招待トークン発行(url は Route 側で付与)。
+     * 実体は invites.createProvisioned への委譲(ROLE_CONFLICT / 同 email+同 role の冪等再有効化)。
+     */
     createAdminInvite(a: { municipalityId: string; email: string; name: string; createdBy: string }): Promise<{ token: string; expiresAt: string }>;
     /** #66: 自治体ドリルダウン詳細(隊員・職員・活動・保留承認) */
     municipalityDetail(municipalityId: string): Promise<SuperMuniDetail | null>;
@@ -237,8 +240,10 @@ export interface Repos {
      * 招待先の users 行を事前作成(email で冪等)してからトークンを発行する。
      * /api/auth/me は email で auth_id を紐づけるだけ(#64)なので、先に行が無いと
      * 招待されても 403 になる(#74)。super.createAdminInvite と同じ pre-provision 方式。
+     * municipalityId 明示時はその自治体へ provisioning する(super が任意自治体を対象にする用)。
+     * 省略時は従来どおり createdBy の所属自治体に provisioning する。
      */
-    createProvisioned(i: { email: string; name: string; role: string; municipalityName: string; createdBy: string }): Promise<{ token: string; expiresAt: string }>;
+    createProvisioned(i: { email: string; name: string; role: string; municipalityName: string; createdBy: string; municipalityId?: string }): Promise<{ token: string; expiresAt: string }>;
     findByToken(token: string): Promise<InviteRow | null>;
     /** used_at が未設定のときだけ使用済みにする */
     markUsed(token: string): Promise<void>;
