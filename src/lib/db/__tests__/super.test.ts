@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { get, run } from "@/lib/db";
 import { sqliteRepos } from "@/lib/db/repositories/sqlite";
 
 // super(運営者)リポジトリ層のユニットテスト。
@@ -80,6 +81,70 @@ describe("super.createAdminInvite", () => {
     expect(admin?.role).toBe("admin");
     expect(admin?.status).toBe("active");
     expect(admin?.municipalityId).toBe(muni.id);
+  });
+
+  it("同 email + role=admin の再招待は冪等(users 1 行のまま・新トークン発行)", async () => {
+    const muni = await sqliteRepos.super.createMunicipality({ name: "再招待町", prefecture: "兵庫県" });
+    const email = "readmin@example.com";
+    const first = await sqliteRepos.super.createAdminInvite({
+      municipalityId: muni.id, email, name: "再招待 太郎", createdBy: "u_super",
+    });
+    const second = await sqliteRepos.super.createAdminInvite({
+      municipalityId: muni.id, email, name: "再招待 太郎", createdBy: "u_super",
+    });
+
+    expect(second.token).toMatch(/^[0-9a-f]{48}$/);
+    expect(second.token).not.toBe(first.token);
+    const count = get<{ c: number }>("SELECT COUNT(*) c FROM users WHERE email=?", [email]);
+    expect(count?.c).toBe(1);
+  });
+
+  it("retired にした admin を再招待すると active に戻る", async () => {
+    const muni = await sqliteRepos.super.createMunicipality({ name: "復帰町", prefecture: "兵庫県" });
+    const email = "retired-admin@example.com";
+    await sqliteRepos.super.createAdminInvite({
+      municipalityId: muni.id, email, name: "復帰 花子", createdBy: "u_super",
+    });
+    run("UPDATE users SET status='retired' WHERE email=?", [email]);
+
+    await sqliteRepos.super.createAdminInvite({
+      municipalityId: muni.id, email, name: "復帰 花子", createdBy: "u_super",
+    });
+
+    const row = get<{ status: string }>("SELECT status FROM users WHERE email=?", [email]);
+    expect(row?.status).toBe("active");
+  });
+
+  it("既に member として存在する email は ROLE_CONFLICT で弾く", async () => {
+    const muni = await sqliteRepos.super.createMunicipality({ name: "競合町", prefecture: "兵庫県" });
+    await expect(
+      sqliteRepos.super.createAdminInvite({
+        municipalityId: muni.id,
+        email: "m1@member.example.jp", // seed の隊員
+        name: "競合 次郎",
+        createdBy: "u_super",
+      })
+    ).rejects.toThrow("ROLE_CONFLICT");
+  });
+
+  it("新規 email は対象自治体(作成者の自治体ではない)に provisioning される", async () => {
+    const muni = await sqliteRepos.super.createMunicipality({ name: "対象町", prefecture: "兵庫県" });
+    const email = "target-admin@example.com";
+    // createdBy に seed の adm1(muni_shinonsen 所属)を使い、対象自治体が優先されることを確認する
+    const res = await sqliteRepos.super.createAdminInvite({
+      municipalityId: muni.id, email, name: "対象 三郎", createdBy: "adm1",
+    });
+
+    const user = get<{ municipality_id: string }>("SELECT municipality_id FROM users WHERE email=?", [email]);
+    expect(user?.municipality_id).toBe(muni.id);
+    expect(user?.municipality_id).not.toBe(SEED_MUNI);
+
+    const inv = get<{ role: string; municipality_name: string }>(
+      "SELECT role, municipality_name FROM invite_tokens WHERE token=?",
+      [res.token]
+    );
+    expect(inv?.role).toBe("admin");
+    expect(inv?.municipality_name).toBe("対象町");
   });
 });
 

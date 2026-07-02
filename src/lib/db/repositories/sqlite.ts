@@ -197,19 +197,16 @@ export const sqliteRepos: Repos = {
 
     async createAdminInvite(a) {
       const muni = get<{ name: string }>("SELECT name FROM municipalities WHERE id=?", [a.municipalityId]);
-      // admin を pre-provision(/api/auth/me が email で auth_id を紐づけられるよう先に行を作る)
-      run(
-        `INSERT INTO users (id,municipality_id,organization_type,role,name,email,status)
-         VALUES (?,?,?,?,?,?,?)`,
-        [genId("adm"), a.municipalityId, "municipality", "admin", a.name, a.email, "active"]
-      );
-      const token = Array.from(crypto.getRandomValues(new Uint8Array(24))).map((b) => b.toString(16).padStart(2, "0")).join("");
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      run(
-        `INSERT INTO invite_tokens (token,email,role,municipality_name,created_by,expires_at) VALUES (?,?,?,?,?,?)`,
-        [token, a.email, "admin", muni?.name ?? "", a.createdBy, expiresAt]
-      );
-      return { token, expiresAt };
+      // pre-provision + トークン発行は createProvisioned に委譲する
+      // (ROLE_CONFLICT 検知・同 email+同 role の冪等再有効化を共通化)。
+      return sqliteRepos.invites.createProvisioned({
+        email: a.email,
+        name: a.name,
+        role: "admin",
+        municipalityName: muni?.name ?? "",
+        createdBy: a.createdBy,
+        municipalityId: a.municipalityId,
+      });
     },
 
     async municipalityDetail(municipalityId): Promise<SuperMuniDetail | null> {
@@ -624,24 +621,26 @@ export const sqliteRepos: Repos = {
       );
       return { token, expiresAt };
     },
-    async createProvisioned({ email, name, role, municipalityName, createdBy }) {
+    async createProvisioned({ email, name, role, municipalityName, createdBy, municipalityId }) {
       // email に対応する users 行が無ければ先に作る(/api/auth/me が email で紐づけられるように)。
+      // municipalityId 明示時はその自治体へ provisioning(super は users に不在なので
+      // municipalityOfUser(createdBy) を呼ばずに済むよう ?? の右辺に置いて短絡させる)。
       const existing = get<{ id: string; role: string; municipality_id: string | null }>("SELECT id, role, municipality_id FROM users WHERE email=?", [email]);
       if (existing) {
         // 別ロールでの再招待はサイレントに権限を取り違える。明示的に弾く。
         if (existing.role !== role) throw new Error("ROLE_CONFLICT");
         // 同ロールの再招待は冪等。退職などで無効化されていれば再有効化する。
         run("UPDATE users SET status='active' WHERE id=?", [existing.id]);
-        if (role === "member") seedDefaultBudget(existing.id, existing.municipality_id ?? municipalityOfUser(createdBy));
+        if (role === "member") seedDefaultBudget(existing.id, existing.municipality_id ?? municipalityId ?? municipalityOfUser(createdBy));
       } else {
-        const creatorMuni = municipalityOfUser(createdBy);
+        const targetMuni = municipalityId ?? municipalityOfUser(createdBy);
         const id = genId(role === "member" ? "m" : "s");
         const orgType = role === "member" ? "member" : "municipality";
         run(
           "INSERT INTO users (id,municipality_id,organization_type,role,name,email,status) VALUES (?,?,?,?,?,?,?)",
-          [id, creatorMuni, orgType, role, name, email, "active"]
+          [id, targetMuni, orgType, role, name, email, "active"]
         );
-        if (role === "member") seedDefaultBudget(id, creatorMuni);
+        if (role === "member") seedDefaultBudget(id, targetMuni);
       }
       return sqliteRepos.invites.create({ email, role, municipalityName, createdBy });
     },

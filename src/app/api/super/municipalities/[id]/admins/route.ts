@@ -14,13 +14,26 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (sess instanceof Response) return sess;
   const { id } = await params;
   const b = await readJson<Body>(req);
-  if (!b.email?.trim() || !b.name?.trim()) return bad("email / name は必須です");
-  const inv = await getRepos().super.createAdminInvite({
-    municipalityId: id,
-    email: b.email.trim(),
-    name: b.name.trim(),
-    createdBy: sess.userId,
-  });
+  // Supabase Auth は email を小文字化して保持し、/api/auth/me は完全一致で紐づける。
+  // pre-provision する users.email も小文字に正規化しないと大文字を含む招待で 403 が再発する(#74)。
+  const cleanEmail = b.email?.trim().toLowerCase();
+  const cleanName = b.name?.trim();
+  if (!cleanEmail || !cleanName) return bad("email / name は必須です");
+  let inv: { token: string; expiresAt: string };
+  try {
+    inv = await getRepos().super.createAdminInvite({
+      municipalityId: id,
+      email: cleanEmail,
+      name: cleanName,
+      createdBy: sess.userId,
+    });
+  } catch (e) {
+    // 同じ email が別ロールで登録済み → サイレントに権限を取り違えないよう明示エラー。
+    if (e instanceof Error && e.message === "ROLE_CONFLICT") {
+      return bad("このメールアドレスは既に別の権限で登録されています", 409);
+    }
+    return bad("DB error", 500);
+  }
   const url = `${new URL(req.url).origin}/signup?token=${inv.token}`;
   return ok({ ...inv, url }, 201);
 }
