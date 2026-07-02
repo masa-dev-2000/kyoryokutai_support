@@ -99,12 +99,12 @@ type Ctx = {
   assignments: Record<string, string[]>;
   hosts: HostOrg[];
   routes: ApprovalRoute[];
-  upsertMember: (m: Member) => Promise<Member>;
+  upsertMember: (m: Omit<Member, "id"> & { id?: string }) => Promise<Member>;
   removeMember: (id: string) => void | Promise<void>;
   upsertStaff: (s: Staff) => void | Promise<void>;
   removeStaff: (id: string) => void | Promise<void>;
   setAssignment: (staffId: string, memberIds: string[]) => void | Promise<void>;
-  upsertHost: (h: HostOrg) => void | Promise<void>;
+  upsertHost: (h: Omit<HostOrg, "id"> & { id?: string }) => void | Promise<void>;
   removeHost: (id: string) => void | Promise<void>;
   upsertRoute: (r: RouteDraft) => void | Promise<void>;
   removeRoute: (id: string) => void | Promise<void>;
@@ -722,16 +722,25 @@ function HostEditSheet({ host, onClose }: { host: HostOrg | null; onClose: () =>
   const [name, setName] = React.useState(host?.name ?? "");
   const [kind, setKind] = React.useState(host?.kind ?? "");
   const [contactUserId, setContactUserId] = React.useState(host?.contactUserId ?? "");
+  const [saving, setSaving] = React.useState(false);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
 
   const canSave = !!name.trim();
   async function save() {
-    await upsertHost({
-      id: host?.id ?? `ho_${Date.now()}`,
-      name: name.trim(),
-      kind: kind.trim() || undefined,
-      contactUserId: contactUserId || undefined,
-    });
-    onClose();
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await upsertHost({
+        id: host?.id,
+        name: name.trim(),
+        kind: kind.trim() || undefined,
+        contactUserId: contactUserId || undefined,
+      });
+      onClose();
+    } catch (e) {
+      setSaveError((e as Error)?.message || "保存に失敗しました。時間をおいて再度お試しください。");
+      setSaving(false);
+    }
   }
 
   return (
@@ -740,12 +749,17 @@ function HostEditSheet({ host, onClose }: { host: HostOrg | null; onClose: () =>
         title={isNew ? "受入団体を追加" : "受入団体を編集"}
         onClose={onClose}
         right={
-          <button onClick={save} disabled={!canSave} className="text-[11px] font-bold text-slate-900 hover:underline disabled:cursor-not-allowed disabled:text-slate-300">
-            保存
+          <button onClick={save} disabled={!canSave || saving} className="text-[11px] font-bold text-slate-900 hover:underline disabled:cursor-not-allowed disabled:text-slate-300">
+            {saving ? "保存中…" : "保存"}
           </button>
         }
       />
       <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+        {saveError && (
+          <p role="alert" className="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-[13px] text-rose-700">
+            保存に失敗しました: {saveError}
+          </p>
+        )}
         <Label>団体名</Label>
         <Input value={name} onChange={setName} placeholder="例:新温泉町農業公社" />
 
@@ -1028,26 +1042,38 @@ function MemberEditSheet({
   }
 
   const canSave = !!(name.trim() && role.trim());
+  const [saving, setSaving] = React.useState(false);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
+  // 予算 PUT が失敗した後のリトライで隊員を二重作成しないよう、作成済み id を保持する
+  const createdIdRef = React.useRef<string | null>(null);
 
   async function save() {
-    const saved = await upsertMember({
-      id: member?.id ?? `m${Date.now()}`,
-      name: name.trim(),
-      role: role.trim(),
-      startedAt: startedAt.trim() || "未設定",
-      term,
-      hostOrganizationId: hostOrganizationId || undefined,
-      approvalRouteId: approvalRouteId || undefined,
-    });
-    // 新規・既存いずれも、編集した費目別予算枠を保存する(新規は作成後の id に対して反映)。
-    const targetId = member?.id ?? saved?.id;
-    if (targetId && budget) {
-      await apiPut("/api/budgets", {
-        userId: targetId,
-        allocations: budget.map((b) => ({ category: b.category, amountLimit: b.amountLimit })),
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const saved = await upsertMember({
+        id: member?.id ?? createdIdRef.current ?? undefined,
+        name: name.trim(),
+        role: role.trim(),
+        startedAt: startedAt.trim() || "未設定",
+        term,
+        hostOrganizationId: hostOrganizationId || undefined,
+        approvalRouteId: approvalRouteId || undefined,
       });
+      createdIdRef.current = saved.id;
+      // 新規・既存いずれも、編集した費目別予算枠を保存する(新規は作成後の id に対して反映)。
+      const targetId = member?.id ?? createdIdRef.current;
+      if (targetId && budget) {
+        await apiPut("/api/budgets", {
+          userId: targetId,
+          allocations: budget.map((b) => ({ category: b.category, amountLimit: b.amountLimit })),
+        });
+      }
+      onClose();
+    } catch (e) {
+      setSaveError((e as Error)?.message || "保存に失敗しました。時間をおいて再度お試しください。");
+      setSaving(false);
     }
-    onClose();
   }
 
   return (
@@ -1058,14 +1084,19 @@ function MemberEditSheet({
         right={
           <button
             onClick={save}
-            disabled={!canSave}
+            disabled={!canSave || saving}
             className="text-[11px] font-bold text-slate-900 hover:underline disabled:cursor-not-allowed disabled:text-slate-300"
           >
-            保存
+            {saving ? "保存中…" : "保存"}
           </button>
         }
       />
       <div className="mx-auto w-full max-w-2xl flex-1 overflow-y-auto px-6 py-6">
+        {saveError && (
+          <p role="alert" className="mb-2 rounded-lg bg-rose-50 px-3 py-2 text-[13px] text-rose-700">
+            保存に失敗しました: {saveError}
+          </p>
+        )}
         <Label>氏名</Label>
         <Input value={name} onChange={setName} placeholder="例:田中 あかり" />
 

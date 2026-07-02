@@ -211,9 +211,12 @@ export interface Repos {
     replace(staffId: string, memberIds: string[]): Promise<void>;
   };
   hostOrgs: {
-    list(): Promise<HostOrgDTO[]>;
-    upsert(h: { id?: string; name: string; kind?: string; contactUserId?: string }): Promise<HostOrgDTO>;
-    remove(id: string): Promise<void>;
+    /** muniId 省略 = 絞り込みなし(super 専用)。admin/manager は必ず自分の所属を渡す。 */
+    list(muniId?: string): Promise<HostOrgDTO[]>;
+    /** id 指定 = 更新。muniId 不一致/不存在は TENANT_MISMATCH を throw(ルート層は 404 に変換)。id 省略 = muniId 配下に新規作成。 */
+    upsert(h: { id?: string; name: string; kind?: string; contactUserId?: string }, muniId: string): Promise<HostOrgDTO>;
+    /** 対象が muniId に属さない/存在しない場合は false(ルート層は 404 に変換) */
+    remove(id: string, muniId: string): Promise<boolean>;
   };
   routes: {
     list(): Promise<RouteDTO[]>;
@@ -224,6 +227,7 @@ export interface Repos {
   };
   budgets: {
     summaryByUser(userId: string, fiscalYear: string): Promise<BudgetLineDTO[]>;
+    /** municipality_id は対象 userId の所属自治体から導出する(セッションでも定数でもない) */
     upsert(userId: string, fiscalYear: string, allocations: { category: string; amountLimit: number }[]): Promise<BudgetLineDTO[]>;
   };
   invites: {

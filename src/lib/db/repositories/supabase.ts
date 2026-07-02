@@ -559,7 +559,7 @@ export const supabaseRepos: Repos = {
         .select()
         .single();
       // 新規隊員に当年度の費目別予算枠(既定配分)を自動生成
-      if (data?.id) await seedDefaultBudgetSb(data.id);
+      if (data?.id) await seedDefaultBudgetSb(data.id, muniId);
       return mapMember(data!);
     },
     async retire(id, muniId) {
@@ -643,12 +643,12 @@ export const supabaseRepos: Repos = {
   },
 
   hostOrgs: {
-    async list() {
-      const { data } = await supabase()
+    async list(muniId) {
+      let q = supabase()
         .from("host_organizations")
-        .select("*")
-        .eq("municipality_id", MUNI)
-        .order("name");
+        .select("*");
+      if (muniId) q = q.eq("municipality_id", muniId);
+      const { data } = await q.order("name");
       return (data ?? []).map((r): HostOrgDTO => ({
         id: r.id,
         name: r.name,
@@ -656,25 +656,43 @@ export const supabaseRepos: Repos = {
         contactUserId: r.contact_user_id ?? undefined,
       }));
     },
-    async upsert(h) {
+    async upsert(h, muniId) {
       if (h.id) {
-        const { data } = await supabase()
+        const { data: existing, error: selErr } = await supabase()
+          .from("host_organizations")
+          .select("municipality_id")
+          .eq("id", h.id)
+          .maybeSingle();
+        if (selErr) throw selErr;
+        if (!existing || (existing.municipality_id as string) !== muniId) throw new Error("TENANT_MISMATCH");
+        const { data, error } = await supabase()
           .from("host_organizations")
           .update({ name: h.name, kind: h.kind ?? null, contact_user_id: h.contactUserId ?? null })
           .eq("id", h.id)
           .select()
           .single();
+        if (error) throw error;
         return { id: data!.id, name: data!.name, kind: data!.kind ?? undefined, contactUserId: data!.contact_user_id ?? undefined };
       }
-      const { data } = await supabase()
+      const { data, error } = await supabase()
         .from("host_organizations")
-        .insert({ municipality_id: MUNI, name: h.name, kind: h.kind ?? null, contact_user_id: h.contactUserId ?? null })
+        .insert({ municipality_id: muniId, name: h.name, kind: h.kind ?? null, contact_user_id: h.contactUserId ?? null })
         .select()
         .single();
+      if (error) throw error;
       return { id: data!.id, name: data!.name, kind: data!.kind ?? undefined, contactUserId: data!.contact_user_id ?? undefined };
     },
-    async remove(id) {
+    async remove(id, muniId) {
+      const { data: existing, error: selErr } = await supabase()
+        .from("host_organizations")
+        .select("municipality_id")
+        .eq("id", id)
+        .maybeSingle();
+      if (selErr) throw selErr;
+      if (!existing || (existing.municipality_id as string) !== muniId) return false;
+      // approval_route_steps.host_organization_id は on delete set null(Postgres 側 FK)なので追加処理不要
       await supabase().from("host_organizations").delete().eq("id", id);
+      return true;
     },
   },
 
@@ -792,11 +810,13 @@ export const supabaseRepos: Repos = {
       });
     },
     async upsert(userId, fiscalYear, allocations) {
+      // municipality_id は対象 userId の所属自治体から導出する(セッションでも定数でもない)
+      const muni = await municipalityOfUserSb(userId);
       await supabase()
         .from("budget_allocations")
         .upsert(
           allocations.map((a) => ({
-            municipality_id: MUNI,
+            municipality_id: muni,
             user_id: userId,
             fiscal_year: fiscalYear,
             category: a.category,
