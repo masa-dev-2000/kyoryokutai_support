@@ -71,6 +71,18 @@ describe("GET /api/host-organizations tenant scope", () => {
     expect(list.some((h) => h.id === "ho_nogyo")).toBe(false);
   });
 
+  it("lets managers list host orgs in their municipality only", async () => {
+    vi.stubEnv("AUTH_PROVIDER", "none");
+    vi.stubEnv("DEV_USER_ROLE", "manager");
+    vi.stubEnv("DEV_USER_ID", adminBId);
+    const mod = await loadRoute();
+    const res = await mod.GET();
+    expect(res.status).toBe(200);
+    const list = (await res.json()) as { id: string }[];
+    expect(list.some((h) => h.id === hostBId)).toBe(true);
+    expect(list.some((h) => h.id === "ho_nogyo")).toBe(false);
+  });
+
   it("lets super users list host orgs across municipalities", async () => {
     const superId = genId("sup");
     run(

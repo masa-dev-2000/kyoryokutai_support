@@ -788,12 +788,19 @@ function HostEditSheet({ host, onClose }: { host: HostOrg | null; onClose: () =>
           <div className="mt-8 border-t border-slate-100 pt-4">
             <button
               onClick={async () => {
-                if (confirm(`${host.name} を削除しますか?`)) {
+                if (!confirm(`${host.name} を削除しますか?`)) return;
+                setSaving(true);
+                setSaveError(null);
+                try {
                   await removeHost(host.id);
                   onClose();
+                } catch (e) {
+                  setSaveError((e as Error)?.message || "削除に失敗しました。時間をおいて再度お試しください。");
+                  setSaving(false);
                 }
               }}
-              className="inline-flex items-center gap-1 rounded-full border border-rose-300 px-3 py-1.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50"
+              disabled={saving}
+              className="inline-flex items-center gap-1 rounded-full border border-rose-300 px-3 py-1.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Trash2 className="h-3.5 w-3.5" />
               この団体を削除

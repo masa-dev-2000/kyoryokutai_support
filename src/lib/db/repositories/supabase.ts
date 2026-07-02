@@ -691,7 +691,8 @@ export const supabaseRepos: Repos = {
       if (selErr) throw selErr;
       if (!existing || (existing.municipality_id as string) !== muniId) return false;
       // approval_route_steps.host_organization_id は on delete set null(Postgres 側 FK)なので追加処理不要
-      await supabase().from("host_organizations").delete().eq("id", id);
+      const { error } = await supabase().from("host_organizations").delete().eq("id", id);
+      if (error) throw error;
       return true;
     },
   },
