@@ -415,22 +415,22 @@ export const sqliteRepos: Repos = {
       return all("SELECT * FROM users WHERE role='member' AND status='active' ORDER BY started_at").map(mapMember);
     },
     async upsert(m, muniId) {
-      const existing = m.id ? get<{ id: string; municipality_id: string; role: string }>("SELECT id, municipality_id, role FROM users WHERE id=?", [m.id]) : undefined;
-      if (existing) {
-        if (existing.municipality_id !== muniId || existing.role !== "member") throw new Error("TENANT_MISMATCH");
+      if (m.id) {
+        const existing = get<{ id: string; municipality_id: string; role: string }>("SELECT id, municipality_id, role FROM users WHERE id=?", [m.id]);
+        if (!existing || existing.municipality_id !== muniId || existing.role !== "member") throw new Error("TENANT_MISMATCH");
         run("UPDATE users SET name=?, role_label=?, started_at=?, term=?, host_organization_id=?, approval_route_id=? WHERE id=?", [
           m.name, m.role, m.startedAt ?? "未設定", m.term ?? "1 年目", m.hostOrganizationId ?? null, m.approvalRouteId ?? null, m.id,
         ]);
         return mapMember(all("SELECT * FROM users WHERE id=?", [m.id])[0]);
       }
-      const id = m.id ?? genId("m");
+      const id = genId("m");
       run(
         `INSERT INTO users (id,municipality_id,host_organization_id,organization_type,role,name,email,role_label,term,started_at,status,approval_route_id)
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
         [id, muniId, m.hostOrganizationId ?? null, "member", "member", m.name, `${id}@member.example.jp`, m.role, m.term ?? "1 年目", m.startedAt ?? "未設定", "active", m.approvalRouteId ?? null]
       );
       // 新規隊員に当年度の費目別予算枠(既定配分)を自動生成
-      seedDefaultBudget(id);
+      seedDefaultBudget(id, muniId);
       return mapMember(all("SELECT * FROM users WHERE id=?", [id])[0]);
     },
     async retire(id, muniId) {
@@ -500,28 +500,36 @@ export const sqliteRepos: Repos = {
   },
 
   hostOrgs: {
-    async list() {
-      return all<Record<string, unknown>>(
-        "SELECT * FROM host_organizations WHERE municipality_id=? ORDER BY name",
-        [MUNI]
-      ).map(mapHost);
+    async list(muniId) {
+      if (muniId) {
+        return all<Record<string, unknown>>(
+          "SELECT * FROM host_organizations WHERE municipality_id=? ORDER BY name",
+          [muniId]
+        ).map(mapHost);
+      }
+      return all<Record<string, unknown>>("SELECT * FROM host_organizations ORDER BY name").map(mapHost);
     },
-    async upsert(h) {
-      if (h.id && get("SELECT id FROM host_organizations WHERE id=?", [h.id])) {
+    async upsert(h, muniId) {
+      if (h.id) {
+        const existing = get<{ municipality_id: string }>("SELECT municipality_id FROM host_organizations WHERE id=?", [h.id]);
+        if (!existing || existing.municipality_id !== muniId) throw new Error("TENANT_MISMATCH");
         run("UPDATE host_organizations SET name=?, kind=?, contact_user_id=? WHERE id=?", [
           h.name, h.kind ?? null, h.contactUserId ?? null, h.id,
         ]);
         return mapHost(all("SELECT * FROM host_organizations WHERE id=?", [h.id])[0]);
       }
-      const id = h.id ?? genId("ho");
+      const id = genId("ho");
       run("INSERT INTO host_organizations (id,municipality_id,name,kind,contact_user_id) VALUES (?,?,?,?,?)", [
-        id, MUNI, h.name, h.kind ?? null, h.contactUserId ?? null,
+        id, muniId, h.name, h.kind ?? null, h.contactUserId ?? null,
       ]);
       return mapHost(all("SELECT * FROM host_organizations WHERE id=?", [id])[0]);
     },
-    async remove(id) {
+    async remove(id, muniId) {
+      const existing = get<{ municipality_id: string }>("SELECT municipality_id FROM host_organizations WHERE id=?", [id]);
+      if (!existing || existing.municipality_id !== muniId) return false;
       run("UPDATE approval_route_steps SET host_organization_id=NULL WHERE host_organization_id=?", [id]);
       run("DELETE FROM host_organizations WHERE id=?", [id]);
+      return true;
     },
   },
 
@@ -595,6 +603,8 @@ export const sqliteRepos: Repos = {
       });
     },
     async upsert(userId, fiscalYear, allocations) {
+      // municipality_id は対象 userId の所属自治体から導出する(セッションでも定数でもない)
+      const muni = municipalityOfUser(userId);
       for (const a of allocations) {
         const existing = get<{ id: string }>(
           "SELECT id FROM budget_allocations WHERE user_id=? AND fiscal_year=? AND category=?",
@@ -604,7 +614,7 @@ export const sqliteRepos: Repos = {
           run("UPDATE budget_allocations SET amount_limit=?, updated_at=datetime('now') WHERE id=?", [a.amountLimit, existing.id]);
         } else {
           run("INSERT INTO budget_allocations (id,municipality_id,user_id,fiscal_year,category,amount_limit) VALUES (?,?,?,?,?,?)", [
-            genId("bud"), MUNI, userId, fiscalYear, a.category, a.amountLimit,
+            genId("bud"), muni, userId, fiscalYear, a.category, a.amountLimit,
           ]);
         }
       }

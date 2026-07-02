@@ -8,7 +8,7 @@ import { sqliteRepos } from "@/lib/db/repositories/sqlite";
 
 describe("承認ルート 受入団体ステップ (#PR75 整合)", () => {
   it("host_org ステップの hostOrganizationId が保存・取得で保持される", async () => {
-    const org = await sqliteRepos.hostOrgs.upsert({ name: "テスト受入団体", kind: "npo" });
+    const org = await sqliteRepos.hostOrgs.upsert({ name: "テスト受入団体", kind: "npo" }, "muni_shinonsen");
     expect(org.id).toBeTruthy();
 
     const created = await sqliteRepos.routes.create({

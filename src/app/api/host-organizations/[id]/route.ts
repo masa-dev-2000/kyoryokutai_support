@@ -1,4 +1,4 @@
-import { ok } from "@/lib/api/http";
+import { ok, bad } from "@/lib/api/http";
 import { getRepos } from "@/lib/db/repositories";
 import { requireAdmin } from "@/lib/api/auth";
 
@@ -9,6 +9,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const sess = await requireAdmin();
   if (sess instanceof Response) return sess;
   const { id } = await params;
-  await getRepos().hostOrgs.remove(id);
+  const removed = await getRepos().hostOrgs.remove(id, sess.municipalityId);
+  if (!removed) return bad("見つかりません", 404);
   return ok({ id, deleted: true });
 }
