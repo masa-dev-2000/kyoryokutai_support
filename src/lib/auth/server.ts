@@ -48,8 +48,8 @@ export async function getAppUserId(authId: string): Promise<string | null> {
   return data?.id ?? null;
 }
 
-/** auth.users.id から app ユーザー(id + role)を 1 クエリで引く。未登録は null */
-export async function getAppUser(authId: string): Promise<{ id: string; role: string } | null> {
+/** auth.users.id から app ユーザー(id + role + 所属自治体)を 1 クエリで引く。未登録は null */
+export async function getAppUser(authId: string): Promise<{ id: string; role: string; municipalityId: string } | null> {
   const { createClient } = await import("@supabase/supabase-js");
   const admin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -58,10 +58,10 @@ export async function getAppUser(authId: string): Promise<{ id: string; role: st
   );
   const { data } = await admin
     .from("users")
-    .select("id, role")
+    .select("id, role, municipality_id")
     .eq("auth_id", authId)
     .single();
-  return data ? { id: data.id as string, role: data.role as string } : null;
+  return data ? { id: data.id as string, role: data.role as string, municipalityId: data.municipality_id as string } : null;
 }
 
 /** auth.users.id から users テーブルの role を引く(#64: super ガード用) */

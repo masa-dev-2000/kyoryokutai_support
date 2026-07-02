@@ -70,6 +70,7 @@ export type LogForAI = {
 // 承認の状態遷移に必要な生フィールド
 export type ApprovalRaw = {
   id: string;
+  municipality_id: string;
   kind: string;
   steps: string; // JSON
   current_step: number;
@@ -192,14 +193,18 @@ export interface Repos {
     analytics(): Promise<SuperAnalytics>;
   };
   members: {
-    list(): Promise<MemberDTO[]>;
-    upsert(m: { id?: string; name: string; role: string; startedAt?: string; term?: string; hostOrganizationId?: string | null; approvalRouteId?: string | null }): Promise<MemberDTO>;
-    retire(id: string): Promise<void>;
+    /** muniId 省略 = 絞り込みなし(super 専用)。admin は必ず自分の所属を渡す。 */
+    list(muniId?: string): Promise<MemberDTO[]>;
+    upsert(m: { id?: string; name: string; role: string; startedAt?: string; term?: string; hostOrganizationId?: string | null; approvalRouteId?: string | null }, muniId: string): Promise<MemberDTO>;
+    /** 対象が muniId に属さない/存在しない場合は false(ルート層は 404 に変換) */
+    retire(id: string, muniId: string): Promise<boolean>;
   };
   staff: {
-    list(): Promise<StaffDTO[]>;
-    upsert(s: { id?: string; name: string; title?: string; dept: string; email?: string }): Promise<StaffDTO>;
-    remove(id: string): Promise<void>;
+    /** muniId 省略 = 絞り込みなし(super 専用)。admin は必ず自分の所属を渡す。 */
+    list(muniId?: string): Promise<StaffDTO[]>;
+    upsert(s: { id?: string; name: string; title?: string; dept: string; email?: string }, muniId: string): Promise<StaffDTO>;
+    /** 対象が muniId に属さない/存在しない場合は false(ルート層は 404 に変換) */
+    remove(id: string, muniId: string): Promise<boolean>;
   };
   assignments: {
     map(): Promise<Record<string, string[]>>;
@@ -224,6 +229,12 @@ export interface Repos {
   invites: {
     /** トークンと 7 日有効期限を採番して発行する */
     create(i: { email: string | null; role: string; municipalityName: string; createdBy: string }): Promise<{ token: string; expiresAt: string }>;
+    /**
+     * 招待先の users 行を事前作成(email で冪等)してからトークンを発行する。
+     * /api/auth/me は email で auth_id を紐づけるだけ(#64)なので、先に行が無いと
+     * 招待されても 403 になる(#74)。super.createAdminInvite と同じ pre-provision 方式。
+     */
+    createProvisioned(i: { email: string; name: string; role: string; municipalityName: string; createdBy: string }): Promise<{ token: string; expiresAt: string }>;
     findByToken(token: string): Promise<InviteRow | null>;
     /** used_at が未設定のときだけ使用済みにする */
     markUsed(token: string): Promise<void>;
@@ -290,7 +301,14 @@ export interface Repos {
   approvals: {
     listPending(muni: string): Promise<ApprovalDTO[]>;
     getRaw(id: string): Promise<ApprovalRaw | undefined>;
-    updateState(id: string, steps: unknown[], currentStep: number, status: string): Promise<void>;
+    updateDetail(targetTable: string, targetId: string, detail: unknown): Promise<void>;
+    updateState(
+      id: string,
+      steps: unknown[],
+      currentStep: number,
+      status: string,
+      decision?: { decidedBy: string; comment?: string | null }
+    ): Promise<void>;
     getById(id: string): Promise<ApprovalDTO | undefined>;
     enqueue(a: {
       muni: string;

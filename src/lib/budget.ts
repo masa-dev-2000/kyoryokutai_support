@@ -14,13 +14,13 @@ export const DEFAULT_ALLOCATION: Record<string, number> = {
   その他: 100000,
 };
 
+import { jstFiscalYear } from "@/lib/time";
+
 export const ANNUAL_BUDGET_TOTAL = 2000000;
 
 /** 現在の年度(4 月始まり)を "YYYY" で返す。例: 2026-06 → "2026"、2026-02 → "2025"。 */
 export function currentFiscalYear(d: Date = new Date()): string {
-  const y = d.getFullYear();
-  const m = d.getMonth() + 1; // 1-12
-  return String(m >= 4 ? y : y - 1);
+  return jstFiscalYear(d);
 }
 
 /** 既定配分を upsert 用の配列に変換 */

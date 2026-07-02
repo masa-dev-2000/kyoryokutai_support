@@ -32,15 +32,13 @@ import type {
   BudgetLineDTO,
 } from "./types";
 import { BUDGET_CATEGORIES, DEFAULT_ALLOCATION, currentFiscalYear } from "@/lib/budget";
+import { jstDateString, jstTimeHHMM, jstYearMonth } from "@/lib/time";
 
 const MUNI = "10000000-0000-4000-8000-000000000001";
 
 // 当月 / N ヶ月前の 'YYYY-MM' を返す(ローカル時刻基準)
 function ymOffset(offset: number): string {
-  const d = new Date();
-  d.setDate(1);
-  d.setMonth(d.getMonth() + offset);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return jstYearMonth(offset);
 }
 
 // 'YYYY-MM' → JST 月初・翌月初の ISO 文字列([gte, lt) 範囲)。
@@ -125,13 +123,13 @@ function fyRange(fy: string): [string, string] {
 }
 
 // 新規隊員に当年度の費目別予算枠(既定配分)を投入(重複は無視)。
-async function seedDefaultBudgetSb(userId: string) {
+async function seedDefaultBudgetSb(userId: string, municipalityId = MUNI) {
   const fy = currentFiscalYear();
   await supabase()
     .from("budget_allocations")
     .upsert(
       BUDGET_CATEGORIES.map((category) => ({
-        municipality_id: MUNI,
+        municipality_id: municipalityId,
         user_id: userId,
         fiscal_year: fy,
         category,
@@ -139,6 +137,18 @@ async function seedDefaultBudgetSb(userId: string) {
       })),
       { onConflict: "user_id,fiscal_year,category", ignoreDuplicates: true }
     );
+}
+
+async function municipalityOfUserSb(userId: string): Promise<string> {
+  const { data, error } = await supabase()
+    .from("users")
+    .select("municipality_id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  const municipalityId = data?.municipality_id as string | null | undefined;
+  if (!municipalityId) throw new Error("CREATOR_NOT_FOUND");
+  return municipalityId;
 }
 
 function supabase() {
@@ -159,17 +169,18 @@ async function muniOf(userId: string): Promise<string> {
 // Supabase の occurred_at(timestamptz)→ log_date / log_time に変換してマッパーに渡す
 function toLogRow(r: Record<string, unknown>): Record<string, unknown> {
   const oa = r.occurred_at as string | null;
+  const occurredAt = oa ? new Date(oa) : null;
   return {
     ...r,
-    log_date: oa ? oa.slice(0, 10) : r.log_date,
-    log_time: oa ? oa.slice(11, 16) : r.log_time ?? "",
+    log_date: occurredAt ? jstDateString(occurredAt) : r.log_date,
+    log_time: occurredAt ? jstTimeHHMM(occurredAt) : r.log_time ?? "",
   };
 }
 
 // occurred_at を生成(date + time → ISO 文字列)
 function toOccurredAt(date?: string, time?: string): string {
-  const d = date ?? new Date().toISOString().slice(0, 10);
-  const t = time ?? new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+  const d = date ?? jstDateString();
+  const t = time ?? jstTimeHHMM();
   return `${d}T${t}:00+09:00`;
 }
 
@@ -506,17 +517,20 @@ export const supabaseRepos: Repos = {
   },
 
   members: {
-    async list() {
-      const { data } = await supabase()
+    async list(muniId) {
+      let q = supabase()
         .from("users")
         .select("*")
         .eq("role", "member")
-        .eq("status", "active")
-        .order("started_at");
+        .eq("status", "active");
+      if (muniId) q = q.eq("municipality_id", muniId);
+      const { data } = await q.order("started_at");
       return (data ?? []).map(mapMember);
     },
-    async upsert(m) {
+    async upsert(m, muniId) {
       if (m.id) {
+        const { data: existing } = await supabase().from("users").select("municipality_id, role").eq("id", m.id).maybeSingle();
+        if (!existing || (existing.municipality_id as string) !== muniId || existing.role !== "member") throw new Error("TENANT_MISMATCH");
         const { data } = await supabase()
           .from("users")
           .update({
@@ -531,7 +545,7 @@ export const supabaseRepos: Repos = {
       const { data } = await supabase()
         .from("users")
         .insert({
-          municipality_id: MUNI,
+          municipality_id: muniId,
           organization_type: "member",
           host_organization_id: m.hostOrganizationId ?? null,
           approval_route_id: m.approvalRouteId ?? null,
@@ -548,24 +562,30 @@ export const supabaseRepos: Repos = {
       if (data?.id) await seedDefaultBudgetSb(data.id);
       return mapMember(data!);
     },
-    async retire(id) {
+    async retire(id, muniId) {
+      const { data: existing } = await supabase().from("users").select("municipality_id, role").eq("id", id).maybeSingle();
+      if (!existing || (existing.municipality_id as string) !== muniId || existing.role !== "member") return false;
       await supabase().from("users").update({ status: "retired" }).eq("id", id);
       await supabase().from("assignments").delete().eq("member_id", id);
+      return true;
     },
   },
 
   staff: {
-    async list() {
-      const { data } = await supabase()
+    async list(muniId) {
+      let q = supabase()
         .from("users")
         .select("*")
         .eq("role", "manager")
-        .eq("organization_type", "municipality")
-        .order("created_at");
+        .eq("organization_type", "municipality");
+      if (muniId) q = q.eq("municipality_id", muniId);
+      const { data } = await q.order("created_at");
       return (data ?? []).map(mapStaff);
     },
-    async upsert(s) {
+    async upsert(s, muniId) {
       if (s.id) {
+        const { data: existing } = await supabase().from("users").select("municipality_id, role, organization_type").eq("id", s.id).maybeSingle();
+        if (!existing || (existing.municipality_id as string) !== muniId || existing.role !== "manager" || existing.organization_type !== "municipality") throw new Error("TENANT_MISMATCH");
         const { data } = await supabase()
           .from("users")
           .update({ name: s.name, title: s.title ?? "職員", department: s.dept, email: s.email ?? null })
@@ -577,7 +597,7 @@ export const supabaseRepos: Repos = {
       const { data } = await supabase()
         .from("users")
         .insert({
-          municipality_id: MUNI,
+          municipality_id: muniId,
           organization_type: "municipality",
           role: "manager",
           name: s.name,
@@ -590,9 +610,12 @@ export const supabaseRepos: Repos = {
         .single();
       return mapStaff(data!);
     },
-    async remove(id) {
+    async remove(id, muniId) {
+      const { data: existing } = await supabase().from("users").select("municipality_id").eq("id", id).eq("role", "manager").eq("organization_type", "municipality").maybeSingle();
+      if (!existing || (existing.municipality_id as string) !== muniId) return false;
       await supabase().from("assignments").delete().eq("staff_id", id);
       await supabase().from("users").delete().eq("id", id).eq("role", "manager");
+      return true;
     },
   },
 
@@ -801,6 +824,42 @@ export const supabaseRepos: Repos = {
       });
       return { token, expiresAt };
     },
+    async createProvisioned({ email, name, role, municipalityName, createdBy }) {
+      // email に対応する users 行が無ければ先に作る(/api/auth/me が email で紐づけられるように)。
+      const { data: existing, error: selErr } = await supabase()
+        .from("users")
+        .select("id, role, municipality_id")
+        .eq("email", email)
+        .maybeSingle();
+      if (selErr) throw selErr;
+      if (existing) {
+        // 別ロールでの再招待はサイレントに権限を取り違える。明示的に弾く。
+        if ((existing.role as string) !== role) throw new Error("ROLE_CONFLICT");
+        // 同ロールの再招待は冪等。無効化されていれば再有効化する。
+        const { error: upErr } = await supabase()
+          .from("users")
+          .update({ status: "active" })
+          .eq("id", existing.id);
+        if (upErr) throw upErr;
+        if (role === "member") {
+          const municipalityId = (existing.municipality_id as string | null) ?? await municipalityOfUserSb(createdBy);
+          await seedDefaultBudgetSb(existing.id as string, municipalityId);
+        }
+      } else {
+        const creatorMuni = await municipalityOfUserSb(createdBy);
+        const orgType = role === "member" ? "member" : "municipality";
+        // insert の失敗(RLS/一意制約等)を握り潰すと users 行が無いままトークンだけ発行され
+        // 招待先が後で 403 になる。エラーは投げてルートで 500 にする。
+        const { data: created, error: insErr } = await supabase()
+          .from("users")
+          .insert({ municipality_id: creatorMuni, organization_type: orgType, role, name, email, status: "active" })
+          .select("id")
+          .single();
+        if (insErr) throw insErr;
+        if (role === "member" && created?.id) await seedDefaultBudgetSb(created.id, creatorMuni);
+      }
+      return supabaseRepos.invites.create({ email, role, municipalityName, createdBy });
+    },
     async findByToken(token) {
       const { data } = await supabase()
         .from("invite_tokens")
@@ -857,7 +916,7 @@ export const supabaseRepos: Repos = {
     },
     async create(b) {
       const occurredAt = toOccurredAt(b.date, b.time);
-      const date = b.date ?? new Date().toISOString().slice(0, 10);
+      const date = b.date ?? jstDateString();
       // daily_log を upsert して daily_log_id を結線
       let dailyLogId = b.dailyLogId ?? null;
       if (!dailyLogId) {
@@ -1168,12 +1227,13 @@ export const supabaseRepos: Repos = {
     async getRaw(id): Promise<ApprovalRaw | undefined> {
       const { data } = await supabase()
         .from("approvals")
-        .select("id, kind, steps, current_step, status, target_table, target_id")
+        .select("id, municipality_id, kind, steps, current_step, status, target_table, target_id")
         .eq("id", id)
         .single();
       if (!data) return undefined;
       return {
         id: data.id,
+        municipality_id: data.municipality_id,
         kind: data.kind,
         steps: JSON.stringify(data.steps),
         current_step: data.current_step,
@@ -1182,10 +1242,25 @@ export const supabaseRepos: Repos = {
         target_id: data.target_id ?? null,
       };
     },
-    async updateState(id, steps, currentStep, status) {
+    async updateDetail(targetTable, targetId, detail) {
       await supabase()
         .from("approvals")
-        .update({ steps, current_step: currentStep, status })
+        .update({ detail })
+        .eq("target_table", targetTable)
+        .eq("target_id", targetId)
+        .eq("status", "pending");
+    },
+    async updateState(id, steps, currentStep, status, decision) {
+      await supabase()
+        .from("approvals")
+        .update({
+          steps,
+          current_step: currentStep,
+          status,
+          ...(decision
+            ? { approver_id: decision.decidedBy, approved_at: new Date().toISOString(), comment: decision.comment ?? null }
+            : {}),
+        })
         .eq("id", id);
     },
     async getById(id) {

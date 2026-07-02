@@ -609,6 +609,10 @@ function todayKey() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function isFutureDate(date: string) {
+  return date > todayKey();
+}
+
 function currentYm() {
   return todayKey().slice(0, 7);
 }
@@ -644,6 +648,7 @@ function ReportTab() {
 
   // #122: 入口を統一。記録の有無に関わらず「その日の活動一覧」を開き、一覧内の「+追加」から作成する。
   function onDayTap(date: string) {
+    if (isFutureDate(date)) return;
     pushSheet({ kind: "report-day", date });
   }
 
@@ -752,11 +757,11 @@ function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) 
   const [yr, mo] = ym.split("-").map(Number);
   const startWeekday = new Date(yr, mo - 1, 1).getDay();
   const daysInMonth = new Date(yr, mo, 0).getDate();
-  const cells: ({ day: number; date: string; logs: ActivityLog[] } | null)[] = [];
+  const cells: ({ day: number; date: string; logs: ActivityLog[]; isFuture: boolean } | null)[] = [];
   for (let i = 0; i < startWeekday; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${ym}-${String(d).padStart(2, "0")}`;
-    cells.push({ day: d, date: dateStr, logs: byDate[dateStr] ?? [] });
+    cells.push({ day: d, date: dateStr, logs: byDate[dateStr] ?? [], isFuture: isFutureDate(dateStr) });
   }
 
   return (
@@ -776,9 +781,11 @@ function MonthOverview({ ym, onDayTap }: { ym: string; onDayTap: (date: string) 
               <button
                 key={i}
                 onClick={() => onDayTap(c.date)}
-                className={`relative aspect-square rounded-lg border p-1 text-left text-[13px] transition ${c.date === todayKey() ? "border-slate-900 bg-slate-50 ring-1 ring-slate-900" : c.logs.length > 0 ? "border-slate-300 bg-white hover:border-slate-900 hover:shadow" : "border-slate-100 bg-slate-50/40 text-slate-300 hover:border-slate-400 hover:bg-white"}`}
+                disabled={c.isFuture}
+                aria-disabled={c.isFuture}
+                className={`relative aspect-square rounded-lg border p-1 text-left text-[13px] transition ${c.isFuture ? "cursor-not-allowed border-slate-100 bg-slate-50 text-slate-300 opacity-60" : c.date === todayKey() ? "border-slate-900 bg-slate-50 ring-1 ring-slate-900" : c.logs.length > 0 ? "border-slate-300 bg-white hover:border-slate-900 hover:shadow" : "border-slate-100 bg-slate-50/40 text-slate-300 hover:border-slate-400 hover:bg-white"}`}
               >
-                <span className={`absolute left-1 top-0.5 font-bold ${c.logs.length > 0 ? "text-slate-700" : "text-slate-400"}`}>{c.day}</span>
+                <span className={`absolute left-1 top-0.5 font-bold ${c.isFuture ? "text-slate-300" : c.logs.length > 0 ? "text-slate-700" : "text-slate-400"}`}>{c.day}</span>
                 {c.logs.length > 0 ? (
                   <>
                     <span className="absolute right-1 top-0.5 text-[12px] font-bold text-slate-500">{c.logs.length}件</span>
@@ -2164,6 +2171,7 @@ function ReportDetailSheet({ report, onClose }: { report: Report; onClose: () =>
 
 function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () => void; depth: number }) {
   const { logs, dailyLogs, expenses, addDailyLog, pushSheet } = useApp();
+  const isFuture = isFutureDate(date);
   const items = logs.filter((l) => l.date === date);
   const dl = dailyLogs.find((d) => d.date === date);
   const dayExpenses = expenses.filter((e) => expenseLogDate(e) === date);
@@ -2178,6 +2186,7 @@ function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () =>
   }, [dl?.distanceKm]);
 
   async function saveDistance() {
+    if (isFuture) return;
     const value = distance.trim();
     setSavingDistance(true);
     setDistanceError(null);
@@ -2217,8 +2226,9 @@ function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () =>
                   inputMode="numeric"
                   value={distance}
                   onChange={(e) => setDistance(e.target.value)}
+                  disabled={isFuture}
                   placeholder="0"
-                  className="w-28 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[16px] focus:border-slate-900 focus:outline-none"
+                  className="w-28 rounded-xl border border-slate-300 bg-white px-3 py-2 text-[16px] focus:border-slate-900 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                 />
                 <span className="text-[14px] font-semibold text-slate-500">km</span>
               </div>
@@ -2226,7 +2236,7 @@ function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () =>
             <button
               type="button"
               onClick={saveDistance}
-              disabled={savingDistance}
+              disabled={savingDistance || isFuture}
               className="rounded-xl bg-slate-900 px-4 py-2 text-[15px] font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
             >
               {savingDistance ? "保存中..." : "保存"}
@@ -2239,7 +2249,8 @@ function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () =>
           <button
             type="button"
             onClick={() => pushSheet({ kind: "activity-add", date })}
-            className="inline-flex items-center justify-center gap-1 rounded-xl border border-dashed border-slate-300 py-3 text-[15px] font-semibold text-slate-600 transition hover:border-slate-900 hover:text-slate-900"
+            disabled={isFuture}
+            className="inline-flex items-center justify-center gap-1 rounded-xl border border-dashed border-slate-300 py-3 text-[15px] font-semibold text-slate-600 transition hover:border-slate-900 hover:text-slate-900 disabled:cursor-not-allowed disabled:border-slate-100 disabled:text-slate-300"
           >
             <Plus className="h-4 w-4" />
             活動を追加
@@ -2247,7 +2258,8 @@ function ReportDaySheet({ date, onClose, depth }: { date: string; onClose: () =>
           <button
             type="button"
             onClick={() => pushSheet({ kind: "expense-create", date })}
-            className="inline-flex items-center justify-center gap-1 rounded-xl border border-slate-300 bg-white py-3 text-[15px] font-semibold text-slate-700 transition hover:border-slate-900 hover:bg-slate-50"
+            disabled={isFuture}
+            className="inline-flex items-center justify-center gap-1 rounded-xl border border-slate-300 bg-white py-3 text-[15px] font-semibold text-slate-700 transition hover:border-slate-900 hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300"
           >
             <Receipt className="h-4 w-4" />
             経費を追加

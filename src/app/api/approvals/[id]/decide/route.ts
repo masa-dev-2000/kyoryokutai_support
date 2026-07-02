@@ -19,6 +19,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const row = await repos.approvals.getRaw(id);
   if (!row) return bad("not found", 404);
+  const userMuni = await repos.users.municipalityOf(sess.userId);
+  if (row.municipality_id !== userMuni) return bad("not found", 404);
   if (row.status !== "pending") return bad("既に処理済みです", 409);
 
   const steps = JSON.parse(row.steps) as ApprovalStep[];
@@ -26,15 +28,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   let next;
   if (b.action === "approve") {
-    next = applyApprove(steps, current);
+    next = applyApprove(steps, current, { userId: sess.userId, role: sess.role });
   } else if (b.action === "reject") {
     if (!b.comment || b.comment.trim().length < 5) return bad("差戻し理由は 5 文字以上が必要です");
-    next = applyReject(steps, current, b.comment.trim());
+    next = applyReject(steps, current, b.comment.trim(), { userId: sess.userId, role: sess.role });
   } else {
     return bad("action は approve / reject");
   }
 
-  await repos.approvals.updateState(id, next.steps, next.currentStep, next.status);
+  await repos.approvals.updateState(id, next.steps, next.currentStep, next.status, {
+    decidedBy: sess.userId,
+    comment: b.action === "reject" ? b.comment?.trim() ?? null : null,
+  });
 
   // 最終承認の反映
   if (next.status === "approved" && row.target_id) {

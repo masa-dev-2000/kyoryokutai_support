@@ -6,14 +6,17 @@ import { requireAppUser } from "@/lib/api/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Body = { ym?: string };
+type Body = { ym?: string; userId?: string };
 
 export async function POST(req: Request) {
   const sess = await requireAppUser();
   if (sess instanceof Response) return sess;
-  const { ym } = await readJson<Body>(req);
+  const { ym, userId: requestedUserId } = await readJson<Body>(req);
   if (!ym) return bad("ym(YYYY-MM)が必要です");
-  const userId = sess.userId;
+  const userId = requestedUserId ?? sess.userId;
+  if (userId !== sess.userId && sess.role !== "manager" && sess.role !== "admin" && sess.role !== "super") {
+    return bad("権限がありません", 403);
+  }
 
   const logs = await getRepos().activityLogs.listForAI(userId, ym);
   if (logs.length === 0) return bad("対象月の活動記録がありません", 404);
