@@ -838,17 +838,17 @@ export const supabaseRepos: Repos = {
           await seedDefaultBudgetSb(existing.id as string, targetMuni);
         }
       } else {
-        const creatorMuni = municipalityId ?? await municipalityOfUserSb(createdBy);
+        const targetMuni = municipalityId ?? await municipalityOfUserSb(createdBy);
         const orgType = role === "member" ? "member" : "municipality";
         // insert の失敗(RLS/一意制約等)を握り潰すと users 行が無いままトークンだけ発行され
         // 招待先が後で 403 になる。エラーは投げてルートで 500 にする。
         const { data: created, error: insErr } = await supabase()
           .from("users")
-          .insert({ municipality_id: creatorMuni, organization_type: orgType, role, name, email, status: "active" })
+          .insert({ municipality_id: targetMuni, organization_type: orgType, role, name, email, status: "active" })
           .select("id")
           .single();
         if (insErr) throw insErr;
-        if (role === "member" && created?.id) await seedDefaultBudgetSb(created.id, creatorMuni);
+        if (role === "member" && created?.id) await seedDefaultBudgetSb(created.id, targetMuni);
       }
       return supabaseRepos.invites.create({ email, role, municipalityName, createdBy });
     },
